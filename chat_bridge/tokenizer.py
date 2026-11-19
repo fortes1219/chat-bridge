@@ -74,18 +74,29 @@ def ensure_dictionary() -> Path:
     folder = local_data_dir() / "jieba"
     folder.mkdir(exist_ok=True)
     path = folder / "dict.txt.big"
-    if path.is_file() and _is_expected_dictionary(path.read_bytes()):
+    # The size is checked first, so a wrong file on disk is never read into memory.
+    if (
+        path.is_file()
+        and path.stat().st_size == DICTIONARY_SIZE
+        and _is_expected_dictionary(path.read_bytes())
+    ):
         return path
 
     try:
         with urllib.request.urlopen(
             DICTIONARY_URL, timeout=DOWNLOAD_TIMEOUT_SECONDS
         ) as response:
-            data: bytes = response.read()
+            # One byte past the pinned size is enough to tell that a response is too large,
+            # so a replaced source cannot fill memory.
+            data: bytes = response.read(DICTIONARY_SIZE + 1)
     except OSError as error:
         raise DictionaryError(
             f"Could not download the Traditional Chinese dictionary from {DICTIONARY_URL}: {error}"
         ) from error
+    if len(data) > DICTIONARY_SIZE:
+        raise DictionaryError(
+            f"The downloaded dictionary is larger than the pinned file ({DICTIONARY_SIZE} bytes)."
+        )
     if not _is_expected_dictionary(data):
         raise DictionaryError(
             f"The downloaded dictionary does not match the pinned file "
