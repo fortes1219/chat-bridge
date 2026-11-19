@@ -1,4 +1,4 @@
-"""chat-bridge：市場新聞 RAG 展示專案。"""
+"""chat-bridge: a RAG demo over market news."""
 
 from importlib.metadata import version
 
