@@ -18,7 +18,7 @@ From the repository root:
 uv run chat-bridge
 ```
 
-On the first run, uv creates `.venv` inside the repository and installs dependencies from `uv.lock`; if the Python version in `.python-version` is not on your machine, uv downloads it. Later runs start directly as long as the dependencies have not changed.
+On the first run, uv creates `.venv` inside the repository and installs dependencies from `uv.lock`; if the Python version in `.python-version` is not on your machine, uv downloads it. The dependencies take about 1.2 GB, most of it the CPU-only build of PyTorch. Later runs start directly as long as the dependencies have not changed.
 
 Current status: you can ingest documents and search them from the command line (see the next section). Without arguments, `uv run chat-bridge` lists its commands. The chat page is not built yet.
 
@@ -33,8 +33,10 @@ uv run chat-bridge search "Did the Fed raise rates?"
 - `ingest <folder>` reads every `.docx`, `.pdf`, `.txt`, and `.md` file in the folder and its subfolders. It converts each file to Markdown, splits it at the headings, and stores the sections in an embedded PostgreSQL database. A file that has not changed since the last run is skipped.
 - A file that cannot be read is listed with the reason, and the other files are still stored. This covers unsupported file types, text files that are not UTF-8, and PDFs without a text layer. No OCR is done.
 - `search <question>` lists the sections that match best, each with its file, heading path, and a snippet. Use `--limit` to change how many are listed (the default is 5). When no section matches, the command says that the data has none.
-- Search is keyword search with the jieba tokenizer, in Traditional Chinese or English. Vector search is not added yet.
-- On the first run, the command downloads jieba's Traditional Chinese dictionary (8.6 MB). The database and the dictionary are kept in `local_data/`, which git ignores. To start over, delete that folder. To use another folder, set `CHAT_BRIDGE_LOCAL_DATA`.
+- Search is hybrid, in Traditional Chinese or English. Keyword search uses the jieba tokenizer. Vector search uses the [bge-m3](https://huggingface.co/BAAI/bge-m3) embedding model, which runs on your CPU, so a question in English also finds sections in Chinese, and the other way round. The two rankings are merged with Reciprocal Rank Fusion. Each result shows the merged score and where each method ranked it (`-` when that method did not find it).
+- A question also searches for the synonyms of its names, from `data/synonyms.txt` (for example 費半 also searches for 費城半導體指數 and SOX). After you edit that file, run `ingest` again; it rebuilds the keyword index and keeps the vectors.
+- Each `search` command takes about 15 seconds, most of it starting Python and loading the model.
+- The first run downloads jieba's Traditional Chinese dictionary (8.6 MB) and the bge-m3 model (about 2.3 GB). The database, the dictionary and the model are kept in `local_data/`, which git ignores. To start over, delete that folder. To use another folder, set `CHAT_BRIDGE_LOCAL_DATA`.
 - Exit codes: `0` when everything succeeded, `1` when `ingest` rejected a file or `search` found nothing, and `2` on an error.
 
 ### If you don't have uv
@@ -55,7 +57,7 @@ From the [official uv installation guide](https://docs.astral.sh/uv/getting-star
 
 ### Without uv (fallback)
 
-Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency versions may differ from the ones above.
+Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency versions may differ from the ones above. pip also installs the default PyTorch build, which on Linux includes CUDA and is several gigabytes larger.
 
 - Windows:
 
@@ -78,6 +80,7 @@ Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency v
 ## Sample data
 
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
+- `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
 
 ## Development
 
