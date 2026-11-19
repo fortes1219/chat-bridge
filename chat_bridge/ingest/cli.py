@@ -5,8 +5,15 @@ import asyncio
 from pathlib import Path
 
 from chat_bridge.cli import EXIT_NOT_ALL, EXIT_OK, Commands, print_error
+from chat_bridge.errors import LocalSetupError
 from chat_bridge.ingest import service as ingest_service
-from chat_bridge.tokenizer import DictionaryError
+from chat_bridge.ingest.service import IndexUpdate
+
+INDEX_NOTES = {
+    IndexUpdate.WRITTEN_FILES: "entries added for the written files",
+    IndexUpdate.KEYWORDS: "keywords rebuilt for every section, embeddings kept",
+    IndexUpdate.ALL: "every section rebuilt and embedded again",
+}
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -15,18 +22,13 @@ def _run(args: argparse.Namespace) -> int:
         return print_error(f"not a folder: {folder}")
     try:
         report = asyncio.run(ingest_service.ingest_folder(folder.resolve()))
-    except DictionaryError as error:
+    except LocalSetupError as error:
         return print_error(str(error))
 
     print(f"Written: {len(report.written)} files, {report.sections_written} sections.")
     print(f"Unchanged and skipped: {len(report.unchanged)} files.")
-    if report.written or report.removed:
-        index_note = (
-            "rebuilt for every section"
-            if report.reindexed_all
-            else "updated for the written files"
-        )
-        print(f"Search index: {index_note}.")
+    if report.index_update != IndexUpdate.NONE:
+        print(f"Search index: {INDEX_NOTES[report.index_update]}.")
     for path in report.removed:
         print(
             f"Removed the stored version of {path}, because the file can no longer be read."

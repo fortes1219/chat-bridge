@@ -4,15 +4,15 @@ import argparse
 import asyncio
 
 from chat_bridge.cli import EXIT_NOT_ALL, EXIT_OK, Commands, print_error
+from chat_bridge.errors import LocalSetupError
 from chat_bridge.search import service as search_service
-from chat_bridge.tokenizer import DictionaryError
 
 # Errors that come from the user's data or environment, with what to tell them.
 KNOWN_ERRORS: dict[type[Exception], str] = {
     search_service.EmptyKnowledgeBaseError: "the knowledge base is empty; run `chat-bridge ingest <folder>` first",
     search_service.IndexMismatchError: (
-        "the search index was built with another dictionary or other keywords; "
-        "run `chat-bridge ingest <folder>` again"
+        "the search index was built with another dictionary, other keywords, "
+        "or another embedding model; run `chat-bridge ingest <folder>` again"
     ),
 }
 
@@ -39,25 +39,29 @@ def _limit(value: str) -> int:
 def _run(args: argparse.Namespace) -> int:
     try:
         result = asyncio.run(search_service.search(args.question, args.limit))
-    except DictionaryError as error:
+    except LocalSetupError as error:
         return print_error(str(error))
     except tuple(KNOWN_ERRORS) as error:
         return print_error(KNOWN_ERRORS[type(error)])
 
-    if not result.query:
-        print(f"Not in the data: the question has no searchable word: {args.question}")
-        return EXIT_NOT_ALL
     if not result.hits:
         print(f"Not in the data: no section matches: {args.question}")
         return EXIT_NOT_ALL
 
-    print(f"Query: {result.query}")
+    print(f"Keyword query: {result.query or '(no searchable word)'}")
     for number, hit in enumerate(result.hits, start=1):
         heading = f" > {hit.heading}" if hit.heading else ""
-        print(f"{number}. {hit.source_path}{heading}  (rank {hit.rank:.3f})")
+        print(f"{number}. {hit.source_path}{heading}  ({_explain(hit)})")
         print(f"   {hit.title}")
         print(f"   {hit.snippet}")
     return EXIT_OK
+
+
+def _explain(hit: search_service.SearchHit) -> str:
+    """The fused score and where each method ranked the section."""
+    keyword = f"keyword #{hit.keyword_rank}" if hit.keyword_rank else "keyword -"
+    vector = f"vector #{hit.vector_rank}" if hit.vector_rank else "vector -"
+    return f"score {hit.score:.4f}: {keyword}, {vector}"
 
 
 def register(commands: Commands) -> None:

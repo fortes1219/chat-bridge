@@ -9,6 +9,7 @@ import argparse
 import importlib
 import importlib.util
 import io
+import logging
 import pkgutil
 import sys
 from collections.abc import Callable
@@ -69,8 +70,22 @@ def _replace_unencodable_output() -> None:
             stream.reconfigure(errors="replace")
 
 
+def _show_app_notices() -> None:
+    """Show the app's own INFO messages, such as a first-run download, on stderr.
+
+    Only the `chat_bridge` logger is set up, so the libraries it uses stay quiet.
+    """
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("chat-bridge: %(message)s"))
+    app_logger = logging.getLogger(chat_bridge.__name__)
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+    app_logger.propagate = False
+
+
 def main(argv: list[str] | None = None) -> int:
     _replace_unencodable_output()
+    _show_app_notices()
     parser = _build_parser()
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)

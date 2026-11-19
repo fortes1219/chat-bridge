@@ -9,7 +9,7 @@ import hashlib
 import logging
 import re
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,7 @@ from typing import Any
 import jieba
 
 from chat_bridge.config import local_data_dir
+from chat_bridge.errors import LocalSetupError
 
 # The Traditional Chinese dictionary from the jieba repository, pinned to one commit.
 # The file is checked by size and by its git blob hash, so a partial or changed file is refused.
@@ -45,7 +46,7 @@ ENGLISH_STOP_WORDS = frozenset(
 )  # fmt: skip
 
 
-class DictionaryError(Exception):
+class DictionaryError(LocalSetupError):
     """The Traditional Chinese dictionary could not be downloaded or failed its check."""
 
 
@@ -110,19 +111,26 @@ def ensure_dictionary() -> Path:
     return path
 
 
-def build_tokenizer(user_words: Iterable[str]) -> SearchTokenizer:
-    """Build a jieba tokenizer on the Traditional Chinese dictionary plus the given user words.
-
-    jieba cuts text at whitespace before it looks words up, so a user word that contains
-    whitespace could never match and is left out.
-    """
-    jieba.setLogLevel(logging.WARNING)
-    dictionary = ensure_dictionary()
-    words = tuple(
+def _usable_words(user_words: Iterable[str]) -> tuple[str, ...]:
+    # jieba cuts text at whitespace before it looks words up, so a user word that contains
+    # whitespace could never match and is left out.
+    return tuple(
         sorted(
             {word for word in user_words if word and not any(c.isspace() for c in word)}
         )
     )
+
+
+def user_words_digest(user_words: Iterable[str]) -> str:
+    """The digest a tokenizer built from these words would have, without building it."""
+    return hashlib.sha256("\n".join(_usable_words(user_words)).encode()).hexdigest()
+
+
+def build_tokenizer(user_words: Iterable[str]) -> SearchTokenizer:
+    """Build a jieba tokenizer on the Traditional Chinese dictionary plus the given user words."""
+    jieba.setLogLevel(logging.WARNING)
+    dictionary = ensure_dictionary()
+    words = _usable_words(user_words)
 
     tokenizer = jieba.Tokenizer(dictionary=str(dictionary))
     # Keep jieba's prefix-dictionary cache next to the dictionary instead of the system temp folder.
@@ -130,8 +138,9 @@ def build_tokenizer(user_words: Iterable[str]) -> SearchTokenizer:
     for word in words:
         tokenizer.add_word(word)
 
-    digest = hashlib.sha256("\n".join(words).encode()).hexdigest()
-    return SearchTokenizer(jieba=tokenizer, user_words=words, user_words_digest=digest)
+    return SearchTokenizer(
+        jieba=tokenizer, user_words=words, user_words_digest=user_words_digest(words)
+    )
 
 
 def index_text(tokenizer: SearchTokenizer, text: str) -> str:
@@ -149,8 +158,8 @@ def _is_single_han(token: str) -> bool:
     return len(token) == 1 and HAN_FIRST <= token <= HAN_LAST
 
 
-def _mentions(lowered_text: str, word: str) -> bool:
-    """Whether a lowercased question mentions a user word.
+def mentions(lowered_text: str, word: str) -> bool:
+    """Whether a lowercased text mentions a word.
 
     MaxKB checks this with a substring test, which is right for Chinese. An English word
     must match as a whole word here, or "AI" would be found inside "raise".
@@ -167,7 +176,9 @@ def _clean_clause(clause: str) -> str:
     return clause.replace('"', " ").lstrip("-").strip()
 
 
-def query_clauses(tokenizer: SearchTokenizer, text: str) -> list[str]:
+def query_clauses(
+    tokenizer: SearchTokenizer, text: str, synonyms: Sequence[str] = ()
+) -> list[str]:
     """Turn a question into websearch_to_tsquery clauses. An empty list means no word is searchable.
 
     The steps follow MaxKB's to_query:
@@ -178,12 +189,15 @@ def query_clauses(tokenizer: SearchTokenizer, text: str) -> list[str]:
     Like MaxKB, jieba's English stop words are dropped. MaxKB also drops words by inverse
     document frequency and by a Chinese stop-word list. Both of those are for Simplified
     Chinese, so that step is not taken here.
+
+    Synonyms of the question's words come last, as RAGFlow gives them a quarter of the
+    weight of the question's own words.
     """
     lowered = text.lower()
     terms = [
         word
         for word in sorted(tokenizer.user_words, key=len, reverse=True)
-        if _mentions(lowered, word)
+        if mentions(lowered, word)
     ]
     clauses = terms[:QUERY_MAX_TERMS]
 
@@ -208,7 +222,7 @@ def query_clauses(tokenizer: SearchTokenizer, text: str) -> list[str]:
         keywords.append(" ".join(single_run[:QUERY_MAX_SINGLE_RUN]))
 
     seen = {clause.lower() for clause in clauses}
-    for keyword in keywords[:QUERY_MAX_KEYWORDS]:
+    for keyword in [*keywords[:QUERY_MAX_KEYWORDS], *synonyms]:
         if keyword.lower() not in seen:
             seen.add(keyword.lower())
             clauses.append(keyword)

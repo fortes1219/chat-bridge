@@ -1,4 +1,4 @@
-"""Ingest a folder: read, split, tokenize, and store, skipping files whose bytes have not changed.
+"""Ingest a folder: read, split, tokenize, embed, and store, skipping unchanged files.
 
 The shape follows private-gpt's `make ingest <folder>`: walk the folder, pick a reader by
 extension, convert to Markdown, split at headings, and skip a file whose SHA-256 is unchanged.
@@ -8,15 +8,25 @@ All writes of one run happen in one transaction, so a failure leaves nothing hal
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from chat_bridge.database import create_tables, open_engine
+from chat_bridge.database import create_tables, open_engine, vacuum
+from chat_bridge.embedding import (
+    MODEL_NAME,
+    MODEL_REVISION,
+    embed_documents,
+    load_model,
+    split_for_model,
+)
 from chat_bridge.ingest.models import (
     LEAD_SECTION_POSITION,
     Document,
+    EmbeddingState,
     EntrySource,
     SearchEntry,
     Section,
@@ -29,22 +39,40 @@ from chat_bridge.ingest.readers import (
     read_markdown,
 )
 from chat_bridge.ingest.sections import ParsedDocument, parse_markdown
+from chat_bridge.synonyms import Synonyms, load_synonyms
 from chat_bridge.tokenizer import (
     DICTIONARY_BLOB_SHA1,
     SearchTokenizer,
     build_tokenizer,
     ensure_dictionary,
     index_text,
+    user_words_digest,
 )
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 # private-gpt hashes files in 4 KB chunks.
 HASH_CHUNK_BYTES = 4096
 TOKENIZER_STATE_ID = 1
+EMBEDDING_STATE_ID = 1
 
 INSERT_ENTRY = text(
-    "INSERT INTO search_entries (section_id, source, search_vector) "
-    "VALUES (:section_id, :source, to_tsvector('simple', :words))"
+    "INSERT INTO search_entries (section_id, source, content, search_vector, embedding_bge_m3) "
+    "VALUES (:section_id, :source, :content, to_tsvector('simple', :words), :embedding)"
 )
+UPDATE_ENTRY_WORDS = text(
+    "UPDATE search_entries SET search_vector = to_tsvector('simple', :words) WHERE id = :id"
+)
+
+
+class IndexUpdate(StrEnum):
+    """What a run did to the search entries."""
+
+    NONE = "none"
+    WRITTEN_FILES = "written_files"  # entries added for the written files only
+    KEYWORDS = "keywords"  # the tokenizer changed: every entry's words rebuilt, embeddings kept
+    ALL = "all"  # the model changed: every entry rebuilt and embedded again
 
 
 @dataclass(frozen=True)
@@ -62,7 +90,7 @@ class IngestReport:
     # Files that were stored before but are now rejected. Their old version is removed.
     removed: list[str] = field(default_factory=list)
     sections_written: int = 0
-    reindexed_all: bool = False
+    index_update: IndexUpdate = IndexUpdate.NONE
 
 
 @dataclass(frozen=True)
@@ -96,16 +124,17 @@ def keyword_text(keyword_groups: list[list[str]]) -> str:
     return "\n".join(name for group in keyword_groups for name in group)
 
 
-async def stored_user_words(session: AsyncSession) -> list[str]:
-    """Every name in every stored document's keyword groups. They become jieba user words,
-    as MaxKB loads its term base on each save and each search."""
+async def user_words(session: AsyncSession, synonyms: Synonyms) -> list[str]:
+    """The jieba user words: every name in the stored documents' keyword groups and in the
+    synonym table, as MaxKB loads its term base on each save and each search."""
     groups = (await session.scalars(select(Document.keyword_groups))).all()
-    return [
+    keyword_names = [
         name
         for document_groups in groups
         for group in document_groups
         for name in group
     ]
+    return keyword_names + synonyms.names()
 
 
 def _walk(root: Path) -> list[Path]:
@@ -167,13 +196,17 @@ async def _insert(session: AsyncSession, item: _Prepared, report: IngestReport) 
     return document.id
 
 
-async def _index_sections(
+async def _add_entries(
     session: AsyncSession,
     tokenizer: SearchTokenizer,
+    model: "SentenceTransformer",
     document_ids: Sequence[int] | None,
 ) -> None:
-    """Write the search entries of the given documents. None means every document, and the
-    old entries are deleted first. New documents have no entries yet."""
+    """Write the search entries of the given documents' sections. None means every document.
+
+    The text of an entry goes to the model as it is, as RAGFlow sends the original text.
+    All texts of the run are embedded in one batched call.
+    """
     query = select(
         Section.id,
         Section.position,
@@ -181,73 +214,142 @@ async def _index_sections(
         Section.content,
         Document.keyword_groups,
     ).join(Document, Section.document_id == Document.id)
-    if document_ids is None:
-        await session.execute(delete(SearchEntry))
-    else:
+    if document_ids is not None:
         query = query.where(Section.document_id.in_(document_ids))
 
-    entries: list[dict[str, object]] = []
+    texts: list[tuple[int, EntrySource, str]] = []
     for row in (await session.execute(query)).all():
-        words = index_text(tokenizer, section_text(row.heading, row.content))
-        entries.append(
-            {"section_id": row.id, "source": EntrySource.SECTION, "words": words}
+        texts.append(
+            (row.id, EntrySource.SECTION, section_text(row.heading, row.content))
         )
         if row.position == LEAD_SECTION_POSITION and row.keyword_groups:
-            words = index_text(tokenizer, keyword_text(row.keyword_groups))
-            entries.append(
-                {"section_id": row.id, "source": EntrySource.KEYWORDS, "words": words}
+            texts.append(
+                (row.id, EntrySource.KEYWORDS, keyword_text(row.keyword_groups))
             )
-    if entries:
-        await session.execute(INSERT_ENTRY, entries)
+
+    parts = [
+        (section_id, source, part)
+        for section_id, source, full_text in texts
+        for part in split_for_model(model, full_text)
+    ]
+    if not parts:
+        return
+    embeddings = embed_documents(model, [part for _, _, part in parts])
+    entries = [
+        {
+            "section_id": section_id,
+            "source": source,
+            "content": part,
+            "words": index_text(tokenizer, part),
+            "embedding": embedding,
+        }
+        for (section_id, source, part), embedding in zip(parts, embeddings, strict=True)
+    ]
+    await session.execute(INSERT_ENTRY, entries)
+
+
+async def _rebuild_words(session: AsyncSession, tokenizer: SearchTokenizer) -> None:
+    """Rebuild every stored entry's words from its own text. The embeddings stay as they are."""
+    rows = (await session.execute(select(SearchEntry.id, SearchEntry.content))).all()
+    if not rows:
+        return
+    await session.execute(
+        UPDATE_ENTRY_WORDS,
+        [{"id": row.id, "words": index_text(tokenizer, row.content)} for row in rows],
+    )
+
+
+def _model_is_current(state: EmbeddingState | None) -> bool:
+    """Whether the stored embeddings were built with this model."""
+    return state is not None and (state.model_name, state.model_revision) == (
+        MODEL_NAME,
+        MODEL_REVISION,
+    )
+
+
+def _words_are_current(state: TokenizerState | None, words_digest: str) -> bool:
+    """Whether the stored words were built with this dictionary and these user words."""
+    return state is not None and (state.dictionary_sha1, state.user_words_digest) == (
+        DICTIONARY_BLOB_SHA1,
+        words_digest,
+    )
+
+
+def _plan(
+    model_is_current: bool, words_are_current: bool, has_new_documents: bool
+) -> IndexUpdate:
+    """Rebuild only what changed: embeddings depend on the model, words on the tokenizer."""
+    if not model_is_current:
+        return IndexUpdate.ALL
+    if not words_are_current:
+        return IndexUpdate.KEYWORDS
+    if has_new_documents:
+        return IndexUpdate.WRITTEN_FILES
+    return IndexUpdate.NONE
+
+
+def _loaded(model: "SentenceTransformer | None") -> "SentenceTransformer":
+    # ingest_folder loads the model whenever a run writes files or the embeddings are stale.
+    if model is None:
+        raise RuntimeError("the embedding model is needed but was not loaded")
+    return model
 
 
 async def _store(
     session: AsyncSession,
     prepared: Sequence[_Prepared],
     stale_paths: Sequence[str],
+    synonyms: Synonyms,
+    model: "SentenceTransformer | None",
     report: IngestReport,
 ) -> None:
-    state = await session.get(TokenizerState, TOKENIZER_STATE_ID)
-    dictionary_changed = state is None or state.dictionary_sha1 != DICTIONARY_BLOB_SHA1
+    tokenizer_state = await session.get(TokenizerState, TOKENIZER_STATE_ID)
+    embedding_state = await session.get(EmbeddingState, EMBEDDING_STATE_ID)
     replaced_paths = [item.candidate.source_path for item in prepared] + list(
         stale_paths
     )
-    if not replaced_paths and not dictionary_changed:
-        return
-
     if replaced_paths:
         await session.execute(
             delete(Document).where(Document.source_path.in_(replaced_paths))
         )
     new_document_ids = [await _insert(session, item, report) for item in prepared]
 
-    tokenizer = build_tokenizer(await stored_user_words(session))
-    # New user words change how every section is cut, so the whole index is rebuilt.
-    reindex_all = (
-        state is None
-        or dictionary_changed
-        or state.user_words_digest != tokenizer.user_words_digest
+    tokenizer = build_tokenizer(await user_words(session, synonyms))
+    report.index_update = _plan(
+        _model_is_current(embedding_state),
+        _words_are_current(tokenizer_state, tokenizer.user_words_digest),
+        bool(new_document_ids),
     )
-    report.reindexed_all = reindex_all
-    await _index_sections(session, tokenizer, None if reindex_all else new_document_ids)
-
-    if state is None:
-        session.add(
-            TokenizerState(
-                id=TOKENIZER_STATE_ID,
-                dictionary_sha1=DICTIONARY_BLOB_SHA1,
-                user_words_digest=tokenizer.user_words_digest,
-            )
-        )
+    if report.index_update == IndexUpdate.ALL:
+        await session.execute(delete(SearchEntry))
+        await _add_entries(session, tokenizer, _loaded(model), None)
     else:
-        state.dictionary_sha1 = DICTIONARY_BLOB_SHA1
-        state.user_words_digest = tokenizer.user_words_digest
+        # Rebuild the old entries' words before the new entries are added, so no entry is
+        # tokenized twice.
+        if report.index_update == IndexUpdate.KEYWORDS:
+            await _rebuild_words(session, tokenizer)
+        if new_document_ids:
+            await _add_entries(session, tokenizer, _loaded(model), new_document_ids)
+
+    await session.merge(
+        TokenizerState(
+            id=TOKENIZER_STATE_ID,
+            dictionary_sha1=DICTIONARY_BLOB_SHA1,
+            user_words_digest=tokenizer.user_words_digest,
+        )
+    )
+    await session.merge(
+        EmbeddingState(
+            id=EMBEDDING_STATE_ID, model_name=MODEL_NAME, model_revision=MODEL_REVISION
+        )
+    )
 
 
 async def ingest_folder(root: Path) -> IngestReport:
     """Ingest every supported file under `root`. Paths are stored relative to `root`."""
     report = IngestReport()
     candidates = _collect(root, report)
+    synonyms = load_synonyms()
     # Download the dictionary before the transaction opens, so no network call runs inside it.
     ensure_dictionary()
 
@@ -262,6 +364,13 @@ async def ingest_folder(root: Path) -> IngestReport:
                 )
             )
             stored = {row.source_path: row.content_hash for row in rows}
+            model_is_current = _model_is_current(
+                await session.get(EmbeddingState, EMBEDDING_STATE_ID)
+            )
+            words_are_current = _words_are_current(
+                await session.get(TokenizerState, TOKENIZER_STATE_ID),
+                user_words_digest(await user_words(session, synonyms)),
+            )
 
         changed: list[_Candidate] = []
         for candidate in candidates:
@@ -278,7 +387,13 @@ async def ingest_folder(root: Path) -> IngestReport:
             if c.source_path in stored and c.source_path not in prepared_paths
         ]
         report.removed.extend(stale_paths)
+        if not prepared and not stale_paths and model_is_current and words_are_current:
+            return report
 
+        # Load the model before the transaction opens: the first run downloads it. A run
+        # that only removes files or changes words embeds nothing, so it loads no model.
+        model = load_model() if prepared or not model_is_current else None
         async with sessions() as session, session.begin():
-            await _store(session, prepared, stale_paths, report)
+            await _store(session, prepared, stale_paths, synonyms, model, report)
+        await vacuum(engine)
     return report
