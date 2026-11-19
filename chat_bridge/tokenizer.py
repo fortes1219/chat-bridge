@@ -7,6 +7,7 @@ searching use the same tokenizer, including the same user words.
 
 import hashlib
 import logging
+import re
 import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -128,8 +129,26 @@ def index_text(tokenizer: SearchTokenizer, text: str) -> str:
     return " ".join(words)
 
 
+# The CJK Unified Ideographs block, U+4E00 to U+9FFF, the range MaxKB checks.
+HAN_FIRST = chr(0x4E00)
+HAN_LAST = chr(0x9FFF)
+
+
 def _is_single_han(token: str) -> bool:
-    return len(token) == 1 and "一" <= token <= "鿿"
+    return len(token) == 1 and HAN_FIRST <= token <= HAN_LAST
+
+
+def _mentions(lowered_text: str, word: str) -> bool:
+    """Whether a lowercased question mentions a user word.
+
+    MaxKB checks this with a substring test, which is right for Chinese. An English word
+    must match as a whole word here, or "AI" would be found inside "raise".
+    """
+    needle = word.lower()
+    if not needle.isascii():
+        return needle in lowered_text
+    pattern = rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])"
+    return re.search(pattern, lowered_text) is not None
 
 
 def _clean_clause(clause: str) -> str:
@@ -141,7 +160,7 @@ def query_clauses(tokenizer: SearchTokenizer, text: str) -> list[str]:
     """Turn a question into websearch_to_tsquery clauses. An empty list means no word is searchable.
 
     The steps follow MaxKB's to_query:
-    1. User words found in the question, longest first.
+    1. User words the question mentions, longest first. English words must match whole words.
     2. Words from jieba's precise mode. A run of single Han characters becomes one clause,
        because the index keeps each of those characters as its own word.
     3. The caller joins the clauses with "or".
@@ -153,7 +172,7 @@ def query_clauses(tokenizer: SearchTokenizer, text: str) -> list[str]:
     terms = [
         word
         for word in sorted(tokenizer.user_words, key=len, reverse=True)
-        if word.lower() in lowered
+        if _mentions(lowered, word)
     ]
     clauses = terms[:QUERY_MAX_TERMS]
 
