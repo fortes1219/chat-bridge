@@ -15,10 +15,13 @@ dependencies = [
     "markdown-it-py>=4.3.0",
     "markitdown[docx,pdf]>=0.1.9",
     "mdit-py-plugins>=0.7.0",
+    "pgvector>=0.5.1",
     "pixeltable-pgserver==0.7.2",
     "pydantic>=2.14.3",
     "pyyaml>=6.0.3",
+    "sentence-transformers>=6.3.0",
     "sqlalchemy[asyncio]>=2.1.9",
+    "torch>=2.15.0",
 ]
 
 [project.scripts]
@@ -33,6 +36,18 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["chat_bridge"]
+
+# CPU-only PyTorch on every platform, as uv's PyTorch guide shows. Without this, Linux gets
+# the CUDA build from PyPI, which adds several gigabytes the embedding model does not need.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cpu" },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
