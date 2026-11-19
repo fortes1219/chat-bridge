@@ -9,7 +9,10 @@ significance: supporting
 keyword_groups:
   - [甲骨文, Oracle, ORCL]
   - [資本支出, capex, capital expenditures, capital spending]
-  - [舉債, 增資, debt and equity financing, 債務負擔, debt load]
+  - [舉債]
+  - [增資]
+  - [debt and equity financing]
+  - [債務負擔, debt load]
   - [剩餘履約義務, remaining performance obligations, RPO]
   - [財報, earnings]
 sources:

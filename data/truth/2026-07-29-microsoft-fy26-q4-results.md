@@ -8,8 +8,11 @@ exposure: [big_tech_cloud, ai_infrastructure]
 significance: supporting
 keyword_groups:
   - [微軟, Microsoft, MSFT]
-  - [財報, earnings, quarterly results, 第四季, Q4 FY2026]
-  - [Azure, 微軟雲, Microsoft Cloud, 雲端]
+  - [財報, earnings, quarterly results]
+  - [第四季, Q4 FY2026]
+  - [Azure]
+  - [微軟雲, Microsoft Cloud]
+  - [雲端]
   - [資本支出, capital expenditures, additions to property and equipment, capex]
   - [OpenAI]
 sources:

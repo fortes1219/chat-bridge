@@ -8,10 +8,13 @@ exposure: [big_tech_cloud, ai_debt_credit, ai_infrastructure]
 significance: supporting
 keyword_groups:
   - [亞馬遜, Amazon, AMZN]
-  - [財報, earnings, quarterly results, 第三季, Q3 2026]
-  - [AWS, 雲端]
+  - [財報, earnings, quarterly results]
+  - [第三季, Q3 2026]
+  - [AWS]
+  - [雲端]
   - [資本支出, cash capital expenditures, capex]
-  - [自由現金流, free cash flow, 燒錢, burning through cash]
+  - [自由現金流, free cash flow]
+  - [燒錢, burning through cash]
 sources:
   - id: s1
     url: https://aboutamazon.com/news/company-news/amazon-earnings-q3-2026-report

@@ -8,8 +8,11 @@ exposure: [big_tech_cloud, ai_infrastructure, ai_debt_credit]
 significance: supporting
 keyword_groups:
   - [微軟, Microsoft, MSFT]
-  - [財報, earnings, quarterly results, 第一季, Q1 FY2027]
-  - [Azure, 微軟雲, Microsoft Cloud, 雲端]
+  - [財報, earnings, quarterly results]
+  - [第一季, Q1 FY2027]
+  - [Azure]
+  - [微軟雲, Microsoft Cloud]
+  - [雲端]
   - [資本支出, capital expenditures, additions to property and equipment, capex, CapEx]
   - [供不應求, demand that exceeds supply]
   - [OpenAI]

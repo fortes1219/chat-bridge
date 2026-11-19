@@ -7,10 +7,13 @@ tickers: [META]
 exposure: [ai_debt_credit, us_politics, big_tech_cloud]
 significance: supporting
 keyword_groups:
-  - [貝森特, Bessent, Scott Bessent, 美國財政部長, Treasury Secretary]
-  - [AI泡沫, AI bubble, 系統性風險, systemic]
+  - [貝森特, Bessent, Scott Bessent]
+  - [美國財政部長, Treasury Secretary]
+  - [AI泡沫, AI bubble]
+  - [系統性風險, systemic]
   - [網路泡沫, dot-com]
-  - [黑石, Blackstone, Jon Gray]
+  - [黑石, Blackstone]
+  - [Jon Gray]
   - [科技股賣壓, tech selloff]
 sources:
   - id: s1

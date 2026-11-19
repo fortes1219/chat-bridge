@@ -7,9 +7,13 @@ tickers: []
 exposure: [tw_equity_broad, tw_foreign_flows]
 significance: supporting
 keyword_groups:
-  - [外資, 外資及陸資, 外資賣超, foreign investors]
-  - [三大法人, 自營商, 投信]
-  - [台股, 加權指數, TAIEX]
+  - [外資, 外資及陸資, foreign investors]
+  - [外資賣超]
+  - [三大法人]
+  - [自營商]
+  - [投信]
+  - [台股]
+  - [加權指數, TAIEX]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202606240207.aspx

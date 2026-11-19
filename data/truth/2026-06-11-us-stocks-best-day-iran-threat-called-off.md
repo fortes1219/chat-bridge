@@ -7,11 +7,17 @@ tickers: [MRVL, ORCL, LRCX, KLAC]
 exposure: [us_equity_broad, middle_east_conflict, oil_energy, rates_treasuries]
 significance: supporting
 keyword_groups:
-  - [美股, Wall Street, US stocks]
+  - [美股, US stocks]
+  - [Wall Street]
   - [川普, Trump, Donald Trump]
-  - [伊朗, Iran, 中東衝突]
-  - [油價, Brent, 布蘭特原油, benchmark U.S. crude]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [伊朗, Iran]
+  - [中東衝突]
+  - [油價]
+  - [Brent, 布蘭特原油]
+  - [benchmark U.S. crude]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://www.investmentexecutive.com/news/research-and-markets/u-s-stocks-jump-to-their-best-day-in-two-months/

@@ -7,8 +7,11 @@ tickers: ["2330"]
 exposure: [tw_equity_broad, semiconductors]
 significance: key
 keyword_groups:
-  - [台股, 加權指數, 加權股價指數, 集中市場, TAIEX]
-  - [歷史新高, 新猷, 創新高, record high]
+  - [台股]
+  - [加權指數, 加權股價指數, TAIEX]
+  - [集中市場]
+  - [歷史新高, 創新高, record high]
+  - [新猷]
   - [台積電, TSMC, "2330"]
   - [那斯達克, Nasdaq]
 sources:

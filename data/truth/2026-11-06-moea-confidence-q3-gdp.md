@@ -8,9 +8,15 @@ exposure: [tw_authorities, tw_equity_broad]
 significance: supporting
 keyword_groups:
   - [經濟部, Ministry of Economic Affairs, MOEA]
-  - [經濟成長率, GDP, 主計總處]
-  - [信心喊話, 基本體質, 產業鏈]
-  - [出口, 外銷訂單, 製造業生產指數]
+  - [經濟成長率]
+  - [GDP]
+  - [主計總處]
+  - [信心喊話]
+  - [基本體質]
+  - [產業鏈]
+  - [出口]
+  - [外銷訂單]
+  - [製造業生產指數]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611060226.aspx

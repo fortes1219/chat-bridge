@@ -7,13 +7,19 @@ tickers: [NVDA]
 exposure: [tw_equity_broad, corporate_leadership, semiconductors, tw_authorities]
 significance: key
 keyword_groups:
-  - [台股, 加權指數, 集中市場, TAIEX]
-  - [重挫, 收盤跌點, 崩跌, 股災]
+  - [台股]
+  - [加權指數, TAIEX]
+  - [集中市場]
+  - [重挫]
+  - [收盤跌點]
+  - [崩跌]
+  - [股災]
   - [輝達, NVIDIA, NVDA]
   - [黃仁勳, Jensen Huang]
   - [費城半導體指數, 費半, SOX]
   - [金管會, 金融監督管理委員會, FSC]
-  - [整戶擔保維持率, 借券賣出]
+  - [整戶擔保維持率]
+  - [借券賣出]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611160241.aspx

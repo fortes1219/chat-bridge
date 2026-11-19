@@ -8,8 +8,12 @@ exposure: [ai_debt_credit, semiconductors, ai_infrastructure]
 significance: supporting
 keyword_groups:
   - [輝達, NVIDIA, NVDA]
-  - [公司債, bond, bond issuance, 發債, 舉債]
-  - [大型科技公司, Big Tech companies, AI支出, outlays]
+  - [公司債, bond]
+  - [bond issuance, 發債]
+  - [舉債]
+  - [大型科技公司, Big Tech companies]
+  - [AI支出]
+  - [outlays]
 sources:
   - id: s1
     url: https://www.thestar.com.my/tech/tech-news/2026/06/16/nvidia-to-raise-25-billion-sources-say-in-first-corporate-bond-sale-in-five-years

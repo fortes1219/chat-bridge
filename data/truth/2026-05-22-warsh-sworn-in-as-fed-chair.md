@@ -7,10 +7,14 @@ tickers: []
 exposure: [fed_policy, us_politics]
 significance: background
 keyword_groups:
-  - [聯準會, Fed, Federal Reserve, 理事會, Board of Governors]
-  - [華許, Warsh, Kevin Warsh, 聯準會主席, chairman]
-  - [川普, Trump, 提名, nominated]
-  - [參議院, Senate, 確認, confirmed]
+  - [聯準會, Fed, Federal Reserve]
+  - [理事會, Board of Governors]
+  - [華許, Warsh, Kevin Warsh]
+  - [聯準會主席, chairman]
+  - [川普, Trump]
+  - [提名, nominated]
+  - [參議院, Senate]
+  - [確認, confirmed]
 sources:
   - id: s1
     url: https://www.federalreserve.gov/newsevents/pressreleases/other20260522a.htm

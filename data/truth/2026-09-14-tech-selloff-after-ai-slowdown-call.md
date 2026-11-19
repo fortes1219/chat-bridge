@@ -7,10 +7,14 @@ tickers: [NVDA, MU]
 exposure: [us_equity_broad, ai_infrastructure, semiconductors, memory]
 significance: supporting
 keyword_groups:
-  - [美股, Wall Street, US stocks]
-  - [AI放緩, pace the frontier]
-  - [Anthropic, Amodei, Dario Amodei]
-  - [AI支出, AI spending, sustainability of spending]
+  - [美股, US stocks]
+  - [Wall Street]
+  - [AI放緩]
+  - [pace the frontier]
+  - [Anthropic]
+  - [Amodei, Dario Amodei]
+  - [AI支出, AI spending]
+  - [sustainability of spending]
   - [輝達, NVIDIA, NVDA]
   - [美光, Micron, MU]
 sources:

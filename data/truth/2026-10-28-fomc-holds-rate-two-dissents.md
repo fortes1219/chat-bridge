@@ -7,11 +7,19 @@ tickers: []
 exposure: [fed_policy, us_equity_broad, rates_treasuries]
 significance: supporting
 keyword_groups:
-  - [聯準會, Fed, Federal Reserve, FOMC, 聯邦公開市場委員會]
-  - [聯邦基金利率, federal funds rate, 利率決策, 按兵不動]
-  - [反對票, dissent, 升息派, Cook, Hammack]
+  - [聯準會, Fed, Federal Reserve]
+  - [FOMC, 聯邦公開市場委員會]
+  - [聯邦基金利率, federal funds rate]
+  - [利率決策]
+  - [按兵不動]
+  - [反對票, dissent]
+  - [升息派]
+  - [Cook]
+  - [Hammack]
   - [通膨, inflation]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://www.federalreserve.gov/newsevents/pressreleases/monetary20261028a.htm

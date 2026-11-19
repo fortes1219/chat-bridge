@@ -10,10 +10,17 @@ keyword_groups:
   - [聯準會, Fed, Federal Reserve]
   - [沃勒, Waller, Christopher Waller]
   - [鮑曼, Bowman, Michelle Bowman]
-  - [升息, rate hike, 25 basis points, 50 basis point, tightening]
-  - [通膨, inflation, CPI]
-  - [股價, equity prices, 金融情勢, financial conditions]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [升息, rate hike]
+  - [25 basis points]
+  - [50 basis point]
+  - [tightening]
+  - [通膨, inflation]
+  - [CPI]
+  - [股價, equity prices]
+  - [金融情勢, financial conditions]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://www.federalreserve.gov/newsevents/speech/waller20261110a.htm

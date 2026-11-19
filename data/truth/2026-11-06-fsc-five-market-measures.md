@@ -7,11 +7,18 @@ tickers: []
 exposure: [tw_authorities, tw_equity_broad]
 significance: key
 keyword_groups:
-  - [金管會, 金融監督管理委員會, 證期局, FSC]
-  - [限空令, 借券賣出, 融券保證金成數, 救市措施, 穩定措施]
+  - [金管會, 金融監督管理委員會, FSC]
+  - [證期局]
+  - [限空令]
+  - [借券賣出]
+  - [融券保證金成數]
+  - [救市措施]
+  - [穩定措施]
   - [庫藏股, treasury stock]
-  - [整戶擔保維持率, 信用交易]
-  - [台股, 加權指數, TAIEX]
+  - [整戶擔保維持率]
+  - [信用交易]
+  - [台股]
+  - [加權指數, TAIEX]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611060293.aspx

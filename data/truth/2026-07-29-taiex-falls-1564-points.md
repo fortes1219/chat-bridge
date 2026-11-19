@@ -7,11 +7,18 @@ tickers: ["2330"]
 exposure: [tw_equity_broad, ai_infrastructure, semiconductors]
 significance: key
 keyword_groups:
-  - [台股, 加權指數, 集中市場, TAIEX]
-  - [重挫, 失守4萬點, 收盤跌點, 股災]
-  - [人工智慧, AI熱潮]
+  - [台股]
+  - [加權指數, TAIEX]
+  - [集中市場]
+  - [重挫]
+  - [失守4萬點]
+  - [收盤跌點]
+  - [股災]
+  - [人工智慧]
+  - [AI熱潮]
   - [台積電, TSMC, "2330"]
-  - [富邦投顧, 陳奕光]
+  - [富邦投顧]
+  - [陳奕光]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202607290177.aspx

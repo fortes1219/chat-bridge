@@ -8,10 +8,16 @@ exposure: [tw_authorities, tw_equity_broad, semiconductors]
 significance: supporting
 keyword_groups:
   - [證交所, 臺灣證券交易所, 台灣證券交易所, TWSE]
-  - [回歸基本面, 理性判斷, 長期投資價值, 信心喊話]
-  - [台股, 加權指數, TAIEX]
+  - [回歸基本面]
+  - [理性判斷]
+  - [長期投資價值]
+  - [信心喊話]
+  - [台股]
+  - [加權指數, TAIEX]
   - [費城半導體指數, 費半, SOX]
-  - [韓國KOSPI, 日經225, 恆生]
+  - [韓國KOSPI]
+  - [日經225]
+  - [恆生]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611050204.aspx

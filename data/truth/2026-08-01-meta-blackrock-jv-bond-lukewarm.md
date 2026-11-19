@@ -9,9 +9,14 @@ significance: supporting
 keyword_groups:
   - [Meta, META, 臉書]
   - [貝萊德, BlackRock]
-  - [資料中心債, 公司債, bond, 合資, joint venture]
-  - [El Paso, Sopaipilla]
-  - [債市, bond market, 訂單, orders, 消化不良, indigestion]
+  - [資料中心債]
+  - [公司債, bond]
+  - [合資, joint venture]
+  - [El Paso]
+  - [Sopaipilla]
+  - [債市, bond market]
+  - [訂單, orders]
+  - [消化不良, indigestion]
 sources:
   - id: s1
     url: https://www.ifre.com/bonds/2463746/bond-market-begins-to-question-ai-boom-as-beignet-sequel-falls-flat

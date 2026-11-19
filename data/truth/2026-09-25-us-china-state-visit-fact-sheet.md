@@ -8,9 +8,12 @@ exposure: [tariffs_trade, us_politics]
 significance: background
 keyword_groups:
   - [川普, Trump, Donald Trump]
-  - [習近平, Xi Jinping, 中國, China]
-  - [關稅, tariff, 非敏感商品, non-sensitive goods]
-  - [稀土, rare earths, 關鍵礦產, critical minerals]
+  - [習近平, Xi Jinping]
+  - [中國, China]
+  - [關稅, tariff]
+  - [非敏感商品, non-sensitive goods]
+  - [稀土, rare earths]
+  - [關鍵礦產, critical minerals]
   - [超級智慧對話, Super Intelligence Dialogue]
   - [國是訪問, state visit]
 sources:

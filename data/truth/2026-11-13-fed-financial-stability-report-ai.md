@@ -10,9 +10,15 @@ keyword_groups:
   - [聯準會, Fed, Federal Reserve]
   - [金融穩定報告, Financial Stability Report]
   - [AI風險, AI risk]
-  - [先進運算, advanced computing, 發債, debt issuance, 租約, leases]
-  - [資料中心, data center buildout, 私人借貸, private lenders, 特殊目的融資, special purpose financing vehicles]
-  - [修正, correction, 長期利率, long-term rates]
+  - [先進運算, advanced computing]
+  - [發債, debt issuance]
+  - [租約, leases]
+  - [資料中心]
+  - [data center buildout]
+  - [私人借貸, private lenders]
+  - [特殊目的融資, special purpose financing vehicles]
+  - [修正, correction]
+  - [長期利率, long-term rates]
 sources:
   - id: s1
     url: https://gvwire.com/2026/11/13/ai-rockets-to-top-of-worries-about-financial-system-in-latest-fed-survey/

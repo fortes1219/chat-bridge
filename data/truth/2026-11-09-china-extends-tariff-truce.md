@@ -7,10 +7,15 @@ tickers: []
 exposure: [tariffs_trade, us_politics]
 significance: background
 keyword_groups:
-  - [中國, China, 國務院, state council, 關稅稅則委員會, tariffs panel]
-  - [關稅, tariff, 24%, 休兵, truce]
+  - [中國, China]
+  - [國務院, state council]
+  - [關稅稅則委員會, tariffs panel]
+  - [關稅, tariff]
+  - [24%]
+  - [休兵, truce]
   - [港口費, port fees]
-  - [美中, US-China, 華盛頓會晤, Washington meeting]
+  - [美中, US-China]
+  - [華盛頓會晤, Washington meeting]
 sources:
   - id: s1
     url: https://www.newstribune.com/news/2026/nov/09/china-extends-suspensions-of-24-tariff-on-us-goods-port-fees-on-us-ships-for-two-months/
