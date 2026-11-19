@@ -16,6 +16,25 @@ KNOWN_ERRORS: dict[type[Exception], str] = {
     ),
 }
 
+# The same range MaxKB allows for its search's top_number (1 to 10000). Without an upper
+# bound, a number past PostgreSQL's bigint reaches LIMIT and fails inside the database.
+MIN_LIMIT = 1
+MAX_LIMIT = 10_000
+
+
+def _limit(value: str) -> int:
+    """Parse --limit at the command-line boundary. argparse turns ArgumentTypeError into
+    a one-line usage error with exit code 2, before the database starts."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a whole number: {value!r}") from None
+    if not MIN_LIMIT <= number <= MAX_LIMIT:
+        raise argparse.ArgumentTypeError(
+            f"must be from {MIN_LIMIT} to {MAX_LIMIT}, got {number}"
+        )
+    return number
+
 
 def _run(args: argparse.Namespace) -> int:
     try:
@@ -49,6 +68,6 @@ def register(commands: Commands) -> None:
         "question", help="the question, in Traditional Chinese or English"
     )
     search.add_argument(
-        "--limit", type=int, default=5, help="how many sections to list (default: 5)"
+        "--limit", type=_limit, default=5, help="how many sections to list (default: 5)"
     )
     search.set_defaults(handler=_run)
