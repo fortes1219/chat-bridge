@@ -20,7 +20,22 @@ uv run chat-bridge
 
 On the first run, uv creates `.venv` inside the repository and installs dependencies from `uv.lock`; if the Python version in `.python-version` is not on your machine, uv downloads it. Later runs start directly as long as the dependencies have not changed.
 
-Current status: only the development environment is in place. `uv run chat-bridge --version` prints the version; without arguments it prints a one-line notice. There is no service to start yet.
+Current status: you can ingest documents and search them from the command line (see the next section). Without arguments, `uv run chat-bridge` lists its commands. The chat page is not built yet.
+
+## Ingest documents and search them
+
+```
+uv run chat-bridge ingest data/truth
+uv run chat-bridge search "台積電 法說會"
+uv run chat-bridge search "Did the Fed raise rates?"
+```
+
+- `ingest <folder>` reads every `.docx`, `.pdf`, `.txt`, and `.md` file in the folder and its subfolders. It converts each file to Markdown, splits it at the headings, and stores the sections in an embedded PostgreSQL database. A file that has not changed since the last run is skipped.
+- A file that cannot be read is listed with the reason, and the other files are still stored. This covers unsupported file types, text files that are not UTF-8, and PDFs without a text layer. No OCR is done.
+- `search <question>` lists the sections that match best, each with its file, heading path, and a snippet. Use `--limit` to change how many are listed (the default is 5). When no section matches, the command says that the data has none.
+- Search is keyword search with the jieba tokenizer, in Traditional Chinese or English. Vector search is not added yet.
+- On the first run, the command downloads jieba's Traditional Chinese dictionary (8.6 MB). The database and the dictionary are kept in `local_data/`, which git ignores. To start over, delete that folder. To use another folder, set `CHAT_BRIDGE_LOCAL_DATA`.
+- Exit codes: `0` when everything succeeded, `1` when `ingest` rejected a file or `search` found nothing, and `2` on an error.
 
 ### If you don't have uv
 
@@ -68,6 +83,9 @@ Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency v
 
 ```
 uv run pytest
+uv run ruff check chat_bridge
+uv run ruff format --check chat_bridge
+uv run mypy chat_bridge
 ```
 
-Add a dependency with `uv add <package>`; it updates both `pyproject.toml` and `uv.lock`.
+The lint, format, and type-check settings follow the FastAPI repository. Add a dependency with `uv add <package>`; it updates both `pyproject.toml` and `uv.lock`.

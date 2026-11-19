@@ -20,7 +20,22 @@ uv run chat-bridge
 
 第一次執行時，uv 會在 repo 裡建立 `.venv`，照 `uv.lock` 安裝依賴；機器上沒有 `.python-version` 指定的 Python 時，uv 會自己下載。之後依賴沒變就直接啟動。
 
-目前狀態：只完成工作環境。`uv run chat-bridge --version` 會印出版本；不帶參數時只印一句說明，還沒有可啟動的服務。
+目前狀態：可以用命令列導入文件並查詢（見下一節）。不帶參數執行 `uv run chat-bridge` 會列出所有指令。聊天頁面還沒做。
+
+## 導入文件並查詢
+
+```
+uv run chat-bridge ingest data/truth
+uv run chat-bridge search "台積電 法說會"
+uv run chat-bridge search "Did the Fed raise rates?"
+```
+
+- `ingest <資料夾>` 讀取資料夾與子資料夾裡所有 `.docx`、`.pdf`、`.txt`、`.md` 檔，轉成 Markdown，依標題切段，存進內嵌的 PostgreSQL 資料庫。和上次比內容沒變的檔會跳過。
+- 讀不到的檔會列出檔名與原因，其他檔照樣存進去。包括不支援的檔案類型、不是 UTF-8 的文字檔、沒有文字層的 PDF。不做 OCR。
+- `search <問題>` 列出最符合的段落，每段附檔名、標題路徑與一段內文。用 `--limit` 改列出幾段（預設 5 段）。沒有任何段落符合時，會明講資料裡沒有。
+- 目前是用 jieba 斷詞的關鍵字搜尋，繁體中文或英文都可以問。向量搜尋還沒加。
+- 第一次執行時會下載 jieba 的繁體中文詞典（8.6 MB）。資料庫和詞典放在 `local_data/`，git 不追蹤。要從頭來就刪掉這個資料夾；要換位置就設環境變數 `CHAT_BRIDGE_LOCAL_DATA`。
+- 結束代碼：全部成功是 `0`；`ingest` 有檔被拒、或 `search` 查不到是 `1`；發生錯誤是 `2`。
 
 ### 還沒有 uv
 
@@ -68,6 +83,9 @@ uv run chat-bridge
 
 ```
 uv run pytest
+uv run ruff check chat_bridge
+uv run ruff format --check chat_bridge
+uv run mypy chat_bridge
 ```
 
-新增依賴用 `uv add <套件>`，會同時更新 `pyproject.toml` 與 `uv.lock`。
+lint、格式與型別檢查的設定照 FastAPI 的 repo。新增依賴用 `uv add <套件>`，會同時更新 `pyproject.toml` 與 `uv.lock`。
