@@ -18,7 +18,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from chat_bridge.database import create_tables, open_engine
 from chat_bridge.embedding import MODEL_NAME, MODEL_REVISION, embed_query, load_model
 from chat_bridge.ingest import service as ingest_service
-from chat_bridge.ingest.models import Document, EmbeddingState, Section, TokenizerState
+from chat_bridge.ingest.models import (
+    ENTRY_LAYOUT,
+    Document,
+    EmbeddingState,
+    EntryLayoutState,
+    Section,
+    TokenizerState,
+)
 from chat_bridge.synonyms import load_synonyms
 from chat_bridge.tokenizer import DICTIONARY_BLOB_SHA1, build_tokenizer, query_clauses
 
@@ -85,7 +92,8 @@ class EmptyKnowledgeBaseError(Exception):
 
 
 class IndexMismatchError(Exception):
-    """The stored entries were built with another dictionary, other user words, or another model."""
+    """The stored entries were built with another dictionary, other user words, another
+    model, or another entry layout."""
 
 
 @dataclass(frozen=True)
@@ -136,6 +144,10 @@ async def search(question: str, limit: int) -> SearchResult:
             )
             if tokenizer_state is None or embedding_state is None:
                 raise EmptyKnowledgeBaseError
+            # A database from before entry layouts were recorded has no layout row.
+            layout_state = await session.get(
+                EntryLayoutState, ingest_service.ENTRY_LAYOUT_STATE_ID
+            )
 
             tokenizer = build_tokenizer(
                 await ingest_service.user_words(session, synonyms)
@@ -145,12 +157,14 @@ async def search(question: str, limit: int) -> SearchResult:
                 tokenizer_state.user_words_digest,
                 embedding_state.model_name,
                 embedding_state.model_revision,
+                layout_state.layout if layout_state else None,
             )
             current = (
                 DICTIONARY_BLOB_SHA1,
                 tokenizer.user_words_digest,
                 MODEL_NAME,
                 MODEL_REVISION,
+                ENTRY_LAYOUT,
             )
             if stored != current:
                 raise IndexMismatchError

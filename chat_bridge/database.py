@@ -8,7 +8,8 @@ from typing import Any
 
 from pgvector.asyncpg import register_vector
 from pixeltable_pgserver.postgres_server import PostgresServer, get_server
-from sqlalchemy import Connection, event, inspect, text
+from sqlalchemy import Column, Connection, event, inspect, text
+from sqlalchemy.engine.interfaces import ReflectedColumn
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -29,14 +30,15 @@ class Base(DeclarativeBase):
 
 
 class SchemaMismatchError(LocalSetupError):
-    """The local database has tables from an older version of the app, without some columns."""
+    """The local database has tables from another version of the app."""
 
-    def __init__(self, missing: list[str]) -> None:
+    def __init__(self, differences: list[str]) -> None:
         super().__init__(
-            f"the local database was made by an older version and lacks {', '.join(missing)}; "
+            "the local database was made by another version of chat-bridge "
+            f"({'; '.join(differences)}); "
             f"delete {pgdata_dir()} and run `chat-bridge ingest <folder>` again"
         )
-        self.missing = missing
+        self.differences = differences
 
 
 def pgdata_dir() -> Path:
@@ -101,17 +103,31 @@ async def open_engine() -> AsyncIterator[AsyncEngine]:
         await engine.dispose()
 
 
-def _missing_columns(connection: Connection) -> list[str]:
+def _column_difference(
+    name: str, stored: ReflectedColumn | None, expected: Column[Any]
+) -> str | None:
+    if stored is None:
+        return f"{name} is missing"
+    if stored["nullable"] != expected.nullable:
+        rule = "allows" if stored["nullable"] else "does not allow"
+        return f"{name} {rule} NULL"
+    return None
+
+
+def _schema_differences(connection: Connection) -> list[str]:
+    """Columns the tables lack, and columns whose NULL rule differs from the models."""
     inspector = inspect(connection)
-    missing: list[str] = []
+    differences: list[str] = []
     for table in Base.metadata.sorted_tables:
-        existing = {column["name"] for column in inspector.get_columns(table.name)}
-        missing.extend(
-            f"{table.name}.{column.name}"
-            for column in table.columns
-            if column.name not in existing
-        )
-    return missing
+        stored = {
+            column["name"]: column for column in inspector.get_columns(table.name)
+        }
+        for column in table.columns:
+            name = f"{table.name}.{column.name}"
+            difference = _column_difference(name, stored.get(column.name), column)
+            if difference:
+                differences.append(difference)
+    return differences
 
 
 async def vacuum(engine: AsyncEngine) -> None:
@@ -132,11 +148,11 @@ async def vacuum(engine: AsyncEngine) -> None:
 async def create_tables(engine: AsyncEngine) -> None:
     """Create the tables of every model module the caller has imported. Existing tables are kept.
 
-    create_all does not add columns to a table that already exists, so a table from an older
-    version is reported with SchemaMismatchError instead of failing later in a query.
+    create_all does not change a table that already exists, so a table from another version
+    is reported with SchemaMismatchError instead of failing later in a query.
     """
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-        missing = await connection.run_sync(_missing_columns)
-    if missing:
-        raise SchemaMismatchError(missing)
+        differences = await connection.run_sync(_schema_differences)
+    if differences:
+        raise SchemaMismatchError(differences)

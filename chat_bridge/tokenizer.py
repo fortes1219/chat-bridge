@@ -34,14 +34,26 @@ QUERY_MAX_TERMS = 10
 QUERY_MAX_KEYWORDS = 20
 QUERY_MAX_SINGLE_RUN = 8
 
-# MaxKB drops jieba's English stop words from a query. The list is copied from
-# jieba/analyse/tfidf.py (KeywordExtractor.STOP_WORDS), because importing jieba.analyse
-# also loads its whole IDF table, which takes about a second.
+# MaxKB drops English stop words from a query, with jieba's 32-word list. This is
+# PostgreSQL's English stop-word list instead, the one its english text-search configuration
+# uses (src/backend/snowball/stopwords/english.stop, from the Snowball project, unchanged
+# since PostgreSQL commit 3f11971). It holds jieba's words except "one", and also question
+# words such as "who", "what" and "did", which jieba's list lets through.
 ENGLISH_STOP_WORDS = frozenset(
     {
-        "the", "of", "is", "and", "to", "in", "that", "we", "for", "an", "are",
-        "by", "be", "as", "on", "with", "can", "if", "from", "which", "you", "it",
-        "this", "then", "at", "have", "all", "not", "one", "has", "or",
+        "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your",
+        "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her",
+        "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs",
+        "themselves", "what", "which", "who", "whom", "this", "that", "these", "those",
+        "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+        "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if",
+        "or", "because", "as", "until", "while", "of", "at", "by", "for", "with",
+        "about", "against", "between", "into", "through", "during", "before", "after",
+        "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over",
+        "under", "again", "further", "then", "once", "here", "there", "when", "where",
+        "why", "how", "all", "any", "both", "each", "few", "more", "most", "other",
+        "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too",
+        "very", "s", "t", "can", "will", "just", "don", "should", "now",
     }
 )  # fmt: skip
 
@@ -186,7 +198,7 @@ def query_clauses(
     2. Words from jieba's precise mode. A run of single Han characters becomes one clause,
        because the index keeps each of those characters as its own word.
     3. The caller joins the clauses with "or".
-    Like MaxKB, jieba's English stop words are dropped. MaxKB also drops words by inverse
+    Like MaxKB, English stop words are dropped. MaxKB also drops words by inverse
     document frequency and by a Chinese stop-word list. Both of those are for Simplified
     Chinese, so that step is not taken here.
 

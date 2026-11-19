@@ -136,6 +136,9 @@ def embed_documents(
     model: "SentenceTransformer", texts: Sequence[str]
 ) -> list[list[float]]:
     """Embed many texts in one batched call. Vectors come back normalized."""
+    # A file can hold only tables, which are not embedded, so the list can be empty.
+    if not texts:
+        return []
     vectors: Any = model.encode_document(
         list(texts), normalize_embeddings=True, convert_to_numpy=True
     )

@@ -11,8 +11,9 @@ from chat_bridge.search import service as search_service
 KNOWN_ERRORS: dict[type[Exception], str] = {
     search_service.EmptyKnowledgeBaseError: "the knowledge base is empty; run `chat-bridge ingest <folder>` first",
     search_service.IndexMismatchError: (
-        "the search index was built with another dictionary, other keywords, "
-        "or another embedding model; run `chat-bridge ingest <folder>` again"
+        "the search index was built with another dictionary, other keywords, another "
+        "embedding model, or an older way of cutting sections into entries; "
+        "run `chat-bridge ingest <folder>` again"
     ),
 }
 

@@ -17,6 +17,9 @@ from chat_bridge.ingest.readers import RejectReason, UnreadableFileError
 HEADING_PATH_SEPARATOR = " > "
 
 _PARSER = MarkdownIt("commonmark").use(front_matter_plugin)
+# CommonMark has no tables; the GFM table rule finds them, so a table is recognized by its
+# Markdown structure wherever it comes from, including tables converted from Word or PDF.
+_TABLE_PARSER = MarkdownIt("commonmark").enable("table")
 
 
 class FrontMatter(BaseModel):
@@ -40,6 +43,14 @@ class ParsedDocument:
     title: str
     keyword_groups: list[list[str]]
     sections: list[ParsedSection]
+
+
+@dataclass(frozen=True)
+class SectionParts:
+    """A section's content with its tables taken out, and the tables themselves."""
+
+    text: str
+    tables: list[str]
 
 
 @dataclass(frozen=True)
@@ -73,6 +84,29 @@ def _headings(tokens: list[Token]) -> list[_Heading]:
         title = tokens[index + 1].content.strip()
         headings.append(_Heading(int(token.tag[1:]), title, token.map[0], token.map[1]))
     return headings
+
+
+def split_tables(content: str) -> SectionParts:
+    """Take the Markdown tables out of a section's content.
+
+    As RAGFlow keeps a table as its own chunk and LlamaIndex parses tables into their own
+    elements, a table is searched apart from the text around it.
+    """
+    lines = content.splitlines()
+    table_ranges = [
+        (token.map[0], token.map[1])
+        for token in _TABLE_PARSER.parse(content)
+        if token.type == "table_open" and token.map is not None
+    ]
+    if not table_ranges:
+        return SectionParts(content, [])
+
+    in_table = {line for start, end in table_ranges for line in range(start, end)}
+    text = "\n".join(
+        line for number, line in enumerate(lines) if number not in in_table
+    ).strip()
+    tables = ["\n".join(lines[start:end]).strip() for start, end in table_ranges]
+    return SectionParts(text, tables)
 
 
 def parse_markdown(text: str, fallback_title: str) -> ParsedDocument:

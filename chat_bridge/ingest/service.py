@@ -24,9 +24,12 @@ from chat_bridge.embedding import (
     split_for_model,
 )
 from chat_bridge.ingest.models import (
+    ENTRY_LAYOUT,
     LEAD_SECTION_POSITION,
+    SOURCE_RULES,
     Document,
     EmbeddingState,
+    EntryLayoutState,
     EntrySource,
     SearchEntry,
     Section,
@@ -38,7 +41,7 @@ from chat_bridge.ingest.readers import (
     is_supported,
     read_markdown,
 )
-from chat_bridge.ingest.sections import ParsedDocument, parse_markdown
+from chat_bridge.ingest.sections import ParsedDocument, parse_markdown, split_tables
 from chat_bridge.synonyms import Synonyms, load_synonyms
 from chat_bridge.tokenizer import (
     DICTIONARY_BLOB_SHA1,
@@ -56,13 +59,20 @@ if TYPE_CHECKING:
 HASH_CHUNK_BYTES = 4096
 TOKENIZER_STATE_ID = 1
 EMBEDDING_STATE_ID = 1
+ENTRY_LAYOUT_STATE_ID = 1
 
+# setweight labels every word with its source's weight (SOURCE_RULES), as the PostgreSQL
+# manual uses setweight to mark entries that come from different parts of a document. The
+# label is sent as text: asyncpg encodes a "char" parameter as bytes.
+WEIGHTED_WORDS = (
+    "setweight(to_tsvector('simple', :words), CAST(CAST(:weight AS text) AS \"char\"))"
+)
 INSERT_ENTRY = text(
     "INSERT INTO search_entries (section_id, source, content, search_vector, embedding_bge_m3) "
-    "VALUES (:section_id, :source, :content, to_tsvector('simple', :words), :embedding)"
+    f"VALUES (:section_id, :source, :content, {WEIGHTED_WORDS}, :embedding)"
 )
 UPDATE_ENTRY_WORDS = text(
-    "UPDATE search_entries SET search_vector = to_tsvector('simple', :words) WHERE id = :id"
+    f"UPDATE search_entries SET search_vector = {WEIGHTED_WORDS} WHERE id = :id"
 )
 
 
@@ -72,7 +82,7 @@ class IndexUpdate(StrEnum):
     NONE = "none"
     WRITTEN_FILES = "written_files"  # entries added for the written files only
     KEYWORDS = "keywords"  # the tokenizer changed: every entry's words rebuilt, embeddings kept
-    ALL = "all"  # the model changed: every entry rebuilt and embedded again
+    ALL = "all"  # the model or the entry layout changed: every entry rebuilt and embedded again
 
 
 @dataclass(frozen=True)
@@ -205,7 +215,8 @@ async def _add_entries(
     """Write the search entries of the given documents' sections. None means every document.
 
     The text of an entry goes to the model as it is, as RAGFlow sends the original text.
-    All texts of the run are embedded in one batched call.
+    Only sources that SOURCE_RULES marks as embedded are embedded, all in one batched call;
+    the text of an entry that is not embedded is never split for the model.
     """
     query = select(
         Section.id,
@@ -219,8 +230,14 @@ async def _add_entries(
 
     texts: list[tuple[int, EntrySource, str]] = []
     for row in (await session.execute(query)).all():
-        texts.append(
-            (row.id, EntrySource.SECTION, section_text(row.heading, row.content))
+        content = split_tables(row.content)
+        if content.text:
+            texts.append(
+                (row.id, EntrySource.SECTION, section_text(row.heading, content.text))
+            )
+        texts.extend(
+            (row.id, EntrySource.TABLE, section_text(row.heading, table))
+            for table in content.tables
         )
         if row.position == LEAD_SECTION_POSITION and row.keyword_groups:
             texts.append(
@@ -230,40 +247,70 @@ async def _add_entries(
     parts = [
         (section_id, source, part)
         for section_id, source, full_text in texts
-        for part in split_for_model(model, full_text)
+        for part in (
+            split_for_model(model, full_text)
+            if SOURCE_RULES[source].embedded
+            else [full_text]
+        )
     ]
     if not parts:
         return
-    embeddings = embed_documents(model, [part for _, _, part in parts])
+    embedded = [
+        index
+        for index, (_, source, _) in enumerate(parts)
+        if SOURCE_RULES[source].embedded
+    ]
+    vectors = embed_documents(model, [parts[index][2] for index in embedded])
+    embedding_of = dict(zip(embedded, vectors, strict=True))
     entries = [
         {
             "section_id": section_id,
             "source": source,
             "content": part,
             "words": index_text(tokenizer, part),
-            "embedding": embedding,
+            "weight": SOURCE_RULES[source].weight,
+            "embedding": embedding_of[index] if SOURCE_RULES[source].embedded else None,
         }
-        for (section_id, source, part), embedding in zip(parts, embeddings, strict=True)
+        for index, (section_id, source, part) in enumerate(parts)
     ]
     await session.execute(INSERT_ENTRY, entries)
 
 
 async def _rebuild_words(session: AsyncSession, tokenizer: SearchTokenizer) -> None:
     """Rebuild every stored entry's words from its own text. The embeddings stay as they are."""
-    rows = (await session.execute(select(SearchEntry.id, SearchEntry.content))).all()
+    rows = (
+        await session.execute(
+            select(SearchEntry.id, SearchEntry.source, SearchEntry.content)
+        )
+    ).all()
     if not rows:
         return
     await session.execute(
         UPDATE_ENTRY_WORDS,
-        [{"id": row.id, "words": index_text(tokenizer, row.content)} for row in rows],
+        [
+            {
+                "id": row.id,
+                "words": index_text(tokenizer, row.content),
+                "weight": SOURCE_RULES[EntrySource(row.source)].weight,
+            }
+            for row in rows
+        ],
     )
 
 
-def _model_is_current(state: EmbeddingState | None) -> bool:
-    """Whether the stored embeddings were built with this model."""
-    return state is not None and (state.model_name, state.model_revision) == (
-        MODEL_NAME,
-        MODEL_REVISION,
+def _entries_are_current(
+    embedding_state: EmbeddingState | None, layout_state: EntryLayoutState | None
+) -> bool:
+    """Whether the stored entries were cut with this layout and embedded with this model."""
+    return (
+        embedding_state is not None
+        and layout_state is not None
+        and (
+            embedding_state.model_name,
+            embedding_state.model_revision,
+            layout_state.layout,
+        )
+        == (MODEL_NAME, MODEL_REVISION, ENTRY_LAYOUT)
     )
 
 
@@ -276,10 +323,11 @@ def _words_are_current(state: TokenizerState | None, words_digest: str) -> bool:
 
 
 def _plan(
-    model_is_current: bool, words_are_current: bool, has_new_documents: bool
+    entries_are_current: bool, words_are_current: bool, has_new_documents: bool
 ) -> IndexUpdate:
-    """Rebuild only what changed: embeddings depend on the model, words on the tokenizer."""
-    if not model_is_current:
+    """Rebuild only what changed: entries depend on the layout and the model, words on the
+    tokenizer."""
+    if not entries_are_current:
         return IndexUpdate.ALL
     if not words_are_current:
         return IndexUpdate.KEYWORDS
@@ -305,6 +353,7 @@ async def _store(
 ) -> None:
     tokenizer_state = await session.get(TokenizerState, TOKENIZER_STATE_ID)
     embedding_state = await session.get(EmbeddingState, EMBEDDING_STATE_ID)
+    layout_state = await session.get(EntryLayoutState, ENTRY_LAYOUT_STATE_ID)
     replaced_paths = [item.candidate.source_path for item in prepared] + list(
         stale_paths
     )
@@ -316,7 +365,7 @@ async def _store(
 
     tokenizer = build_tokenizer(await user_words(session, synonyms))
     report.index_update = _plan(
-        _model_is_current(embedding_state),
+        _entries_are_current(embedding_state, layout_state),
         _words_are_current(tokenizer_state, tokenizer.user_words_digest),
         bool(new_document_ids),
     )
@@ -343,6 +392,7 @@ async def _store(
             id=EMBEDDING_STATE_ID, model_name=MODEL_NAME, model_revision=MODEL_REVISION
         )
     )
+    await session.merge(EntryLayoutState(id=ENTRY_LAYOUT_STATE_ID, layout=ENTRY_LAYOUT))
 
 
 async def ingest_folder(root: Path) -> IngestReport:
@@ -364,8 +414,9 @@ async def ingest_folder(root: Path) -> IngestReport:
                 )
             )
             stored = {row.source_path: row.content_hash for row in rows}
-            model_is_current = _model_is_current(
-                await session.get(EmbeddingState, EMBEDDING_STATE_ID)
+            entries_are_current = _entries_are_current(
+                await session.get(EmbeddingState, EMBEDDING_STATE_ID),
+                await session.get(EntryLayoutState, ENTRY_LAYOUT_STATE_ID),
             )
             words_are_current = _words_are_current(
                 await session.get(TokenizerState, TOKENIZER_STATE_ID),
@@ -387,12 +438,17 @@ async def ingest_folder(root: Path) -> IngestReport:
             if c.source_path in stored and c.source_path not in prepared_paths
         ]
         report.removed.extend(stale_paths)
-        if not prepared and not stale_paths and model_is_current and words_are_current:
+        if (
+            not prepared
+            and not stale_paths
+            and entries_are_current
+            and words_are_current
+        ):
             return report
 
         # Load the model before the transaction opens: the first run downloads it. A run
         # that only removes files or changes words embeds nothing, so it loads no model.
-        model = load_model() if prepared or not model_is_current else None
+        model = load_model() if prepared or not entries_are_current else None
         async with sessions() as session, session.begin():
             await _store(session, prepared, stale_paths, synonyms, model, report)
         await vacuum(engine)
