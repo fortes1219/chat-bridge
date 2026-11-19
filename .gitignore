@@ -5,6 +5,9 @@ coverage/
 
 .claude/
 
+# Run-time data: the embedded database and the downloaded dictionary.
+/local_data/
+
 __pycache__/
 *.py[cod]
 .venv/
