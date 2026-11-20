@@ -1,6 +1,7 @@
 """Tables of the knowledge base. Model shape follows the Azure rag-postgres template."""
 
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 
 from pgvector.sqlalchemy import Vector
@@ -50,7 +51,10 @@ ENTRY_LAYOUT = ";".join(
 
 
 class Document(Base):
-    """One ingested file. `content_hash` is the SHA-256 of the file bytes."""
+    """One ingested file. `content_hash` is the SHA-256 of the file bytes.
+
+    `event_date` comes from the front matter. Word and PDF files have none, so it is None.
+    """
 
     __tablename__ = "documents"
 
@@ -59,6 +63,7 @@ class Document(Base):
     content_hash: Mapped[str] = mapped_column()
     title: Mapped[str] = mapped_column()
     keyword_groups: Mapped[list[list[str]]] = mapped_column(JSONB)
+    event_date: Mapped[date | None] = mapped_column()
 
 
 class Section(Base):

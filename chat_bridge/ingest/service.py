@@ -189,6 +189,7 @@ async def _insert(session: AsyncSession, item: _Prepared, report: IngestReport) 
         content_hash=item.candidate.content_hash,
         title=item.document.title,
         keyword_groups=item.document.keyword_groups,
+        event_date=item.document.event_date,
     )
     session.add(document)
     await session.flush()

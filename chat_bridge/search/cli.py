@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+from datetime import date
 
 from chat_bridge.cli import EXIT_NOT_ALL, EXIT_OK, Commands, print_error
 from chat_bridge.errors import LocalSetupError
@@ -37,14 +38,33 @@ def _limit(value: str) -> int:
     return number
 
 
-def _run(args: argparse.Namespace) -> int:
+def _as_of(value: str) -> date:
+    """Parse --as-of at the command-line boundary: a calendar date written YYYY-MM-DD."""
+    message = f"not a date written YYYY-MM-DD: {value!r}"
     try:
-        result = asyncio.run(search_service.search(args.question, args.limit))
+        parsed = date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(message) from None
+    # fromisoformat also reads other ISO 8601 forms, such as 20261112 and 2026-W46-4.
+    if parsed.isoformat() != value:
+        raise argparse.ArgumentTypeError(message)
+    return parsed
+
+
+def _run(args: argparse.Namespace) -> int:
+    as_of: date | None = args.as_of
+    try:
+        result = asyncio.run(search_service.search(args.question, args.limit, as_of))
     except LocalSetupError as error:
         return print_error(str(error))
     except tuple(KNOWN_ERRORS) as error:
         return print_error(KNOWN_ERRORS[type(error)])
 
+    if as_of is not None:
+        print(
+            f"As of {as_of}: only files whose event happened on or before that day. "
+            f"Files left out for having no event date: {result.undated_left_out}."
+        )
     if not result.hits:
         print(f"Not in the data: no section matches: {args.question}")
         return EXIT_NOT_ALL
@@ -52,8 +72,9 @@ def _run(args: argparse.Namespace) -> int:
     print(f"Keyword query: {result.query or '(no searchable word)'}")
     for number, hit in enumerate(result.hits, start=1):
         heading = f" > {hit.heading}" if hit.heading else ""
+        event_date = hit.event_date or "no event date"
         print(f"{number}. {hit.source_path}{heading}  ({_explain(hit)})")
-        print(f"   {hit.title}")
+        print(f"   {event_date}  {hit.title}")
         print(f"   {hit.snippet}")
     return EXIT_OK
 
@@ -74,5 +95,12 @@ def register(commands: Commands) -> None:
     )
     search.add_argument(
         "--limit", type=_limit, default=5, help="how many sections to list (default: 5)"
+    )
+    search.add_argument(
+        "--as-of",
+        type=_as_of,
+        metavar="YYYY-MM-DD",
+        help="search only files whose event happened on or before this day; "
+        "files without an event date are left out",
     )
     search.set_defaults(handler=_run)

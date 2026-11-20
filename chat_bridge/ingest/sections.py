@@ -5,12 +5,13 @@ parser finds the headings, so headings inside code blocks are not mistaken for r
 """
 
 from dataclasses import dataclass
+from datetime import date
 
 import yaml
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from mdit_py_plugins.front_matter import front_matter_plugin
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from chat_bridge.ingest.readers import RejectReason, UnreadableFileError
 
@@ -29,6 +30,8 @@ class FrontMatter(BaseModel):
 
     title: str | None = None
     keyword_groups: list[list[str]] = Field(default_factory=list)
+    # The day the event happened. A search given a date leaves out files after it.
+    event_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,7 @@ class ParsedSection:
 class ParsedDocument:
     title: str
     keyword_groups: list[list[str]]
+    event_date: date | None
     sections: list[ParsedSection]
 
 
@@ -70,7 +74,9 @@ def _read_front_matter(tokens: list[Token]) -> tuple[FrontMatter, int]:
     try:
         data = yaml.safe_load(token.content)
         return FrontMatter.model_validate(data or {}), body_start
-    except (yaml.YAMLError, ValidationError) as error:
+    # A date that does not exist, such as 2026-02-30 without quotes, makes PyYAML raise a
+    # plain ValueError, not a YAMLError. pydantic's ValidationError is a ValueError too.
+    except (yaml.YAMLError, ValueError) as error:
         raise UnreadableFileError(
             RejectReason.INVALID_FRONT_MATTER, str(error).splitlines()[0]
         ) from error
@@ -143,5 +149,8 @@ def parse_markdown(text: str, fallback_title: str) -> ParsedDocument:
         front_matter.title or (headings[0].title if headings else "") or fallback_title
     )
     return ParsedDocument(
-        title=title, keyword_groups=front_matter.keyword_groups, sections=sections
+        title=title,
+        keyword_groups=front_matter.keyword_groups,
+        event_date=front_matter.event_date,
+        sections=sections,
     )

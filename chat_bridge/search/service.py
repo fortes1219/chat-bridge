@@ -8,12 +8,19 @@ model as the documents.
 In the Azure template one row is one item. Here, as in MaxKB, several search entries point
 at one section, and the section is the item: each method first keeps every section's best
 entry, then the two lists are merged by section.
+
+A search can be limited to events on or before a date. As the Azure template filters inside
+each method's candidate query, the date filter is applied before the candidates are taken,
+so later events cannot fill the candidate lists. The filter works on whole files by their
+event date: a file's own later sections, such as what happened in the days after the event,
+are not removed from it.
 """
 
 from dataclasses import dataclass
+from datetime import date
 
-from sqlalchemy import Float, Integer, column, select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy import Float, Integer, column, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chat_bridge.database import create_tables, open_engine
 from chat_bridge.embedding import MODEL_NAME, MODEL_REVISION, embed_query, load_model
@@ -40,25 +47,42 @@ RRF_K = 60
 # Measure again when the data changes.
 MIN_SIMILARITY = 0.52
 
+# Keeps the entries of files whose event happened on or before :as_of; a NULL :as_of keeps
+# every file. A file without an event date fails the comparison, as PostgreSQL's comparison
+# operators yield null for a null input, so it is left out of a dated search.
+AVAILABLE_ON_DATE = (
+    "(CAST(:as_of AS date) IS NULL OR documents.event_date <= CAST(:as_of AS date))"
+)
+
+# pgvector's README: with an approximate index the filter runs after the index scan, so
+# iterative scans keep scanning until enough rows pass; and for a filter on distance, take
+# the nearest rows in a MATERIALIZED CTE, other filters inside it, and the distance filter
+# outside. Rows with no embedding, which are tables, never enter the vector side.
 HYBRID_QUERY = text(
-    """
-    WITH vector_entries AS (
-        SELECT section_id, embedding_bge_m3 <=> :embedding AS distance
-        FROM search_entries
-        WHERE 1 - (embedding_bge_m3 <=> :embedding) > :min_similarity
-        ORDER BY embedding_bge_m3 <=> :embedding
+    f"""
+    WITH vector_entries AS MATERIALIZED (
+        SELECT entries.section_id, entries.embedding_bge_m3 <=> :embedding AS distance
+        FROM search_entries entries
+        JOIN sections ON sections.id = entries.section_id
+        JOIN documents ON documents.id = sections.document_id
+        WHERE entries.embedding_bge_m3 IS NOT NULL AND {AVAILABLE_ON_DATE}
+        ORDER BY entries.embedding_bge_m3 <=> :embedding
         LIMIT :candidates
     ),
     vector_search AS (
         SELECT section_id, RANK () OVER (ORDER BY MIN(distance)) AS rank
         FROM vector_entries
+        WHERE 1 - distance > :min_similarity
         GROUP BY section_id
     ),
     fulltext_entries AS (
-        SELECT section_id, ts_rank_cd(search_vector, query, 32) AS relevance
-        FROM search_entries, websearch_to_tsquery('simple', :query) query
-        WHERE search_vector @@ query
-        ORDER BY ts_rank_cd(search_vector, query, 32) DESC
+        SELECT entries.section_id, ts_rank_cd(entries.search_vector, query, 32) AS relevance
+        FROM search_entries entries
+        JOIN sections ON sections.id = entries.section_id
+        JOIN documents ON documents.id = sections.document_id
+        CROSS JOIN websearch_to_tsquery('simple', :query) query
+        WHERE entries.search_vector @@ query AND {AVAILABLE_ON_DATE}
+        ORDER BY relevance DESC
         LIMIT :candidates
     ),
     fulltext_search AS (
@@ -83,6 +107,8 @@ HYBRID_QUERY = text(
     column("vector_rank", Integer),
     column("keyword_rank", Integer),
 )
+# Strict ordering keeps the vector candidates in exact distance order (pgvector 0.8.0 and later).
+ITERATIVE_SCAN = text("SET LOCAL hnsw.iterative_scan = strict_order")
 
 SNIPPET_RADIUS = 60
 
@@ -100,6 +126,7 @@ class IndexMismatchError(Exception):
 class SearchHit:
     source_path: str
     title: str
+    event_date: date | None
     heading: str
     snippet: str
     score: float
@@ -112,6 +139,8 @@ class SearchHit:
 class SearchResult:
     query: str
     hits: list[SearchHit]
+    # Files left out of a dated search because they have no event date; 0 without a date.
+    undated_left_out: int = 0
 
 
 def _snippet(content: str, clauses: list[str]) -> str:
@@ -129,8 +158,19 @@ def _snippet(content: str, clauses: list[str]) -> str:
     )
 
 
-async def search(question: str, limit: int) -> SearchResult:
-    """Return the best-ranked sections for the question. No hits means the data has no match."""
+async def _undated_files(session: AsyncSession) -> int:
+    """How many stored files have no event date, and so are left out of a dated search."""
+    count = await session.scalar(
+        select(func.count()).select_from(Document).where(Document.event_date.is_(None))
+    )
+    return count or 0
+
+
+async def search(question: str, limit: int, as_of: date | None = None) -> SearchResult:
+    """Return the best-ranked sections for the question. No hits means the data has no match.
+
+    With `as_of`, only files whose event happened on or before that day are searched.
+    """
     synonyms = load_synonyms()
     async with open_engine() as engine:
         await create_tables(engine)
@@ -172,12 +212,15 @@ async def search(question: str, limit: int) -> SearchResult:
             clauses = query_clauses(tokenizer, question, synonyms.expand(question))
             query = " or ".join(clauses)
             embedding = embed_query(load_model(), question)
+            undated_left_out = 0 if as_of is None else await _undated_files(session)
+            await session.execute(ITERATIVE_SCAN)
             ranked = (
                 await session.execute(
                     HYBRID_QUERY,
                     {
                         "query": query,
                         "embedding": embedding,
+                        "as_of": as_of,
                         "min_similarity": MIN_SIMILARITY,
                         "candidates": CANDIDATES_PER_METHOD,
                         "k": RRF_K,
@@ -186,10 +229,12 @@ async def search(question: str, limit: int) -> SearchResult:
                 )
             ).all()
             if not ranked:
-                return SearchResult(query, [])
+                return SearchResult(query, [], undated_left_out)
 
             rows = await session.execute(
-                select(Section, Document.source_path, Document.title)
+                select(
+                    Section, Document.source_path, Document.title, Document.event_date
+                )
                 .join(Document, Section.document_id == Document.id)
                 .where(Section.id.in_([row.id for row in ranked]))
             )
@@ -199,6 +244,7 @@ async def search(question: str, limit: int) -> SearchResult:
         SearchHit(
             source_path=by_id[row.id].source_path,
             title=by_id[row.id].title,
+            event_date=by_id[row.id].event_date,
             heading=by_id[row.id].Section.heading,
             snippet=_snippet(by_id[row.id].Section.content, clauses),
             score=row.score,
@@ -207,4 +253,4 @@ async def search(question: str, limit: int) -> SearchResult:
         )
         for row in ranked
     ]
-    return SearchResult(query, hits)
+    return SearchResult(query, hits, undated_left_out)
