@@ -49,8 +49,15 @@ torch = [
   { index = "pytorch-cpu" },
 ]
 
-[tool.pytest.ini_options]
+# The strict options follow the FastAPI repository. The slow marker is registered and left
+# out by default, as pytest's documentation shows; `pytest -m slow` runs only those tests.
+[tool.pytest]
+minversion = "9.0"
 testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers", "-m", "not slow"]
+markers = [
+    "slow: needs the embedding model and the embedded database and takes minutes (run with '-m slow')",
+]
 
 # Type checking and lint rules follow the FastAPI repository's pyproject.toml.
 [tool.mypy]

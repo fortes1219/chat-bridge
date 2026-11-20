@@ -1,0 +1,85 @@
+# The questions search is measured with, and the result it must not fall below.
+# Each question is searched on the 71 files of data/truth; the first `top` hits count.
+# The baseline was measured on 2026-11-19, after tables became their own source.
+# File prefixes are quoted: YAML would read a bare 2026-09-16 as a date.
+
+top: 5
+
+# A hit in this section is the market table of an event file, not text about the name.
+market_heading: 當日與之後的行情
+
+baseline:
+  # target: slots (of 60) filled by a non-market section of a file that mentions the name
+  target_good: 55
+  # target: slots (of 60) filled by a market section; this one may not grow
+  target_market: 0
+  # regression: questions (of 26) whose first hit is an expected file
+  regression_first: 25
+  # regression: questions (of 26) with an expected file in the first three hits
+  regression_top3: 26
+  # not in data: questions (of 3) with no hit at all
+  not_in_data_empty: 2
+
+# Files that mention a name in their own text, by file name prefix.
+files:
+  delta: &delta
+    ["2026-07-17", "2026-10-15-taiex", "2026-11-03", "2026-11-05-taiex", "2026-11-06-taiex",
+     "2026-11-09-taiex"]
+  sox: &sox
+    ["2026-06-08", "2026-11-06-fsc", "2026-11-09-taiex", "2026-11-16-taiex", "2026-07-17",
+     "2026-07-31", "2026-10-19", "2026-11-05-taiex", "2026-11-05-twse", "2026-11-06-taiex",
+     "2026-11-17-taiex"]
+  mediatek: &mediatek
+    ["2026-07-17", "2026-10-15-taiex", "2026-11-03", "2026-11-05-taiex", "2026-11-06-taiex",
+     "2026-11-09-taiex", "2026-11-12-taiex", "2026-11-13-taiex"]
+  hon_hai: &hon_hai
+    ["2026-10-15-taiex", "2026-11-05-taiex", "2026-11-06-taiex"]
+
+# Names that every market table repeats.
+target:
+  - {question: "台達電", files: *delta}
+  - {question: "台達", files: *delta}
+  - {question: "台達電跌了多少", files: *delta}
+  - {question: "台達電受到什麼影響", files: *delta}
+  - {question: "Delta Electronics share price", files: *delta}
+  - {question: "費半", files: *sox}
+  - {question: "費半為什麼跌", files: *sox}
+  - {question: "費城半導體指數重挫", files: *sox}
+  - {question: "SOX index drop", files: *sox}
+  - {question: "聯發科股價", files: *mediatek}
+  - {question: "鴻海", files: *hon_hai}
+  - {question: "鴻海跌幅", files: *hon_hai}
+
+# Questions with one or a few right files.
+regression:
+  - {question: "聯準會什麼時候升息", files: ["2026-09-16"]}
+  - {question: "Did the Fed raise rates?", files: ["2026-09-16"]}
+  - {question: "台積電法說會說了什麼", files: ["2026-07-16", "2026-10-15-tsmc"]}
+  - {question: "TSMC quarterly results", files: ["2026-07-16", "2026-10-15-tsmc"]}
+  - {question: "輝達執行長辭職", files: ["2026-11-12-nvidia"]}
+  - {question: "輝達財報營收多少", files: ["2026-08-26", "2026-11-17-nvidia"]}
+  - {question: "甲骨文舉債蓋資料中心", files: ["2026-11-02-oracle", "2026-06-10"]}
+  - {question: "國安基金進場", files: ["2026-11-06-national"]}
+  - {question: "金管會限空令", files: ["2026-11-06-fsc"]}
+  - {question: "微軟發債", files: ["2026-10-29-microsoft"]}
+  - {question: "川普晶片關稅", files: ["2026-09-10"]}
+  - {question: "華許傑克森洞演講", files: ["2026-08-28"]}
+  - {question: "外資賣超創紀錄", files: ["2026-06-24"]}
+  - {question: "台股史上最大漲點", files: ["2026-07-31"]}
+  - {question: "央行房貸成數", files: ["2026-09-17"]}
+  - {question: "IMF 金融穩定報告 AI", files: ["2026-10-13"]}
+  - {question: "Meta 資本支出", files: ["2026-10-21-meta", "2026-10-22"]}
+  - {question: "What did Alphabet report?", files: ["2026-10-28-alphabet"]}
+  - {question: "Amazon AWS growth", files: ["2026-10-29-amazon"]}
+  - {question: "Morgan Stanley Wilson correction", files: ["2026-11-02-morgan"]}
+  - {question: "高盛標普500目標", files: ["2026-11-12-goldman"]}
+  - {question: "美國10月CPI", files: ["2026-11-10-us"]}
+  - {question: "習近平訪問華盛頓", files: ["2026-09-25"]}
+  - {question: "英格蘭銀行示警", files: ["2026-09-30-boe"]}
+  - {question: "台積電10月營收", files: ["2026-11-10-tsmc"]}
+  - {question: "台積電", files: ["2026-07-16", "2026-10-15-tsmc", "2026-11-10-tsmc"]}
+
+not_in_data:
+  - "火星殖民計畫"
+  - "怎麼煮紅燒牛肉麵"
+  - "Who won the Super Bowl?"
