@@ -1,0 +1,40 @@
+# Runs the slow tests in a Linux container, so they do not load the model and the database
+# on the host:
+#   docker compose -f compose.test.yml run --rm slow-tests
+# Arguments after the service name go to pytest, for example `run --rm slow-tests -k yield`.
+name: chat-bridge-test
+
+services:
+  slow-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    image: chat-bridge-test:local
+    # A share of the machine, not all of it. OMP_NUM_THREADS keeps PyTorch to the same
+    # number of threads.
+    cpus: 6
+    mem_limit: 8g
+    environment:
+      OMP_NUM_THREADS: "6"
+    # No ports: the tests reach the database inside the container.
+    volumes:
+      # Only what the tests need, read-only. The rest of the repository, such as .git/,
+      # .venv/ and local_data/, stays out of the container.
+      - ./chat_bridge:/src/chat_bridge:ro
+      - ./tests:/src/tests:ro
+      - ./data:/src/data:ro
+      - ./scripts:/src/scripts:ro
+      - ./pyproject.toml:/src/pyproject.toml:ro
+      - ./uv.lock:/src/uv.lock:ro
+      - ./README.md:/src/README.md:ro
+      - ./.python-version:/src/.python-version:ro
+      - venv:/venv
+      - models:/models
+    entrypoint: ["sh", "/src/scripts/run_slow_tests.sh"]
+
+volumes:
+  # Fixed names, not prefixed with the project name, so a rebuild keeps the downloads.
+  venv:
+    name: chat-bridge-venv
+  models:
+    name: chat-bridge-models

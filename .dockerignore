@@ -1,0 +1,4 @@
+# The test image copies nothing from the repository; the tests mount the files they need
+# at run time (compose.test.yml). So nothing is sent to the build. That keeps out
+# local_data/ (the model and the database), .venv/ and .git/.
+*

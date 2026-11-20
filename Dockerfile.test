@@ -1,0 +1,38 @@
+# The image for the slow tests, which need the embedding model and the database:
+#   docker compose -f compose.test.yml run --rm slow-tests
+# It holds Python, uv and a portable pgvector build. The files the tests need are mounted
+# at run time (compose.test.yml), so nothing is copied from the repository.
+FROM python:3.13-slim-bookworm
+
+# uv's Docker guide copies the uv binary in from its image, pinned to a version.
+COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
+
+# pixeltable-pgserver's Linux wheel ships a vector.so built with pgvector's default
+# -march=native, which stops with "Illegal instruction" on a CPU without the build machine's
+# instructions. pgvector's README says to build with OPTFLAGS="" for portability, so the
+# same pgvector version is built here, and scripts/run_slow_tests.sh puts it in place.
+ADD --checksum=sha256:cac0b10c360f05b2d521200105ba3697e773d4cd3731f5a915a7e37ebe0bea85 \
+    https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.7.tar.gz /opt/pgvector.tar.gz
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc make libc6-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir /opt/pgvector \
+ && tar xzf /opt/pgvector.tar.gz -C /opt/pgvector --strip-components=1 \
+ && rm /opt/pgvector.tar.gz
+
+# PostgreSQL refuses to run as root, so the tests run as an ordinary user. The folders that
+# become named volumes are made here, so new volumes start out owned by that user.
+RUN useradd --create-home tester \
+ && mkdir -p /venv /models /work \
+ && chown -R tester:tester /venv /models /work /opt/pgvector
+
+USER tester
+
+# The venv and the model live in named volumes, so they are downloaded once.
+ENV LANG=C.UTF-8 \
+    UV_PROJECT_ENVIRONMENT=/venv \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=never \
+    HF_HUB_CACHE=/models
+
+WORKDIR /work
