@@ -99,4 +99,16 @@ uv run mypy chat_bridge tests
 - `uv run pytest -m slow` runs the tests marked slow. They load the model, start the embedded database, and ingest `data/truth`, which takes several minutes. One of them searches 41 questions and fails if the results get worse than the measured baseline in `tests/data/search_yield.yaml`.
 - Tests never use the project's `local_data/`: each run gets a data folder of its own. The model is the one exception. If `local_data/models` already holds it, the tests read it from there, through huggingface_hub's `HF_HUB_CACHE` setting, instead of downloading 2.3 GB again. Set `HF_HUB_CACHE` yourself to keep the model somewhere else; the app reads the same setting.
 
+### Run the slow tests in a container
+
+```
+docker compose -f compose.test.yml run --rm slow-tests
+```
+
+- This runs the slow tests in a Linux container with Docker, so the model and the database do not load on your machine. Arguments after `slow-tests` go to pytest, for example `-k yield`.
+- The container may use 6 CPUs and 8 GB of memory, opens no ports, and is removed when the tests end. `docker compose -f compose.test.yml down` removes the network it leaves behind.
+- Only what the tests need is mounted, read-only: `chat_bridge/`, `tests/`, `data/`, `scripts/`, `pyproject.toml`, `uv.lock`, `README.md`, and `.python-version`. Nothing else in the repository, such as `.git/` or `local_data/`, is visible inside the container.
+- The first run downloads the Python image and the dependencies (about 1.6 GB) and the model (about 2.3 GB). They are kept in the Docker volumes `chat-bridge-venv` and `chat-bridge-models`, so later runs do not download them again. The Traditional Chinese dictionary (8.6 MB) is downloaded on every run, because `local_data/` is not mounted.
+- In the container, pgvector is built again from its source. The Linux x86_64 build that comes with the embedded database was compiled with pgvector's default `-march=native`. On the x86_64 CPU it was checked on, which has no AVX-512, it stops with "Illegal instruction". pgvector's README gives the portable build used here. On that CPU the Windows build works; other platforms have not been checked.
+
 The lint, format, and type-check settings follow the FastAPI repository. Add a dependency with `uv add <package>`; it updates both `pyproject.toml` and `uv.lock`.

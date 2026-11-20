@@ -99,4 +99,16 @@ uv run mypy chat_bridge tests
 - `uv run pytest -m slow` 跑標成 slow 的測試：會載入模型、起內嵌的資料庫、導入 `data/truth`，要好幾分鐘。其中一個測試會問 41 題，結果比 `tests/data/search_yield.yaml` 裡量好的基準差就失敗。
 - 測試不碰專案的 `local_data/`，每次執行都用自己的資料夾。只有模型例外：`local_data/models` 已經有模型時，測試透過 huggingface_hub 的 `HF_HUB_CACHE` 設定從那裡讀，不再下載 2.3 GB。要把模型放在別的地方，自己設 `HF_HUB_CACHE` 即可，程式本身也讀同一個設定。
 
+### 在容器裡跑慢的測試
+
+```
+docker compose -f compose.test.yml run --rm slow-tests
+```
+
+- 用 Docker 在 Linux 容器裡跑慢的測試，模型與資料庫不會在你的機器上載入。`slow-tests` 後面的參數會交給 pytest，例如 `-k yield`。
+- 容器最多用 6 核與 8 GB 記憶體，不開任何埠，測試結束就移除。它留下的網路用 `docker compose -f compose.test.yml down` 移除。
+- 只以唯讀方式掛上測試需要的東西：`chat_bridge/`、`tests/`、`data/`、`scripts/`、`pyproject.toml`、`uv.lock`、`README.md`、`.python-version`。repo 裡其他的東西（例如 `.git/`、`local_data/`）在容器裡都看不到。
+- 第一次會下載 Python 映像檔與依賴（約 1.6 GB）以及模型（約 2.3 GB），分別存在 Docker volume `chat-bridge-venv` 與 `chat-bridge-models`，之後不再下載。繁體中文詞典（8.6 MB）每次都會下載一次，因為 `local_data/` 沒有掛進去。
+- 容器裡的 pgvector 會從原始碼重新編譯。內嵌資料庫附的 Linux x86_64 版是用 pgvector 預設的 `-march=native` 編的。在驗過的那顆沒有 AVX-512 的 x86_64 CPU 上，它會出現「Illegal instruction」而當掉；這裡用的是 pgvector README 寫的可攜編法。同一顆 CPU 上 Windows 版可以正常用；其他平台沒有驗過。
+
 lint、格式與型別檢查的設定照 FastAPI 的 repo。新增依賴用 `uv add <套件>`，會同時更新 `pyproject.toml` 與 `uv.lock`。
