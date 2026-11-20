@@ -20,7 +20,9 @@ uv run chat-bridge
 
 第一次執行時，uv 會在 repo 裡建立 `.venv`，照 `uv.lock` 安裝依賴；機器上沒有 `.python-version` 指定的 Python 時，uv 會自己下載。依賴約 1.2 GB，大部分是只用 CPU 的 PyTorch。之後依賴沒變就直接啟動。
 
-目前狀態：可以用命令列導入文件並查詢（見下一節）。不帶參數執行 `uv run chat-bridge` 會列出所有指令。聊天頁面還沒做。
+不帶參數執行 `uv run chat-bridge` 會在 http://127.0.0.1:8000 起聊天服務（見下面的「問問題」）；`uv run chat-bridge --help` 列出其他指令。
+
+目前狀態：可以導入文件、用命令列查詢，也可以透過聊天服務問問題。聊天頁面還沒做。
 
 ## 導入文件並查詢
 
@@ -79,6 +81,35 @@ uv run chat-bridge search "Did the Fed raise rates?"
   python3 -m pip install -e .
   chat-bridge
   ```
+
+## 問問題
+
+第一次問之前，先導入範例資料，並登入 Claude Code：
+
+```
+uv run chat-bridge ingest data/truth
+claude auth login
+uv run chat-bridge
+```
+
+- `uv run chat-bridge` 會在 http://127.0.0.1:8000 起聊天服務，按 Ctrl+C 停止。想直接試，開 http://127.0.0.1:8000/docs。
+- 用 `POST /chat/stream` 送問題，本文是 JSON，`Content-Type: application/json`：`{"question": "..."}`。回應是 NDJSON，一行一個 JSON：
+  - 第一行 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與其中最新的事件日期，並帶著揭露文字。
+  - 接下來的 `response.output_text.delta` 是答案，模型寫出一段就送一段。
+  - 第一行之後才失敗的話，最後一行是 `{"error": "..."}`。
+- 問題照原樣拿去檢索，最符合的八段連同問題一起交給你自己的 Claude Code。Claude Code 的工具全部關掉，只能寫文字；用的是你的 Claude Code 登入與你的方案額度。`ANTHROPIC_API_KEY` 等金鑰變數會從它的環境裡拿掉，所以你的 shell 裡就算設了金鑰也不會被用到。
+- 檢索什麼都沒找到時，回答會明講資料裡沒有，不會呼叫 Claude Code。
+- 來源與揭露文字是程式加的，不是模型寫的，所以模型拿不掉。
+- 每一個問題都連同檢索結果記在本機的資料庫。`GET /chat/records` 列出最新的紀錄；`GET /chat/records?unanswered=true` 列出檢索什麼都沒找到的問題。
+
+### 只供這台電腦上的一個人使用
+
+- 服務只聽 127.0.0.1，而且 `Host` 標頭不是 `127.0.0.1` 或 `localhost` 的請求一律拒絕，所以你開著的網頁沒辦法用它自己的網域名稱連進來。
+- 內嵌的資料庫建庫時沒有設密碼：這是 `pixeltable-pgserver` 寫死的，沒有選項可以改。Windows 上資料庫開在 127.0.0.1 的一個埠，執行期間這台電腦上的任何程式都連得進去。不要在別人也會用的電腦上跑 chat-bridge。
+
+### 提示注入
+
+問題或導入的文件裡可能寫著「忽略以上規則」這類指令。OWASP 的 LLM 應用程式十大風險寫明，沒有方法能完全防止。所以這裡限制的是被帶偏之後能做的事：模型沒有任何工具；來源與問題經標準輸入分開交給它，並標明是資料、不能改變規則；來源與揭露文字由程式附上。不保證的是：模型自己寫的文字永遠不會被帶偏。
 
 ## 範例資料
 

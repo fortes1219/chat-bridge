@@ -124,11 +124,14 @@ class IndexMismatchError(Exception):
 
 @dataclass(frozen=True)
 class SearchHit:
+    section_id: int
     source_path: str
     title: str
     event_date: date | None
     heading: str
     snippet: str
+    # The section's whole text, which a chat answer reads; the snippet is what a list shows.
+    content: str
     score: float
     # The section's rank in each method's candidate list; None when that method missed it.
     keyword_rank: int | None
@@ -242,11 +245,13 @@ async def search(question: str, limit: int, as_of: date | None = None) -> Search
 
     hits = [
         SearchHit(
+            section_id=row.id,
             source_path=by_id[row.id].source_path,
             title=by_id[row.id].title,
             event_date=by_id[row.id].event_date,
             heading=by_id[row.id].Section.heading,
             snippet=_snippet(by_id[row.id].Section.content, clauses),
+            content=by_id[row.id].Section.content,
             score=row.score,
             keyword_rank=row.keyword_rank,
             vector_rank=row.vector_rank,

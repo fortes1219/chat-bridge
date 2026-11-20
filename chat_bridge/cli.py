@@ -3,6 +3,9 @@
 Each feature package that has a `cli` module adds its own subcommands through
 `register(commands)`, so a new feature does not change this file. The lookup follows
 Django, which finds each app's management commands with pkgutil.
+
+Without a subcommand, it starts the chat service, so the one command a person runs after
+cloning is `uv run chat-bridge`.
 """
 
 import argparse
@@ -48,7 +51,9 @@ def _command_modules() -> list[ModuleType]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="chat-bridge", description="A RAG demo over market news."
+        prog="chat-bridge",
+        description="A RAG demo over market news. Without a command, it starts the chat "
+        "service on http://127.0.0.1:8000.",
     )
     parser.add_argument(
         "--version", action="version", version=f"chat-bridge {__version__}"
@@ -90,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     handler: Handler | None = getattr(args, "handler", None)
     if handler is None:
-        parser.print_help()
-        return EXIT_OK
+        # Imported here, so `ingest` and `search` do not load the web server.
+        from chat_bridge.chat.server import serve
+
+        return serve()
     return handler(args)

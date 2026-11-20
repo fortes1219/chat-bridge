@@ -20,7 +20,9 @@ uv run chat-bridge
 
 On the first run, uv creates `.venv` inside the repository and installs dependencies from `uv.lock`; if the Python version in `.python-version` is not on your machine, uv downloads it. The dependencies take about 1.2 GB, most of it the CPU-only build of PyTorch. Later runs start directly as long as the dependencies have not changed.
 
-Current status: you can ingest documents and search them from the command line (see the next section). Without arguments, `uv run chat-bridge` lists its commands. The chat page is not built yet.
+Without arguments, `uv run chat-bridge` starts the chat service on http://127.0.0.1:8000 (see "Ask questions" below); `uv run chat-bridge --help` lists the other commands.
+
+Current status: you can ingest documents, search them from the command line, and ask questions through the chat service. The chat page is not built yet.
 
 ## Ingest documents and search them
 
@@ -79,6 +81,35 @@ Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency v
   python3 -m pip install -e .
   chat-bridge
   ```
+
+## Ask questions
+
+Before the first question, ingest the sample data and log in to Claude Code:
+
+```
+uv run chat-bridge ingest data/truth
+claude auth login
+uv run chat-bridge
+```
+
+- `uv run chat-bridge` starts the chat service on http://127.0.0.1:8000. Stop it with Ctrl+C. To try it, open http://127.0.0.1:8000/docs.
+- Send a question with `POST /chat/stream`, as JSON with `Content-Type: application/json`: `{"question": "..."}`. The reply is NDJSON, one JSON object per line:
+  - The first line, `response.context`, lists the sources (file, title, heading, event date) and the newest event date among them, and carries the disclaimer.
+  - The following `response.output_text.delta` lines carry the answer, piece by piece, as it is written.
+  - If the answer fails after the first line, the last line is `{"error": "..."}`.
+- The question is searched as asked, and the eight best sections go to your own Claude Code with the question. Claude Code runs with all of its tools turned off, so it can only write text. It uses your Claude Code login and your plan's usage. `ANTHROPIC_API_KEY` and the other key variables are removed from its environment, so a key in your shell is never used.
+- When the search finds nothing, the reply says that the data has nothing on the question, and Claude Code is not called.
+- The sources and the disclaimer come from the app, not from the model, so the model cannot leave them out.
+- Every question is recorded in the local database with what the search found. `GET /chat/records` lists the newest records; `GET /chat/records?unanswered=true` lists the questions the search found nothing for.
+
+### Only for one person on this machine
+
+- The service only listens on 127.0.0.1, and it refuses a request whose `Host` header is not `127.0.0.1` or `localhost`. That keeps a web page you have open from reaching it through a host name of its own.
+- The embedded database is created without a password: `pixeltable-pgserver` sets that and has no option to change it. On Windows the database listens on a port on 127.0.0.1, so while it runs, any program on this computer can connect to it. Do not run chat-bridge on a computer other people use.
+
+### Prompt injection
+
+A question, or a document you ingest, can contain instructions such as "ignore the rules above". OWASP's Top 10 for LLM applications says no method fully prevents this. So the app limits what a led-astray answer can do: the model has no tools; the sources and the question reach it separately, through standard input, marked as data that cannot change its rules; and the sources and disclaimer are added by the app. What it does not promise is that the model's own text is never led astray.
 
 ## Sample data
 
