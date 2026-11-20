@@ -6,16 +6,14 @@ takes minutes, so it is marked slow.
 
 import asyncio
 import operator
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from chat_bridge.ingest.service import ingest_folder
 from chat_bridge.search.service import SearchHit, search
-from tests.utils import TRUTH_DIR, prepare_local_data, using_local_data
 
 pytestmark = pytest.mark.slow
 
@@ -58,15 +56,6 @@ class YieldCases(BaseModel):
     target: list[Case]
     regression: list[Case]
     not_in_data: list[str]
-
-
-@pytest.fixture(scope="module")
-def knowledge_base(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
-    folder = prepare_local_data(tmp_path_factory.mktemp("yield_local_data"))
-    with using_local_data(folder):
-        report = asyncio.run(ingest_folder(TRUTH_DIR))
-        assert not report.rejected
-        yield
 
 
 def hits_for(question: str, top: int) -> list[SearchHit]:
@@ -113,7 +102,9 @@ def measure(cases: YieldCases) -> tuple[dict[str, int], list[str]]:
     return measured, details
 
 
-def test_search_yield_does_not_fall_below_the_baseline(knowledge_base: None) -> None:
+def test_search_yield_does_not_fall_below_the_baseline(
+    sample_knowledge_base: None,
+) -> None:
     cases = YieldCases.model_validate(
         yaml.safe_load(CASES_FILE.read_text(encoding="utf-8"))
     )

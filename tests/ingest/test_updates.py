@@ -5,19 +5,25 @@ model and the embedded database, so the tests are marked slow.
 """
 
 import asyncio
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import select
 
+from chat_bridge.cli import EXIT_ERROR, main
 from chat_bridge.database import open_engine
 from chat_bridge.ingest.models import Document, SearchEntry, Section
-from chat_bridge.ingest.service import IndexUpdate, IngestReport, ingest_folder
+from chat_bridge.ingest.service import IndexUpdate
 from chat_bridge.search.service import IndexMismatchError, search
-from tests.utils import TRUTH_DIR, prepare_local_data, using_local_data
+from tests.utils import (
+    copy_sample_files,
+    ingest,
+    prepare_local_data,
+    run_sql,
+    using_local_data,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -30,17 +36,10 @@ EDITED_FILE = "2026-11-12-goldman-sees-sp500-8700.md"
 NEW_KEYWORD = "測試專用詞"
 
 
-def ingest(folder: Path) -> IngestReport:
-    return asyncio.run(ingest_folder(folder))
-
-
 @pytest.fixture
 def knowledge_base(tmp_path: Path) -> Iterator[Path]:
     """A folder of three sample files, already ingested into a database of its own."""
-    folder = tmp_path / "truth"
-    folder.mkdir()
-    for name in SAMPLE_FILES:
-        shutil.copyfile(TRUTH_DIR / name, folder / name)
+    folder = copy_sample_files(tmp_path / "truth", SAMPLE_FILES)
     with using_local_data(prepare_local_data(tmp_path / "local_data")):
         report = ingest(folder)
         assert report.index_update == IndexUpdate.ALL
@@ -68,15 +67,6 @@ def stored_embeddings_except(edited: str) -> dict[str, dict[int, list[float] | N
     """Every stored entry's embedding, by file and entry id, for the files not edited."""
     stored = asyncio.run(_stored_embeddings())
     return {path: entries for path, entries in stored.items() if path != edited}
-
-
-def run_sql(statement: str) -> list[Any]:
-    async def run() -> list[Any]:
-        async with open_engine() as engine, engine.begin() as connection:
-            result = await connection.execute(text(statement))
-            return list(result.all()) if result.returns_rows else []
-
-    return asyncio.run(run())
 
 
 def edit(path: Path, old: str, new: str) -> None:
@@ -160,3 +150,17 @@ def test_search_refuses_an_index_built_another_way(
 
     with pytest.raises(IndexMismatchError):
         asyncio.run(search("高盛", 3))
+
+
+def test_a_database_from_an_older_version_is_refused_with_one_line(
+    knowledge_base: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A database made before event dates were stored has no such column.
+    run_sql("ALTER TABLE documents DROP COLUMN event_date")
+
+    assert main(["ingest", str(knowledge_base)]) == EXIT_ERROR
+
+    error = capsys.readouterr().err.strip()
+    assert "documents.event_date is missing" in error
+    assert "run `chat-bridge ingest <folder>` again" in error
+    assert len(error.splitlines()) == 1

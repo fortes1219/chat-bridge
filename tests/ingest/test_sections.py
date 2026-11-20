@@ -1,5 +1,7 @@
 """Splitting Markdown into sections, and taking tables out of a section."""
 
+from datetime import date
+
 import pytest
 
 from chat_bridge.ingest.readers import RejectReason, UnreadableFileError
@@ -92,10 +94,34 @@ def test_without_a_front_matter_title_the_title_falls_back(
 
 
 @pytest.mark.parametrize(
+    ("front_matter", "expected"),
+    [
+        pytest.param("event_date: 2026-11-12", date(2026, 11, 12), id="bare date"),
+        pytest.param('event_date: "2026-11-12"', date(2026, 11, 12), id="quoted date"),
+        pytest.param("title: No date", None, id="no date"),
+    ],
+)
+def test_front_matter_gives_the_event_date(
+    front_matter: str, expected: date | None
+) -> None:
+    document = parse_markdown(
+        f"---\n{front_matter}\n---\nBody.\n", fallback_title="file"
+    )
+
+    assert document.event_date == expected
+
+
+@pytest.mark.parametrize(
     "front_matter",
     [
         pytest.param("title: [unclosed", id="broken YAML"),
         pytest.param("keyword_groups: not a list", id="wrong type"),
+        # PyYAML raises a plain ValueError for these two; the batch must not stop.
+        pytest.param("event_date: 2026-13-45", id="no such month"),
+        pytest.param("event_date: 2026-02-30", id="no such day"),
+        pytest.param('event_date: "2026-02-30"', id="no such day, quoted"),
+        pytest.param("event_date: 2026-11-12 10:00:00", id="date with a time"),
+        pytest.param("event_date: soon", id="not a date"),
     ],
 )
 def test_invalid_front_matter_is_refused(front_matter: str) -> None:
