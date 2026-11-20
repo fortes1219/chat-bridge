@@ -87,9 +87,14 @@ uv run chat-bridge search "Did the Fed raise rates?"
 
 ```
 uv run pytest
-uv run ruff check chat_bridge
-uv run ruff format --check chat_bridge
-uv run mypy chat_bridge
+uv run pytest -m slow
+uv run ruff check chat_bridge tests
+uv run ruff format --check chat_bridge tests
+uv run mypy chat_bridge tests
 ```
+
+- `uv run pytest` 跑不需要模型、也不需要資料庫的測試，幾秒就跑完。
+- `uv run pytest -m slow` 跑標成 slow 的測試：會載入模型、起內嵌的資料庫、導入 `data/truth`，要好幾分鐘。其中一個測試會問 41 題，結果比 `tests/data/search_yield.yaml` 裡量好的基準差就失敗。
+- 測試不碰專案的 `local_data/`，每次執行都用自己的資料夾。只有模型例外：`local_data/models` 已經有模型時，測試透過 huggingface_hub 的 `HF_HUB_CACHE` 設定從那裡讀，不再下載 2.3 GB。要把模型放在別的地方，自己設 `HF_HUB_CACHE` 即可，程式本身也讀同一個設定。
 
 lint、格式與型別檢查的設定照 FastAPI 的 repo。新增依賴用 `uv add <套件>`，會同時更新 `pyproject.toml` 與 `uv.lock`。

@@ -87,9 +87,14 @@ Requires Python 3.11 or later. This path does not use `uv.lock`, so dependency v
 
 ```
 uv run pytest
-uv run ruff check chat_bridge
-uv run ruff format --check chat_bridge
-uv run mypy chat_bridge
+uv run pytest -m slow
+uv run ruff check chat_bridge tests
+uv run ruff format --check chat_bridge tests
+uv run mypy chat_bridge tests
 ```
+
+- `uv run pytest` runs the tests that need neither the embedding model nor the database. They take seconds.
+- `uv run pytest -m slow` runs the tests marked slow. They load the model, start the embedded database, and ingest `data/truth`, which takes several minutes. One of them searches 41 questions and fails if the results get worse than the measured baseline in `tests/data/search_yield.yaml`.
+- Tests never use the project's `local_data/`: each run gets a data folder of its own. The model is the one exception. If `local_data/models` already holds it, the tests read it from there, through huggingface_hub's `HF_HUB_CACHE` setting, instead of downloading 2.3 GB again. Set `HF_HUB_CACHE` yourself to keep the model somewhere else; the app reads the same setting.
 
 The lint, format, and type-check settings follow the FastAPI repository. Add a dependency with `uv add <package>`; it updates both `pyproject.toml` and `uv.lock`.
