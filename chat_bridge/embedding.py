@@ -5,7 +5,9 @@ private-gpt load their default local models. Queries and documents use the same 
 the same input form: bge-m3 needs no query or passage prefix.
 """
 
+import functools
 import logging
+import os
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -39,6 +41,7 @@ MODEL_FILES = (
     "sentencepiece.bpe.model",
 )
 DOWNLOAD_SIZE_NOTE = "about 2.3 GB"
+HUB_CACHE_ENV = "HF_HUB_CACHE"
 
 # A text longer than this is split, so no part is cut off by the model. private-gpt cuts
 # its chunks at 0.9 of the embedding model's window, with no overlap.
@@ -52,7 +55,13 @@ class ModelDownloadError(LocalSetupError):
 
 
 def models_dir() -> str:
-    return str(local_data_dir() / "models")
+    """The Hugging Face cache folder that holds the model.
+
+    HF_HUB_CACHE, huggingface_hub's own setting, picks the folder when it is set, so a
+    model already downloaded there is not downloaded again, as open-webui reads
+    SENTENCE_TRANSFORMERS_HOME. Otherwise the model stays with the app's other data.
+    """
+    return os.environ.get(HUB_CACHE_ENV) or str(local_data_dir() / "models")
 
 
 def is_model_downloaded() -> bool:
@@ -97,12 +106,16 @@ def _model_folder() -> str:
         ) from error
 
 
+@functools.cache
 def load_model() -> "SentenceTransformer":
     """Load bge-m3 on the CPU, downloading the pinned files on first use.
 
     The model is loaded from its local folder, not by repository name. Given a name and a
     repository without safetensors weights, transformers starts a background thread that
     downloads a converted copy of the weights (another 2.3 GB) from a pull request.
+
+    A process loads it once, as open-webui keeps its embedding function for the life of
+    the app; the pinned revision makes every load the same model.
     """
     from sentence_transformers import SentenceTransformer
 
