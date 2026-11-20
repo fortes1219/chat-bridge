@@ -115,6 +115,8 @@ the maintainer's consent, and their output is kept for the delivery.
 
 - [X] T031 [US1] Take the eight best passages instead of three, in `chat_bridge/chat/service.py`; update the README, plan.md and research.md §7 to match
 - [X] T032 [US1] Real run again: the Chinese and the English question of scenarios 1 and 2, after T031 (two model runs; needs the maintainer's consent)
+- [X] T033 [US5] Stop the embedded database when the service shuts down, in the app's lifespan in `chat_bridge/chat/server.py`, with `stop_server()` in `chat_bridge/database.py`; slow test in `tests/chat/test_shutdown.py`
+- [X] T034 Make the write report its dead rows before `VACUUM` runs, in `chat_bridge/ingest/service.py`, so `tests/ingest/test_updates.py::test_a_write_leaves_no_dead_rows` no longer depends on timing
 
 ---
 
@@ -147,15 +149,33 @@ for review.
   the chat, not to the search's ranking, so it does not touch the frozen search. Three came from the
   templates' default. On this data, a question about several events finds its relevant sections in
   the top eight (research.md §7).
+- **The database is stopped in the lifespan's shutdown** (T033).
+  - On Ctrl+C or Ctrl+Break, uvicorn first shuts down, which runs the lifespan's shutdown, and
+    then raises the same signal again to end the process (`uvicorn/server.py:45-50`, `:348-349`
+    in the locked version).
+  - The embedded server package stops the database in an exit hook (`postgres_server.py:98`,
+    `:326-347`), which a process ended by Ctrl+Break never runs.
+  - A FastAPI app releases its database in the lifespan's shutdown: Azure-Samples/rag-postgres-openai-python
+    `ecaafc4` `src/backend/fastapi_app/__init__.py:34-51`.
+  - `stop_server()` calls the package's own cleanup. The package stops the server only when this
+    process is the last one using it, so a server another process still uses keeps running.
+- **The flush goes in the write's own transaction** (T034).
+  - PostgreSQL's manual says `pg_stat_force_next_flush()` flushes the statistics of the calling
+    session when its transaction ends (`doc/src/sgml/monitoring.sgml:5966-5972` at postgres
+    `b6257924b133`).
+  - Each session otherwise reports at most once per `PGSTAT_MIN_INTERVAL` (one second), just before
+    going idle (`monitoring.sgml:236-240`).
+  - The dead rows are counted in the ingest's write session, so a call in the test's own session
+    would not reach them. The call therefore goes last in the write transaction, before `VACUUM`.
+  - PostgreSQL's own regression tests call it before reading statistics (`src/test/regress/sql/stats.sql:113`,
+    `:125`, `:182`).
 
 ## Findings left for later
 
-- **An existing slow test is timing-dependent.** `tests/ingest/test_updates.py::test_a_write_leaves_no_dead_rows`
-  failed once in four runs: 20 dead rows were counted after the write. It passed in the other full
-  run and in two runs on its own. The count comes from PostgreSQL's statistics, and a backend may
-  report its dead rows after `VACUUM` has already reported its own. The rows are cleaned; the count
-  that the test reads can lag. This feature does not change ingest, so the test is left as it is and
-  the finding is reported.
+- **An existing slow test was timing-dependent** (fixed by T034).
+  `tests/ingest/test_updates.py::test_a_write_leaves_no_dead_rows` failed once in four runs: 20 dead
+  rows were counted after the write. The count comes from PostgreSQL's statistics, and the write's
+  session could report its dead rows after `VACUUM` had already reported the table clean.
 
 - **The tags around the sources and the question can be imitated.** A document whose text
   contains `</sources>` can pretend that the sources end there. What holds against it today is
@@ -196,5 +216,21 @@ Two more things the runs showed:
 - **Null fields were dropped from the stream.** A source with no event date lost its `event_date`
   field instead of showing `null`. Fixed in `chat_bridge/chat/router.py`: nulls stay in each line.
 - **Stopping the service with Ctrl+Break left the embedded database running.** The run script
-  stopped it each time with `pg_ctl stop`. Whether Ctrl+C in a terminal stops it cleanly was not
-  checked.
+  stopped it each time with `pg_ctl stop`. Fixed by T033. The run script had also checked the
+  database before the service's Python process finished shutting down: `uv` ends at once on
+  Ctrl+Break, and its child keeps shutting down. So these runs alone do not prove the old behaviour;
+  the code reading in Decisions does.
+
+T033 checks, with no model started:
+- **Windows, Ctrl+Break**: the service was started on an empty data folder, and `GET /chat/records`
+  started the database. After Ctrl+Break the log shows "Application shutdown complete", and once the
+  server had let go of its port, `pg_ctl status` reported no server running.
+- **Linux container, SIGINT (what Ctrl+C sends)**: same steps; `pg_ctl status` exited 3, no server
+  running.
+- Ctrl+C itself was not sent on Windows. Sending it to another process there needs a new console
+  window, and no window is opened during these checks. uvicorn handles Ctrl+C and Ctrl+Break the same
+  way (`server.py:45-50`).
+
+T034 checks, in the container: the test passed in 5 runs in a row, then the full slow suite passed,
+17 tests, search yield 55/0/25/26/2. Before the fix, it had failed once in four runs, so a handful of
+passing runs cannot prove the timing is gone. The fix rests on the mechanism the manual describes.

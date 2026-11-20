@@ -103,6 +103,19 @@ async def open_engine() -> AsyncIterator[AsyncEngine]:
         await engine.dispose()
 
 
+def stop_server() -> None:
+    """Stop the embedded server now if this process is the last one using it.
+
+    The server package stops it at exit. A long-running process calls this as it shuts down,
+    because a process that ends by raising its stop signal again never runs its exit hooks.
+    A server this process never started is left alone.
+    """
+    pgdata = pgdata_dir()
+    if not (pgdata / "PG_VERSION").exists():
+        return
+    get_server(pgdata, start=False).cleanup()
+
+
 def _column_difference(
     name: str, stored: ReflectedColumn | None, expected: Column[Any]
 ) -> str | None:

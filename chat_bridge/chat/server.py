@@ -12,12 +12,16 @@ question without the browser first asking the service for permission. No CORS ru
 that permission is never given.
 """
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from chat_bridge.chat.router import router
 from chat_bridge.cli import EXIT_OK
+from chat_bridge.database import stop_server
 
 HOST = "127.0.0.1"
 # The port FastAPI's own commands use, so the address in its docs and examples is this one.
@@ -25,8 +29,17 @@ PORT = 8000
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    yield
+    # After Ctrl+C or Ctrl+Break, uvicorn shuts down and then raises the same signal again to end
+    # the process. A process ended that way never runs its exit hooks, and the embedded database
+    # stops in one of them, so it is stopped here, while shutting down.
+    stop_server()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="chat-bridge")
+    app = FastAPI(title="chat-bridge", lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.include_router(router)
     return app

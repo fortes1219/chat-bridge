@@ -452,5 +452,10 @@ async def ingest_folder(root: Path) -> IngestReport:
         model = load_model() if prepared or not entries_are_current else None
         async with sessions() as session, session.begin():
             await _store(session, prepared, stale_paths, synonyms, model, report)
+            # A connection reports its dead-row counts to the table statistics at most once a
+            # second, so the write's count could arrive after VACUUM has reported the table
+            # clean, and the statistics would show dead rows that are already gone. This makes
+            # the write report when its transaction ends, before VACUUM runs.
+            await session.execute(text("SELECT pg_stat_force_next_flush()"))
         await vacuum(engine)
     return report
