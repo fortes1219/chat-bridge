@@ -88,8 +88,8 @@ class Page:
 
 
 def _read_pdf_pages(path: Path) -> list[Page]:
-    # Page by page, with each page's own label, as open-webui's default PDF loader reads them.
-    # A page without text, such as a scanned one, is left out.
+    # Each page keeps its own label (roman numerals in a preface, for example), because that is
+    # what a reader finds it by in the original. A page without text, such as a scan, is left out.
     try:
         reader = PdfReader(path)
         labels = reader.page_labels

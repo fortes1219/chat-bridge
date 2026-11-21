@@ -35,9 +35,9 @@ in the Docker container. Only T014 starts Claude Code, with the maintainer's con
 
 - [x] T010 [P] `README.md` and `README_tzh.md`: file types read, the `.odt` refusal, the 512-token passages, the known limits, `data/documents/` and its sources
 - [x] T011 Checks: ruff and mypy; the fast suite on the host; the slow suite in the container
-- [ ] T012 `git ls-files --eol` shows no `w/crlf`; give the maintainer the feature's files with one one-line commit message
-- [ ] T013 Ask the maintainer for consent to T014
-- [ ] T014 Real run: ask the chat the ETF Q&A's first question; record the sources and the answer (SC-006)
+- [x] T012 `git ls-files --eol` shows no `w/crlf`; give the maintainer the feature's files with one one-line commit message
+- [x] T013 Ask the maintainer for consent to T014
+- [x] T014 Real run: ask the chat the ETF Q&A's first question; record the sources and the answer (SC-006)
 
 ## Dependencies
 

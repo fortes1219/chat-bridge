@@ -152,6 +152,17 @@ After the change, in the container (`tests/ingest/test_long_documents.py`, `test
 - the `.odt` is refused with its reason, and the other five files are ingested;
 - the search-yield suite gives the same numbers as before: 55, 0, 25, 26, 2.
 
+Real run (SC-006), with the maintainer's consent: the five sample files ingested into a fresh
+knowledge base on the maintainer's computer, then the ETF Q&A's first question asked once through
+`POST /chat/stream`, answered by Claude Code with its tools off:
+
+- the sources shown are the ETF Q&A's pages 1 to 6, then two pages of the central bank file;
+- the answer explains what an ETF is and how investors buy and sell one, citing source 1 (page 1)
+  for both, and source 2 for creation and redemption in kind; it notes that the document dates
+  from 2003;
+- the reply took 23 s; ingesting the five files took 307 s with four threads;
+- the question and the sections found are kept in the local record, as for every question.
+
 ## Conversion defects
 
 Counted on the four sample PDFs: before is markitdown, the reader until now; after is pypdf
