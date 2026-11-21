@@ -39,25 +39,38 @@ their own unmodified Claude Code or Codex.
 Rationale: someone evaluating the demo who has to install a database or obtain a key will not
 run it.
 
-### III. The Model Sees Only Retrieved Passages
+### III. Raw Documents Go to the Embedding Model
 
-The answering model MUST receive only the passages retrieval returned, with their file name,
-event date and heading path. Raw source files go to the embedding model only. Queries and
-documents MUST use the same local embedding model, and code MUST refuse a mismatch.
+Raw source files go to the embedding model only. The answering model is given what retrieval
+returned, each passage with its file name, event date and heading path, never the raw files.
+Queries and documents MUST use the same local embedding model, and code MUST refuse a mismatch.
 
 Rationale: this is what makes the answer traceable to its sources, and what retrieval is for.
 
 ### IV. Untrusted Content Stays Data
 
-Ingested documents and chat input are data, never instructions. The answering program MUST run
-with every tool off where it has such a switch (Claude Code). Where it has none (Codex), it MUST
-run in its strictest mode, in an empty working folder, and the README MUST say what that mode
-still allows and what the recorded attacks showed. User text and retrieved passages MUST reach
-the program through standard input, never the command line. The disclosure text and the source list MUST be attached by code, not written by
-the model.
+Ingested documents and chat input are data, never instructions. User text and retrieved
+passages MUST reach the answering program through standard input, never the command line. The
+disclosure text and the source list MUST be attached by code, not written by the model.
 
-Rationale: no prompt wording reliably stops injection, so the guarantee is structural: whatever
-the model is talked into, it can only produce text, and it cannot remove the notice or the sources.
+Both answering programs, Claude Code and Codex, have the same permissions, taken from what the
+user must see. Each comes with the feature that needs it.
+
+- They read: the user's question; the retrieved passages, never the raw files; the user's
+  investment profile; the indicators the user set; market numbers the service hands them as data.
+- They may: decide what to search for next, through the service's own search, which returns
+  retrieved passages again; write the answer; hand back a revised strategy in a given format,
+  which the page shows as a diff.
+- They may not: run commands, read or write files, or go online on the user's machine; change the
+  user's profile, because what they hand back is a preview the user accepts or rejects.
+- The service fetches market data, and code computes the numbers in a diff; the model does
+  neither.
+
+The README states what each program runs with and what the recorded attacks showed.
+
+Rationale: no prompt wording reliably stops injection, so the notice and the sources do not
+depend on the model, and nothing a user or a document writes can become a command or reach the
+machine. The model gets what the user's questions need, not less and not more.
 
 ### V. Feature-Based Structure and Clean Code
 
@@ -140,4 +153,4 @@ are made by the maintainer and versioned semantically: a removed or redefined pr
 major change, a new principle or section a minor one, a clarification a patch. Every plan's
 Constitution Check and every review verifies compliance.
 
-**Version**: 2.0.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-21
+**Version**: 3.0.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-22
