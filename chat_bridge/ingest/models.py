@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from chat_bridge.database import Base
-from chat_bridge.embedding import DIMENSIONS
+from chat_bridge.embedding import DIMENSIONS, PASSAGE_TOKEN_LIMIT
 
 # The section that document-wide search text points at.
 LEAD_SECTION_POSITION = 0
@@ -42,11 +42,16 @@ SOURCE_RULES: dict[EntrySource, SourceRule] = {
     EntrySource.TABLE: SourceRule(weight="D", embedded=False),
 }
 
-# How entries are cut from sections and treated. Any change to the sources or their rules
-# changes this text, and a stored index with another layout is rebuilt in full.
+# How entries are cut from sections and treated. Any change to the sources, their rules or the
+# passage size changes this text, and a stored index with another layout is rebuilt in full.
 ENTRY_LAYOUT = ";".join(
-    f"{source}:{rule.weight}:{'embedded' if rule.embedded else 'words'}"
-    for source, rule in SOURCE_RULES.items()
+    [
+        *(
+            f"{source}:{rule.weight}:{'embedded' if rule.embedded else 'words'}"
+            for source, rule in SOURCE_RULES.items()
+        ),
+        f"passage:{PASSAGE_TOKEN_LIMIT}",
+    ]
 )
 
 

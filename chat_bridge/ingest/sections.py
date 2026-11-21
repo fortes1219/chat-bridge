@@ -1,11 +1,13 @@
-"""Read the front matter of a Markdown text and split the rest into sections at its headings.
+"""Turn a file into sections: Markdown at its headings, a PDF by its pages.
 
-The split follows private-gpt, which builds the document tree at h1 to h6. The Markdown
-parser finds the headings, so headings inside code blocks are not mistaken for real ones.
+The Markdown split follows private-gpt, which builds the document tree at h1 to h6. The
+Markdown parser finds the headings, so headings inside code blocks are not mistaken for real
+ones.
 """
 
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 import yaml
 from markdown_it import MarkdownIt
@@ -13,9 +15,18 @@ from markdown_it.token import Token
 from mdit_py_plugins.front_matter import front_matter_plugin
 from pydantic import BaseModel, ConfigDict, Field
 
-from chat_bridge.ingest.readers import RejectReason, UnreadableFileError
+from chat_bridge.ingest.readers import (
+    RejectReason,
+    UnreadableFileError,
+    is_paged,
+    read_markdown,
+    read_pages,
+)
 
 HEADING_PATH_SEPARATOR = " > "
+# A PDF's text has no headings, so each page is a section under its page label, the place a
+# reader looks it up by in the original.
+PAGE_HEADING = "Page {label}"
 
 _PARSER = MarkdownIt("commonmark").use(front_matter_plugin)
 # CommonMark has no tables; the GFM table rule finds them, so a table is recognized by its
@@ -113,6 +124,23 @@ def split_tables(content: str) -> SectionParts:
     ).strip()
     tables = ["\n".join(lines[start:end]).strip() for start, end in table_ranges]
     return SectionParts(text, tables)
+
+
+def read_document(path: Path) -> ParsedDocument:
+    """Read a file into sections, or raise UnreadableFileError.
+
+    A PDF's pages are taken as they are, not parsed as Markdown: in plain text, a line such as
+    a chart axis's lone "-" would turn the paragraph above it into a heading.
+    """
+    if not is_paged(path):
+        return parse_markdown(read_markdown(path), fallback_title=path.stem)
+    sections = [
+        ParsedSection(position, PAGE_HEADING.format(label=page.label), page.text)
+        for position, page in enumerate(read_pages(path))
+    ]
+    return ParsedDocument(
+        title=path.stem, keyword_groups=[], event_date=None, sections=sections
+    )
 
 
 def parse_markdown(text: str, fallback_title: str) -> ParsedDocument:

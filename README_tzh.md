@@ -28,11 +28,17 @@ uv run chat-bridge
 
 ```
 uv run chat-bridge ingest data/truth
+uv run chat-bridge ingest data/documents
 uv run chat-bridge search "台積電 法說會"
 uv run chat-bridge search "Did the Fed raise rates?"
 ```
 
-- `ingest <資料夾>` 讀取資料夾與子資料夾裡所有 `.docx`、`.pdf`、`.txt`、`.md` 檔，轉成 Markdown，依標題切段，存進內嵌的 PostgreSQL 資料庫。和上次比內容沒變的檔會跳過。
+- `ingest <資料夾>` 讀取資料夾與子資料夾裡所有 `.docx`、`.doc`、`.pdf`、`.txt`、`.md` 檔，轉成 Markdown，依標題切段，存進內嵌的 PostgreSQL 資料庫。和上次比內容沒變的檔會跳過。
+- 每種格式都用現成的套件讀：PDF 用 [pypdf](https://github.com/py-pdf/pypdf)，Word 97 的 `.doc` 用 [office-oxide](https://pypi.org/project/office-oxide/)，`.docx` 用 [markitdown](https://github.com/microsoft/markitdown)。OpenDocument 的 `.odt` 不讀，會提示另存成 `.docx` 或 PDF。
+- 一節的文字在算向量之前，超過 512 個 bge-m3 token 的部分由 [langchain-text-splitters](https://pypi.org/project/langchain-text-splitters/) 在段落、換行、句子的地方切開，每一段都帶著那一節的標題路徑。表格不切。
+- PDF 一頁一頁讀，每一頁成為一節，標題是它的頁碼（`Page 3`），所以搜尋找到的是那一頁，不是整份文件。頁面的文字當成純文字，不當成 Markdown 解析。
+- `data/documents/` 放了幾份台灣金融主管機關與央行的真實長文件，可以拿來試。每份的來源與能公開的依據寫在 [docs/sample_documents.md](docs/sample_documents.md)。
+- PDF 轉換時會掉什麼，列在 [specs/005-long-documents/research.md](specs/005-long-documents/research.md)。例如：PDF 裡的表格、圖表標籤、頁碼與頁首頁尾會留在那一頁的文字裡；目錄會留在文字裡；PDF 在中文詞中間換行的地方可能多一個空格。拿 12 個被切開的詞去比對，含有這些詞的 128 頁，關鍵字全部對得上。
 - 讀不到的檔會列出檔名與原因，其他檔照樣存進去。包括不支援的檔案類型、不是 UTF-8 的文字檔、沒有文字層的 PDF。不做 OCR。
 - `search <問題>` 列出最符合的段落，每段附檔名、事件日期、標題路徑與一段內文。用 `--limit` 改列出幾段（預設 5 段）。沒有任何段落符合時，會明講資料裡沒有。
 - `search <問題> --as-of 2026-07-31` 只查事件發生在那一天（含）以前的檔，用來看「當時知道什麼」。日期取自 Markdown 檔 front matter 的 `event_date`。沒有這個欄位的檔不列入這種查詢，輸出會講有幾個檔因此沒列入。Word 和 PDF 沒有 front matter，要列入就先轉成 Markdown、加上 `event_date`。

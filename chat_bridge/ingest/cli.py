@@ -45,7 +45,8 @@ def _run(args: argparse.Namespace) -> int:
 
 def register(commands: Commands) -> None:
     ingest = commands.add_parser(
-        "ingest", help="convert and store a folder of .docx, .pdf, .txt and .md files"
+        "ingest",
+        help="convert and store a folder of .docx, .doc, .pdf, .txt and .md files",
     )
     ingest.add_argument(
         "folder", type=Path, help="the folder to ingest; subfolders are included"

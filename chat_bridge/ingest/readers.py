@@ -1,12 +1,23 @@
-"""Turn one file into Markdown text. The reader is picked by file extension, as in private-gpt."""
+"""Read one file. The reader is picked by file extension, as in private-gpt.
+
+Each format is read by a package: markitdown for `.docx`, office-oxide for Word 97 `.doc`, and
+pypdf for PDF. None of them needs a program installed beside Python. No OCR is done.
+
+Word and text files become Markdown. A PDF becomes its pages: its text layer is plain text,
+not Markdown, and has no headings to cut it by.
+"""
 
 import codecs
 import functools
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import office_oxide
 from markitdown import MarkItDown, MarkItDownException
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 # private-gpt checks the first 8 KB of a text file for NUL bytes to catch binary files.
 BINARY_PROBE_BYTES = 8192
@@ -19,6 +30,7 @@ class RejectReason(StrEnum):
     BINARY = "binary content in a text file"
     CONVERSION_FAILED = "conversion to Markdown failed"
     INVALID_FRONT_MATTER = "invalid front matter"
+    OPENDOCUMENT = "OpenDocument text is not read; save it as .docx or PDF"
 
 
 class UnreadableFileError(Exception):
@@ -55,28 +67,88 @@ def _convert_with_markitdown(path: Path) -> str:
     try:
         result = _markitdown().convert(path)
     except MarkItDownException as error:
-        first_line = (
-            str(error).strip().splitlines()[0]
-            if str(error).strip()
-            else type(error).__name__
-        )
-        raise UnreadableFileError(RejectReason.CONVERSION_FAILED, first_line) from error
+        raise UnreadableFileError(
+            RejectReason.CONVERSION_FAILED, _first_line(error)
+        ) from error
     markdown: str = result.markdown
     return markdown
 
 
+def _first_line(error: Exception) -> str:
+    text = str(error).strip()
+    return text.splitlines()[0] if text else type(error).__name__
+
+
+@dataclass(frozen=True)
+class Page:
+    """One page of a PDF: its label as the document numbers it, and its text."""
+
+    label: str
+    text: str
+
+
+def _read_pdf_pages(path: Path) -> list[Page]:
+    # Page by page, with each page's own label, as open-webui's default PDF loader reads them.
+    # A page without text, such as a scanned one, is left out.
+    try:
+        reader = PdfReader(path)
+        labels = reader.page_labels
+        pages = [
+            Page(labels[index], (page.extract_text() or "").strip())
+            for index, page in enumerate(reader.pages)
+        ]
+    except (PyPdfError, OSError) as error:
+        raise UnreadableFileError(
+            RejectReason.CONVERSION_FAILED, _first_line(error)
+        ) from error
+    return [page for page in pages if page.text]
+
+
+def _convert_word_97(path: Path) -> str:
+    try:
+        markdown: str = office_oxide.to_markdown(str(path))
+    except office_oxide.OfficeOxideError as error:
+        raise UnreadableFileError(
+            RejectReason.CONVERSION_FAILED, _first_line(error)
+        ) from error
+    return markdown
+
+
 Reader = Callable[[Path], str]
+PageReader = Callable[[Path], list[Page]]
 
 READERS: dict[str, Reader] = {
     ".md": _read_text,
     ".txt": _read_text,
     ".docx": _convert_with_markitdown,
-    ".pdf": _convert_with_markitdown,
+    ".doc": _convert_word_97,
 }
+PAGE_READERS: dict[str, PageReader] = {".pdf": _read_pdf_pages}
+# Types that are recognised but not read, each with what the person can do instead. This demo
+# does not read OpenDocument text: the maintainer decided so, and the report says how to convert.
+REFUSED_TYPES: dict[str, RejectReason] = {".odt": RejectReason.OPENDOCUMENT}
 
 
 def is_supported(path: Path) -> bool:
-    return path.suffix.lower() in READERS
+    return path.suffix.lower() in READERS or is_paged(path)
+
+
+def is_paged(path: Path) -> bool:
+    """Whether the file is read as pages rather than as Markdown."""
+    return path.suffix.lower() in PAGE_READERS
+
+
+def read_pages(path: Path) -> list[Page]:
+    """Return the pages that have text, or raise UnreadableFileError. No OCR is done."""
+    pages = PAGE_READERS[path.suffix.lower()](path)
+    if not pages:
+        raise UnreadableFileError(RejectReason.NO_TEXT)
+    return pages
+
+
+def unsupported_reason(path: Path) -> RejectReason:
+    """Why a file that has no reader is not read."""
+    return REFUSED_TYPES.get(path.suffix.lower(), RejectReason.UNSUPPORTED_TYPE)
 
 
 def read_markdown(path: Path) -> str:
@@ -84,7 +156,7 @@ def read_markdown(path: Path) -> str:
     reader = READERS.get(path.suffix.lower())
     if reader is None:
         raise UnreadableFileError(
-            RejectReason.UNSUPPORTED_TYPE, path.suffix or "(no extension)"
+            unsupported_reason(path), path.suffix or "(no extension)"
         )
     text = reader(path)
     if not text.strip():

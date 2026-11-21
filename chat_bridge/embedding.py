@@ -19,7 +19,8 @@ from chat_bridge.errors import LocalSetupError
 if TYPE_CHECKING:
     # Importing sentence-transformers loads PyTorch, which takes several seconds. As in
     # open-webui, it is imported where the model is loaded, so commands that compute no
-    # vector do not pay for it.
+    # vector do not pay for it. The passage splitter is imported the same way.
+    from langchain_text_splitters import TextSplitter
     from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "BAAI/bge-m3"
@@ -43,9 +44,24 @@ MODEL_FILES = (
 DOWNLOAD_SIZE_NOTE = "about 2.3 GB"
 HUB_CACHE_ENV = "HF_HUB_CACHE"
 
-# A text longer than this is split, so no part is cut off by the model. private-gpt cuts
-# its chunks at 0.9 of the embedding model's window, with no overlap.
-CHUNK_WINDOW_SHARE = 0.9
+# A passage holds at most this many tokens of text. bge-m3 reads up to 8,192 tokens, but one
+# vector for a long text stands for too many things at once to be found by any one of them.
+PASSAGE_TOKEN_LIMIT = 512
+# Where a passage may end, tried in this order. Chinese has no spaces between words, so without
+# its full stops and commas a cut could fall in the middle of a word.
+PASSAGE_SEPARATORS = (
+    "\n\n",
+    "\n",
+    " ",
+    ".",
+    ",",
+    "\u200b",  # zero-width space
+    "\uff0c",  # fullwidth comma
+    "\u3001",  # ideographic comma
+    "\uff0e",  # fullwidth full stop
+    "\u3002",  # ideographic full stop
+    "",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,27 +138,28 @@ def load_model() -> "SentenceTransformer":
     return SentenceTransformer(_model_folder(), device="cpu")
 
 
-def _chunk_tokens(model: "SentenceTransformer") -> int:
-    # bge-m3's configuration sets the window (8192 tokens); without it, the split is unknown.
-    if model.max_seq_length is None:
-        raise RuntimeError(f"{MODEL_NAME} has no max_seq_length in its configuration")
-    return int(model.max_seq_length * CHUNK_WINDOW_SHARE)
+@functools.cache
+def _passage_splitter(model: "SentenceTransformer") -> "TextSplitter":
+    # Length is counted with the embedding model's own tokenizer, because the limit is on what
+    # that model reads.
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    return RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+        model.tokenizer,
+        chunk_size=PASSAGE_TOKEN_LIMIT,
+        chunk_overlap=0,
+        separators=list(PASSAGE_SEPARATORS),
+    )
 
 
 def split_for_model(model: "SentenceTransformer", text: str) -> list[str]:
-    """Split a text into parts the model reads in full, cutting at token boundaries."""
-    limit = _chunk_tokens(model)
-    encoded: Any = model.tokenizer(
-        text, add_special_tokens=False, return_offsets_mapping=True
-    )
-    offsets: list[tuple[int, int]] = encoded["offset_mapping"]
-    if len(offsets) <= limit:
+    """Split a text into passages of at most PASSAGE_TOKEN_LIMIT tokens, at natural breaks.
+
+    A text that already fits is returned as it is, so short sections are stored unchanged.
+    """
+    if len(model.tokenizer.tokenize(text)) <= PASSAGE_TOKEN_LIMIT:
         return [text]
-    parts: list[str] = []
-    for first in range(0, len(offsets), limit):
-        window = offsets[first : first + limit]
-        parts.append(text[window[0][0] : window[-1][1]])
-    return parts
+    return _passage_splitter(model).split_text(text)
 
 
 def embed_documents(

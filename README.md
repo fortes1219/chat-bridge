@@ -28,11 +28,17 @@ Current status: you can ingest documents, search them from the command line, and
 
 ```
 uv run chat-bridge ingest data/truth
+uv run chat-bridge ingest data/documents
 uv run chat-bridge search "台積電 法說會"
 uv run chat-bridge search "Did the Fed raise rates?"
 ```
 
-- `ingest <folder>` reads every `.docx`, `.pdf`, `.txt`, and `.md` file in the folder and its subfolders. It converts each file to Markdown, splits it at the headings, and stores the sections in an embedded PostgreSQL database. A file that has not changed since the last run is skipped.
+- `ingest <folder>` reads every `.docx`, `.doc`, `.pdf`, `.txt`, and `.md` file in the folder and its subfolders. It converts each file to Markdown, splits it at the headings, and stores the sections in an embedded PostgreSQL database. A file that has not changed since the last run is skipped.
+- Each format is read by a package: [pypdf](https://github.com/py-pdf/pypdf) for PDF, [office-oxide](https://pypi.org/project/office-oxide/) for Word 97 `.doc`, and [markitdown](https://github.com/microsoft/markitdown) for `.docx`. An OpenDocument `.odt` file is refused with a note to save it as `.docx` or PDF.
+- Before a section's text is embedded, text longer than 512 bge-m3 tokens is cut into passages by [langchain-text-splitters](https://pypi.org/project/langchain-text-splitters/), at paragraph, line and sentence breaks. Each passage carries the section's heading path. Tables are not cut.
+- A PDF is read page by page and each page becomes a section under its page label (`Page 3`), so a search finds the page, not the whole document. Its text is taken as plain text, not Markdown.
+- `data/documents/` holds real long documents from Taiwan's financial regulators and central bank, to try this on. [docs/sample_documents.md](docs/sample_documents.md) gives each file's source and why it may be republished.
+- What a PDF loses in conversion is listed in [specs/005-long-documents/research.md](specs/005-long-documents/research.md). For example, a PDF's tables, chart labels, page numbers and running headers stay in the page text, a table of contents stays as text, and where a line broke inside a Chinese word there may be a space. On twelve such words, keyword search still matched all 128 pages that hold them.
 - A file that cannot be read is listed with the reason, and the other files are still stored. This covers unsupported file types, text files that are not UTF-8, and PDFs without a text layer. No OCR is done.
 - `search <question>` lists the sections that match best, each with its file, event date, heading path, and a snippet. Use `--limit` to change how many are listed (the default is 5). When no section matches, the command says that the data has none.
 - `search <question> --as-of 2026-07-31` searches only the files whose event happened on or before that day, to see what was known at the time. The date comes from `event_date` in a Markdown file's front matter. A file without one is left out of such a search, and the output says how many were left out. Word and PDF files have no front matter, so convert one to Markdown and add `event_date` to include it.

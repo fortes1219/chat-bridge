@@ -39,9 +39,9 @@ from chat_bridge.ingest.readers import (
     RejectReason,
     UnreadableFileError,
     is_supported,
-    read_markdown,
+    unsupported_reason,
 )
-from chat_bridge.ingest.sections import ParsedDocument, parse_markdown, split_tables
+from chat_bridge.ingest.sections import ParsedDocument, read_document, split_tables
 from chat_bridge.synonyms import Synonyms, load_synonyms
 from chat_bridge.tokenizer import (
     DICTIONARY_BLOB_SHA1,
@@ -160,7 +160,7 @@ def _collect(root: Path, report: IngestReport) -> list[_Candidate]:
         if not is_supported(path):
             detail = path.suffix or "(no extension)"
             report.rejected.append(
-                Rejection(source_path, RejectReason.UNSUPPORTED_TYPE, detail)
+                Rejection(source_path, unsupported_reason(path), detail)
             )
             continue
         candidates.append(_Candidate(source_path, path, file_sha256(path)))
@@ -171,9 +171,7 @@ def _prepare(changed: Sequence[_Candidate], report: IngestReport) -> list[_Prepa
     prepared: list[_Prepared] = []
     for candidate in changed:
         try:
-            document = parse_markdown(
-                read_markdown(candidate.path), fallback_title=candidate.path.stem
-            )
+            document = read_document(candidate.path)
         except UnreadableFileError as error:
             report.rejected.append(
                 Rejection(candidate.source_path, error.reason, error.detail)
@@ -216,8 +214,10 @@ async def _add_entries(
     """Write the search entries of the given documents' sections. None means every document.
 
     The text of an entry goes to the model as it is, as RAGFlow sends the original text.
-    Only sources that SOURCE_RULES marks as embedded are embedded, all in one batched call;
-    the text of an entry that is not embedded is never split for the model.
+    Only sources that SOURCE_RULES marks as embedded are embedded, all in one batched call. An
+    embedded text longer than a passage is split into passages first, and each passage carries
+    the section's heading path, so a piece from the middle of a section is still found by its
+    heading. A text that is not embedded, such as a table, is never split.
     """
     query = select(
         Section.id,
@@ -229,29 +229,25 @@ async def _add_entries(
     if document_ids is not None:
         query = query.where(Section.document_id.in_(document_ids))
 
-    texts: list[tuple[int, EntrySource, str]] = []
+    # Each text with the heading path it is found by; the keyword list has none.
+    texts: list[tuple[int, EntrySource, str, str]] = []
     for row in (await session.execute(query)).all():
         content = split_tables(row.content)
         if content.text:
-            texts.append(
-                (row.id, EntrySource.SECTION, section_text(row.heading, content.text))
-            )
+            texts.append((row.id, EntrySource.SECTION, row.heading, content.text))
         texts.extend(
-            (row.id, EntrySource.TABLE, section_text(row.heading, table))
-            for table in content.tables
+            (row.id, EntrySource.TABLE, row.heading, table) for table in content.tables
         )
         if row.position == LEAD_SECTION_POSITION and row.keyword_groups:
             texts.append(
-                (row.id, EntrySource.KEYWORDS, keyword_text(row.keyword_groups))
+                (row.id, EntrySource.KEYWORDS, "", keyword_text(row.keyword_groups))
             )
 
     parts = [
-        (section_id, source, part)
-        for section_id, source, full_text in texts
-        for part in (
-            split_for_model(model, full_text)
-            if SOURCE_RULES[source].embedded
-            else [full_text]
+        (section_id, source, section_text(heading, piece))
+        for section_id, source, heading, text in texts
+        for piece in (
+            split_for_model(model, text) if SOURCE_RULES[source].embedded else [text]
         )
     ]
     if not parts:

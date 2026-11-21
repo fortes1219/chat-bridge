@@ -51,7 +51,7 @@ the passages, and search for the sentences below.
 3. **Given** the Article 70-1 Q&A is ingested, **When** the search is run for its own first question, "本法第70條之1規範之對象包括哪些?", **Then** the passage holding its answer is among the first 8 results.
 4. **Given** the AI guidelines are ingested, **When** the search is run for "落實透明性與可解釋性", **Then** a passage from that chapter is among the first 8 results, and it does not come from the table of contents.
 5. **Given** the central bank material is ingested, **When** the search is run for "第2戶購屋貸款成數", **Then** a passage that states the loan-to-value figure is among the first 8 results.
-6. **Given** a passage found in scenarios 2 to 5, **When** it is read, **Then** it shows the chapter or section heading it sits under wherever the PDF itself marks headings (an outline, linked contents, or larger type), and no sentence in it is split across table cells.
+6. **Given** a passage found in scenarios 2 to 5, **When** it is read, **Then** it shows where it is in the document: its heading where the document has headings, or its page in a PDF; and no sentence in it is split across table cells.
 
 ---
 
@@ -114,8 +114,8 @@ hunting for files.
 ### Edge Cases
 
 - A scanned PDF with no text layer: refused as today, with the reason. No OCR.
-- A PDF whose pages are mostly charts: the chart labels do not become passages of their own.
-- A document with real tables: the table stays a table and stays with the text around it.
+- A PDF whose pages are mostly charts: whatever the PDF reader makes of the chart labels is kept and listed as a known limit; no rule of our own removes it.
+- A document with real tables: a Word table stays a table. A PDF is read as text, so its tables become lines of text on their page; this is a known limit.
 - A very long document (hundreds of pages): ingest finishes, and its cost grows with the document's length, not with the size of the knowledge base.
 - A document changed and ingested again: its old passages are replaced, as today.
 - A document with headings (hand-written Markdown, a Word file with heading styles): still cut at its headings; the size limit applies only inside a section that is too long.
@@ -124,31 +124,31 @@ hunting for files.
 
 ### Functional Requirements
 
-- **FR-001**: A document MUST be cut into passages whose text does not exceed a stated limit, whether or not the text has headings. Where the text has headings they are still used first. A table does not count toward the text limit; a table longer than a stated number of rows is cut into batches of that many rows.
-- **FR-002**: A cut MUST fall at a natural break (the end of a paragraph, a question, a sentence), never in the middle of a sentence when a break exists within reach.
-- **FR-003**: Each passage MUST carry the heading it sits under wherever the document marks headings: Markdown headings, a PDF outline, a linked table of contents, or larger type. A question or title set in the same type as the body text is not recognised as a heading; it stays in the passage text, and that is a known limit.
-- **FR-004**: Text that is not content (table-of-contents dot leaders, lines of one to three characters from chart axes, page numbers, repeated page headers) is removed where a cited rule removes it. What remains after the feature is listed in `research.md` as a known limit, with examples.
-- **FR-005**: Ordinary sentences MUST NOT be stored as table rows. Real tables stay tables.
+- **FR-001**: A document MUST be cut into passages whose text does not exceed a stated limit, counted in the embedding model's tokens, whether or not the text has headings. Where the text has headings they are still used first. Tables are not cut and do not count toward the limit; they are searched by keywords, as today.
+- **FR-002**: A cut MUST fall at a natural break (a paragraph, a line, a sentence end), as the splitting package finds them, before it falls inside a sentence.
+- **FR-003**: Each passage MUST carry where it is in the document. A document with headings is cut at its headings and each passage carries its heading path. A PDF is read as the text of its pages, as it is read by default in the projects followed; each page is a section labelled with its page label, and the page text is not taken as Markdown. A heading is not required: where a document has neither headings nor pages, the heading is left empty.
+- **FR-004**: Text that is not content (page numbers, running headers, table-of-contents leaders, chart labels) is left as the reader produces it. No rule of our own removes it. What remains is listed in `research.md` as known limits, with examples and counts.
+- **FR-005**: Ordinary sentences MUST NOT be stored as table rows. Word tables stay tables; a PDF's tables are read as text lines.
 - **FR-006**: `.docx`, `.pdf` and `.doc` MUST be read. `.doc` is Word's older format and is what official Word documents are actually published in. It is read through a library that installs with the project's own dependencies; nothing beyond Python, Node.js and the logged-in assistant program may be required on the reader's machine ("clone and run"). If measurement on the sample `.doc` shows the library cannot read it usefully, `.doc` is refused with a reason and a way forward, and that is reported as a known limit.
-- **FR-013**: `.odt` is not a Word format and is not read. It MUST be refused with a reason that says so and what the person can do (save it as `.docx` or PDF). Reading it elsewhere means shipping a separate converter program of 25 MB or more under another licence, which this demo does not take on.
+- **FR-013**: `.odt` is not a Word format and this demo does not read it; that is the maintainer's decision. It MUST be refused with a reason that says so and what the person can do (save it as `.docx` or PDF).
 - **FR-007**: No file may be skipped without being named in the report with its reason.
 - **FR-008**: The sample market events MUST ingest and search exactly as before: same passages, same yield numbers.
 - **FR-009**: The repository MUST carry the sample long documents in their own folder, apart from the market events, with a source list giving for each file its address, publisher, date retrieved and the basis for republishing.
 - **FR-010**: A list of conversion defects MUST be delivered in `research.md`: for each kind of defect, the documents it was seen in, an example, the count before and after, and whether it was fixed or is a known limit.
-- **FR-011**: Every rule this feature adds (the size limit, where to cut, what to remove, how each file type is read) MUST come from a precedent cited in `research.md`, with the numbers measured on the sample documents before and after.
+- **FR-011**: How each file type is read and how text is cut MUST come from an installed package listed in the `## Packages` table of `research.md`, with a project that depends on it and calls it. The values given to those packages (the limit, the separators) MUST cite their source. The numbers measured on the sample documents before and after are recorded there.
 - **FR-012**: No OCR is added.
 
 ### Key Entities
 
 - **Sample document**: a real document shipped with the demo; its file, source address, publisher, date retrieved, basis for republishing.
-- **Passage**: as today, plus the limit on its length and the heading or question it sits under when the text itself had no Markdown headings.
+- **Passage**: as today, plus the limit on its length; a passage from a PDF carries its page label as its heading.
 - **Conversion defect**: a document, a place in it, what the original shows, what came out, fixed or known limit.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: Each of the four sample PDFs yields more than one passage, no passage has more text than the stated limit, and no table passage has more rows than the stated number (today: 370,787, 49,260, 6,113 and 5,676 characters in one passage each).
+- **SC-001**: Each of the four sample PDFs yields more than one passage, and no passage has more text than the stated limit (today: 370,787, 49,260, 6,113 and 5,676 characters in one passage each).
 - **SC-002**: All four searches of User Story 1 return the expected passage among the first 8 results.
 - **SC-003**: Every sample Word file is either searchable or reported with a reason and a way forward; 0 files are skipped in silence.
 - **SC-004**: After the feature, the sample market events give the same passage count and the same yield numbers (55 of 60, 0 of 60, 25 of 26, 26 of 26, 2 of 3).
