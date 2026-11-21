@@ -18,9 +18,9 @@ costs the time to find out why nobody does it that way.
 ### II. Clone and Run
 
 After cloning, one command MUST start the demo: `uv run chat-bridge`. The reader's machine is
-assumed to have Python, Node.js and their own logged-in Claude Code, and nothing else. `uv.lock`
-is committed. The demo MUST NOT use the author's API key or login: whoever runs it uses their own
-unmodified Claude Code.
+assumed to have Python, Node.js and their own logged-in Claude Code or Codex, and nothing else.
+`uv.lock` is committed. The demo MUST NOT use the author's API key or login: whoever runs it uses
+their own unmodified Claude Code or Codex.
 
 Rationale: someone evaluating the demo who has to install a database or obtain a key will not
 run it.
@@ -35,9 +35,11 @@ Rationale: this is what makes the answer traceable to its sources, and what retr
 
 ### IV. Untrusted Content Stays Data
 
-Ingested documents and chat input are data, never instructions. The model MUST run with all
-tools off. User text and retrieved passages MUST reach it through standard input, never the
-command line. The disclosure text and the source list MUST be attached by code, not written by
+Ingested documents and chat input are data, never instructions. The answering program MUST run
+with every tool off where it has such a switch (Claude Code). Where it has none (Codex), it MUST
+run in its strictest mode, in an empty working folder, and the README MUST say what that mode
+still allows and what the recorded attacks showed. User text and retrieved passages MUST reach
+the program through standard input, never the command line. The disclosure text and the source list MUST be attached by code, not written by
 the model.
 
 Rationale: no prompt wording reliably stops injection, so the guarantee is structural: whatever
@@ -78,6 +80,29 @@ reported as measured, together with what they measure.
 - Tracked files, images and containers MUST NOT contain secrets, credentials, personal data or
   machine-specific details. A container mounts only the files it needs, read-only.
 
+## Frontend Standards
+
+The page is built to the maintainer's engineering standard. A plan that departs from any of these
+is changed, not justified.
+
+- **Contract first, with zod and oRPC.** Every call to the service is declared once as a contract
+  whose inputs and outputs are zod schemas, and is made through an oRPC client. Types are inferred
+  from the contract and are never written a second time.
+- **Server state through TanStack Query.** Loading, error, caching and cancellation come from it;
+  no component keeps its own copy of request state.
+- **Real-time data over Socket.IO.** Live market quotes arrive on a Socket.IO connection. Chat
+  answers do not: they stream in the response to the POST that asked.
+- **At most three levels.** Components nest at most three levels deep, composables at most three,
+  routes at most three, and i18n message keys at most three.
+- **Feature folders.** A feature keeps its pages, components and composables together. Only
+  mechanisms with no business content are shared.
+- **Vue as written here.** `<script setup lang="ts">` only; `computed` before `watch`; no `any`;
+  repeated things are data with one loop in the template; every request can be cancelled; what must
+  survive a reload (language, filters, the open tab) lives in the address.
+- **One component set.** Nuxt UI with its chat components, on Tailwind. No second component set.
+  Markdown from the model or a document is rendered with sanitising on.
+- **Both languages.** Every text of the page exists in Traditional Chinese and English.
+
 ## Development Workflow
 
 - Work follows Spec Kit: specify, clarify, plan, tasks, implement, converge. Code for a feature
@@ -100,4 +125,4 @@ are made by the maintainer and versioned semantically: a removed or redefined pr
 major change, a new principle or section a minor one, a clarification a patch. Every plan's
 Constitution Check and every review verifies compliance.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-20
+**Version**: 1.2.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-20
