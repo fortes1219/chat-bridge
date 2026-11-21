@@ -8,12 +8,26 @@ or rejects. It is a local, single-user demo, not a product.
 
 ### I. Ecosystem Precedent First
 
-Every non-trivial approach MUST cite an open-source precedent in the feature's `research.md`
-before it is built: repository, commit, file and line. An approach with no precedent MUST NOT be
-invented; it is recorded as a `[NEEDS CLARIFICATION]` marker and stops at the maintainer.
+Every need a feature adds MUST be met by an installable package that other open-source projects
+already depend on. Our code calls the package and connects it to the rest; it does not rewrite
+another project's internals, and following someone else's code line by line does not count as a
+precedent.
 
-Rationale: an approach copied from a project that already works costs a lookup; an invented one
-costs the time to find out why nobody does it that way.
+Before any code is written, the feature's `research.md` MUST have a `## Packages` table with one
+row per need and these columns:
+
+| Need | Package | Version | License | Size | Dependency declared in | Called in |
+|---|---|---|---|---|---|---|
+
+The last two columns cite a project that depends on the package and calls it, as
+`owner/repo@commit:path:line`. GPL and AGPL packages are not used. When no package meets a need,
+or the lookup is not done, the row says `none` and the work stops: the gap is reported to the
+maintainer, not written by hand. The repository's guard hook refuses code edits while the table
+is missing, incomplete, cites no commit and line, names a GPL or AGPL license, or has a `none`
+row.
+
+Rationale: a package that others depend on has been tested by their users. A hand-written copy
+of another project's internals has not, and it carries that project's license.
 
 ### II. Clone and Run
 
@@ -106,8 +120,9 @@ is changed, not justified.
 ## Development Workflow
 
 - Work follows Spec Kit: specify, clarify, plan, tasks, implement, converge. Code for a feature
-  is not edited until its `spec.md`, `plan.md` and `tasks.md` exist and neither the spec nor the
-  plan carries a `[NEEDS CLARIFICATION]` marker.
+  is not edited until its `spec.md`, `plan.md` and `tasks.md` exist, neither the spec nor the
+  plan carries a `[NEEDS CLARIFICATION]` marker, and its `research.md` has the complete
+  `## Packages` table of Principle I.
 - The maintainer approves a feature once, at its spec and plan. After that the work runs to the
   end of the task list. Conflicts and ambiguities met on the way are decided, recorded with the
   reason, and reviewed afterwards; they do not stop the work.
@@ -125,4 +140,4 @@ are made by the maintainer and versioned semantically: a removed or redefined pr
 major change, a new principle or section a minor one, a clarification a patch. Every plan's
 Constitution Check and every review verifies compliance.
 
-**Version**: 1.2.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-20
+**Version**: 2.0.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-21
