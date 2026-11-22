@@ -153,7 +153,7 @@ Codex, run the one command and open the page.
 ### Functional Requirements
 
 - **FR-001**: The service MUST serve a chat page at the address it prints on start.
-- **FR-002**: The page MUST send the question to the chat endpoint and show the response as it streams: sources first, then the answer text piece by piece. The endpoint streams Server-Sent Events, the streaming form the page's contract layer reads; what it accepts and refuses does not change (FR-009).
+- **FR-002**: The page MUST send the question to the chat endpoint and show the response as it streams: sources first, then the answer text piece by piece. The endpoint streams Server-Sent Events, which the page's request module reads; what it accepts and refuses does not change (FR-009).
 - **FR-003**: The page MUST show, for every answer, each source's number, file name, heading and event date, the latest date the sources reach, and the fixed notice exactly as the service sends it.
 - **FR-004**: The page MUST let the user stop an answer that is being written.
 - **FR-005**: The page MUST render the answer's Markdown, and MUST neither run nor load anything that an answer or a source contains: scripts, event handlers, `javascript:` and `data:` links, frames and embedded objects are removed or shown as text.
@@ -161,7 +161,7 @@ Codex, run the one command and open the page.
 - **FR-011**: On opening, the page MUST read the login state of each supported assistant program (Claude Code, Codex) from the service before drawing the chat or the strategy screen. With neither logged in, it MUST show only each program's state and next step and a button that reads the states again; it MUST NOT check by itself on a timer, and MUST NOT run any login command. With at least one logged in, it shows the chat and the strategy screen. Unknown is never treated as logged in. The check reads only what each program reports about itself; it never opens their credential files, and the page never shows the program's own status text.
 - **FR-012**: The page MUST say which program answers, and when both are logged in MUST let the user choose. The chosen program is part of the page's address. Answering with Codex is provided by feature 004.
 - **FR-007**: Every text of the page MUST exist in Traditional Chinese and English, and the chosen language MUST survive a reload and be part of the page's address.
-- **FR-008**: `uv run chat-bridge` MUST remain the only command needed. Preparing the page is done by that command, once, and a missing Node.js is reported as such.
+- **FR-008**: `uv run chat-bridge` MUST remain the only command needed. Preparing the page is done by that command, once, and a missing Node.js, or one too old to still get security fixes, is reported as such.
 - **FR-009**: The page MUST NOT change what the chat endpoint accepts or refuses: requests still carry a JSON content type, and the service still refuses other hosts and other origins.
 - **FR-010**: The page shows one question and its answer at a time as independent exchanges; earlier exchanges stay on screen during the visit, and no conversation history is sent to the model.
 - **FR-013**: The chat MUST be the main part of the page, with a place for the strategy screen beside it. In a narrow window the strategy screen moves into a drawer the user opens. What the strategy screen shows is a separate feature; until it exists, its place says so.

@@ -26,8 +26,18 @@ maintainer, not written by hand. The repository's guard hook refuses code edits 
 is missing, incomplete, cites no commit and line, names a GPL or AGPL license, or has a `none`
 row.
 
+Every package version and every runtime version (Python, Node.js) MUST be free of known security
+advisories whose fix it has not reached. Before a version is chosen it is checked against the
+OSV database, which gathers the GitHub, PyPI and npm advisories, and the result is recorded in the
+feature's `research.md` under `## Advisories` with the date. A runtime is held to a release line
+that still gets security fixes, at that line's latest security release. The locks are checked
+again before each delivery: `npm audit` for the page, an OSV check of `uv.lock` for the service.
+A version with an unfixed advisory is not used; when no fixed version exists, the work stops and
+the gap is reported to the maintainer.
+
 Rationale: a package that others depend on has been tested by their users. A hand-written copy
-of another project's internals has not, and it carries that project's license.
+of another project's internals has not, and it carries that project's license. A version with a
+known flaw has been tested too, and found wanting.
 
 ### II. Clone and Run
 
@@ -112,9 +122,11 @@ reported as measured, together with what they measure.
 The page is built to the maintainer's engineering standard. A plan that departs from any of these
 is changed, not justified.
 
-- **Contract first, with zod and oRPC.** Every call to the service is declared once as a contract
-  whose inputs and outputs are zod schemas, and is made through an oRPC client. Types are inferred
-  from the contract and are never written a second time.
+- **Contract first, with zod and oRPC.** The data layer has four parts: zod schemas, each strict;
+  an oRPC contract that declares each call once and from which the types are inferred, never
+  written a second time; API functions that check every response, and every streamed event,
+  against its schema where it enters the page; and one request module that does the transport.
+  A response that does not match is an error, never data.
 - **Server state through TanStack Query.** Loading, error, caching and cancellation come from it;
   no component keeps its own copy of request state.
 - **Real-time data over Socket.IO.** Live market quotes arrive on a Socket.IO connection. Chat
@@ -153,4 +165,4 @@ are made by the maintainer and versioned semantically: a removed or redefined pr
 major change, a new principle or section a minor one, a clarification a patch. Every plan's
 Constitution Check and every review verifies compliance.
 
-**Version**: 3.0.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-22
+**Version**: 3.1.0 | **Ratified**: 2026-11-20 | **Last Amended**: 2026-11-22

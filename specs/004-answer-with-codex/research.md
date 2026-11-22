@@ -85,6 +85,14 @@ Notes on the citations:
   the program's own text, which can include an account address.
 - **Rationale**: the program reports on itself; credential files are never opened.
 
+### 4b. Key variables
+
+- `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN` and `OPENAI_API_KEY` are the variables Codex reads for a
+  key or token (`codex-rs/login/src/auth/manager.rs:994-996` at `rust-v0.166.0`); they are removed
+  from its environment. A key the person saved in Codex itself (`codex login --with-api-key`) is
+  their own sign-in: `codex login status` exits 0 for it too and prints "API key configured"
+  (`codex-rs/cli/src/login.rs:505-520`), and the answer is then billed to that key.
+
 ### 5. Stopping Codex
 
 - **Decision**: when an answer runs past the time limit, the client goes away, or the login

@@ -35,4 +35,11 @@ neither program. Tasks marked "Real run" start the maintainer's own Codex, only 
 - [x] T009 Checks: ruff, mypy, the fast suite on the host, the slow suite in the container
 - [x] T010 Ask the maintainer for consent to T011, in one list
 - [x] T011 Real run: the five runs of research.md, with Codex only; keep each response and record (SC-001, SC-003 to SC-005)
-- [ ] T012 `git ls-files --eol` shows no `w/crlf`; give the maintainer the feature's files with one one-line commit message
+- [x] T012 `git ls-files --eol` shows no `w/crlf`; give the maintainer the feature's files with one one-line commit message
+
+## Phase 5: Review follow-ups (2026-11-22, done before the chat page, feature 003)
+
+- [ ] T013 `codex._stop`: use the processes `psutil.wait_procs` reports still alive; if any are, the stop fails with a `CodexError` naming them; a process that cannot be killed (`AccessDenied`) is reported the same way, not skipped. Test: a child that survives the kill makes the stop fail
+- [ ] T014 `codex.login_status`: a `codex` refused because it is in the service's folder is `unknown` with the reason, not `not installed`; only "not found on PATH" is `not installed`. Test both
+- [ ] T015 `service.answer_stream`: an error that is neither a refusal nor a program error (an `OSError` when starting the program, for one) is recorded with the question before it is raised, for both programs, as feature 001 requires for every question. Test: such an error leaves a record with the error
+- [ ] T016 `README.md` and `README_tzh.md`: the answer uses the sign-in stored in the person's own program, which is their plan or an API key they saved in that program themselves (`codex login status` exits 0 for both, `codex-rs/cli/src/login.rs:505-520` at `rust-v0.166.0`); keys in the shell are removed. research.md cites the three key variables (`codex-rs/login/src/auth/manager.rs:994-996`)
