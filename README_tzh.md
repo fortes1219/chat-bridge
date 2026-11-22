@@ -105,7 +105,7 @@ uv run chat-bridge
   - 第一行 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與其中最新的事件日期，寫明由哪個程式回答，並帶著揭露文字。
   - 接下來的 `response.output_text.delta` 是答案。Claude Code 寫出一段就送一段；Codex 要等整段寫完才一次送出，因為 Codex 自己就是這樣回報的。
   - 第一行之後才失敗的話，最後一行是 `{"error": "..."}`。
-- 問題照原樣拿去檢索，最符合的八段連同問題一起交給你自己的 Claude Code 或 Codex；用的是你自己的登入與你的方案額度。金鑰變數會從它的環境裡拿掉（Claude Code 是 `ANTHROPIC_API_KEY` 等，Codex 是 `CODEX_API_KEY`、`CODEX_ACCESS_TOKEN`、`OPENAI_API_KEY`），所以你的 shell 裡就算設了金鑰也不會被用到。
+- 問題照原樣拿去檢索，最符合的八段連同問題一起交給你自己的 Claude Code 或 Codex；用的是你自己的 Claude Code 或 Codex 裡存的登入：你的方案額度，或是你自己存進那個程式的 API key，這時費用就算在那個 key 上。金鑰變數會從它的環境裡拿掉（Claude Code 是 `ANTHROPIC_API_KEY` 等，Codex 是 `CODEX_API_KEY`、`CODEX_ACCESS_TOKEN`、`OPENAI_API_KEY`），所以你的 shell 裡就算設了金鑰也不會被用到。
 - 兩個程式各自怎麼跑：
   - Claude Code 的工具全部關掉，只能寫文字。
   - Codex 會執行指令、讀寫檔案、上網的工具全部關掉：shell、終端機、看圖片、產生圖片、操作電腦、瀏覽器、apps、外掛、網頁搜尋。它在一個為這次回答建立的空資料夾裡跑，不讀你的 `config.toml`（登入照樣有效），也不留對話紀錄。它的改檔工具關不掉，靠唯讀沙箱擋住寫入。每個參數與它在 Codex 原始碼裡的出處，寫在 [specs/004-answer-with-codex/research.md](specs/004-answer-with-codex/research.md)。

@@ -195,3 +195,24 @@ def test_each_codex_state_without_a_login_has_its_own_message(state: Login) -> N
     assert len({*service.CODEX_NO_LOGIN_MESSAGES.values()}) == len(
         service.CODEX_NO_LOGIN_MESSAGES
     )
+
+
+def test_an_unexpected_error_still_leaves_the_question_on_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    written = _logins(monkeypatch, Login.LOGGED_IN, Login.LOGGED_IN)
+
+    async def cannot_start(
+        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+    ) -> AsyncIterator[str]:
+        raise OSError("the program was moved")
+        yield ""  # pragma: no cover - makes this an async generator
+
+    monkeypatch.setattr(codex, "stream_answer", cannot_start)
+
+    _, error = _ask(Program.CODEX)
+
+    assert isinstance(error, OSError)
+    [record] = written
+    assert record["error"] == "OSError: the program was moved"
+    assert record["program"] == Program.CODEX

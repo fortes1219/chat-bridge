@@ -5,6 +5,7 @@ import json
 import shutil
 import sys
 import time
+from contextlib import suppress
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,21 @@ def test_a_codex_in_the_service_folder_is_refused_not_run(
         REAL_FIND_EXECUTABLE()
 
 
+def test_a_refused_codex_is_unknown_with_its_reason_not_uninstalled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    planted = tmp_path / "codex.cmd"
+    planted.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name: str(planted))
+    monkeypatch.setattr(codex, "find_executable", REAL_FIND_EXECUTABLE)
+
+    status = asyncio.run(codex.login_status())
+
+    assert status.state is Login.UNKNOWN
+    assert "folder the service runs from" in status.detail
+
+
 # A launcher that starts a child holding its output pipe, as npm's Codex launcher on Windows
 # starts node, which starts Codex. Each waits long enough that only a kill ends it.
 LAUNCHER = (
@@ -81,28 +97,63 @@ LAUNCHER = (
 )
 
 
+async def _start_launcher() -> tuple[asyncio.subprocess.Process, list[psutil.Process]]:
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        LAUNCHER,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    launcher = psutil.Process(process.pid)
+    deadline = time.monotonic() + 10
+    while not launcher.children() and time.monotonic() < deadline:
+        await asyncio.sleep(0.1)
+    below: list[psutil.Process] = launcher.children(recursive=True)
+    assert below, "the launcher did not start its child"
+    return process, below
+
+
 def test_a_stop_ends_codex_and_everything_it_started() -> None:
     async def run() -> list[psutil.Process]:
-        process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-c",
-            LAUNCHER,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        launcher = psutil.Process(process.pid)
-        deadline = time.monotonic() + 10
-        while not launcher.children() and time.monotonic() < deadline:
-            await asyncio.sleep(0.1)
-        below: list[psutil.Process] = launcher.children(recursive=True)
-        assert below, "the launcher did not start its child"
+        process, below = await _start_launcher()
         await codex._stop(process)
         return below
 
     below = asyncio.run(run())
 
     assert not [child for child in below if child.is_running()]
+
+
+def test_a_stop_that_leaves_a_process_running_fails_and_names_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # psutil reports every process below Codex as still alive after the kill, as it would for
+    # one the kill could not end.
+    def none_ended(
+        procs: list[psutil.Process], timeout: float
+    ) -> tuple[list[psutil.Process], list[psutil.Process]]:
+        return [], list(procs)
+
+    monkeypatch.setattr(psutil, "wait_procs", none_ended)
+
+    async def run() -> tuple[list[psutil.Process], Exception | None]:
+        process, below = await _start_launcher()
+        try:
+            await codex._stop(process)
+        except codex.CodexError as error:
+            return below, error
+        return below, None
+
+    below, error = asyncio.run(run())
+    for child in below:  # already killed; nothing is left behind by the test
+        with suppress(psutil.NoSuchProcess):
+            child.kill()
+
+    assert isinstance(error, codex.CodexError)
+    assert "left processes running" in str(error)
+    assert str(below[0].pid) in str(error)
 
 
 @pytest.mark.parametrize(

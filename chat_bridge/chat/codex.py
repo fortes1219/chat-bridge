@@ -93,6 +93,11 @@ class CodexError(ProgramError):
     """Codex could not be run, or it reported an error. The message says which."""
 
 
+class CodexNotFoundError(CodexError):
+    """No `codex` on PATH. Only this means not installed; a `codex` that was found but refused
+    is a different state."""
+
+
 def child_env() -> dict[str, str]:
     """This process's environment without the key variables."""
     return {
@@ -109,7 +114,7 @@ def find_executable() -> str:
     """
     found = shutil.which("codex")
     if found is None:
-        raise CodexError("Codex is not installed")
+        raise CodexNotFoundError("Codex is not installed")
     if Path(found).resolve().is_relative_to(Path.cwd().resolve()):
         raise CodexError(
             f"the codex found is in the folder the service runs from: {found}"
@@ -150,9 +155,15 @@ async def _stop(process: Process) -> None:
         below = []
     process.kill()
     for child in below:
-        with suppress(psutil.NoSuchProcess):
+        # One that cannot be killed is left for the check below, which reports it.
+        with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
             child.kill()
-    await asyncio.to_thread(psutil.wait_procs, below, timeout=STOP_TIMEOUT_SECONDS)
+    _, alive = await asyncio.to_thread(
+        psutil.wait_procs, below, timeout=STOP_TIMEOUT_SECONDS
+    )
+    if alive:
+        pids = ", ".join(str(child.pid) for child in alive)
+        raise CodexError(f"Codex left processes running after the stop: {pids}")
     try:
         await asyncio.wait_for(process.wait(), STOP_TIMEOUT_SECONDS)
     except TimeoutError:
@@ -165,8 +176,10 @@ async def login_status() -> LoginStatus:
     """The local login as an answer sees it. Never raises."""
     try:
         executable = find_executable()
-    except CodexError as error:
+    except CodexNotFoundError as error:
         return LoginStatus(Login.NOT_INSTALLED, str(error))
+    except CodexError as error:
+        return LoginStatus(Login.UNKNOWN, str(error))
     try:
         process = await _start([executable, "login", "status"], with_input=False)
     except OSError as error:

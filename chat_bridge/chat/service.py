@@ -304,6 +304,11 @@ async def answer_stream(
         with anyio.CancelScope(shield=True):
             await record(CUT_OFF)
         raise
+    except Exception as error:
+        # Anything else, such as a program that could not be started, still leaves the
+        # question on record before it reaches the client.
+        await record(f"{type(error).__name__}: {error}")
+        raise
     await record(None)
 
 

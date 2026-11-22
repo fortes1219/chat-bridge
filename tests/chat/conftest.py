@@ -12,6 +12,6 @@ from chat_bridge.chat import codex
 @pytest.fixture(autouse=True)
 def codex_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     def missing() -> str:
-        raise codex.CodexError("Codex is not installed")
+        raise codex.CodexNotFoundError("Codex is not installed")
 
     monkeypatch.setattr(codex, "find_executable", missing)
