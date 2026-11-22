@@ -3,17 +3,17 @@ revision = 5
 requires-python = ">=3.11.5"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version < '3.12' and sys_platform != 'darwin'",
     "python_full_version >= '3.15' and sys_platform == 'darwin'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin'",
+    "python_full_version < '3.12' and sys_platform != 'darwin'",
     "python_full_version < '3.12' and sys_platform == 'darwin'",
 ]
 
@@ -55,6 +55,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a1/98/7e457a3b014976887a050561955c0b76e1e7e2d6e27b78ecef2ef80518f2/anyio-4.16.0.tar.gz", hash = "sha256:59bb03251907983d1603d27c3087ddb1e93299ea2163adcdba37899a4fb12ffb", size = 310971, upload-time = "2026-11-01T11:20:07.282Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/16/7757fb84c819accc7d7e9af5291b261e4abb8627ee040f99e7d35ef2457a/anyio-4.16.0-py3-none-any.whl", hash = "sha256:c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026", size = 134521, upload-time = "2026-11-01T11:20:05.59Z" },
+]
+
+[[package]]
+name = "ast-grep-cli"
+version = "0.51.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/69/7dce459258997e24f0bc33d24b4e3c12dc019c4a90287bb3a824c9ed4458/ast_grep_cli-0.51.3.tar.gz", hash = "sha256:7c65ed276be0f90084637c1ec42e79b25b3ca0e44e895678990652b0da40c277", size = 301527, upload-time = "2026-11-16T04:16:49.406Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2f/14/7619860b72623b8254a300a5434f77151b021cac8b093e544920a1871da9/ast_grep_cli-0.51.3-py3-none-macosx_10_12_universal2.macosx_10_12_x86_64.macosx_11_0_arm64.whl", hash = "sha256:927f9f3e80935dad08081560dde6e5e33e0c3a3075273dcee3a3abb4232eebcf", size = 17446947, upload-time = "2026-11-16T04:16:31.006Z" },
+    { url = "https://files.pythonhosted.org/packages/de/46/3fea65141c00cd4bd048f4adaed514e381e9c10eb152eae364cdbd1bee8f/ast_grep_cli-0.51.3-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:681c955b4b62d2486d803f59c609b74263445b8d8d723df9a8b1dcf3a3c79744", size = 8753534, upload-time = "2026-11-16T04:16:33.992Z" },
+    { url = "https://files.pythonhosted.org/packages/87/a1/045a6ad3de14e517d1ee13f3ef71543414b12e733c604718717da3e51cba/ast_grep_cli-0.51.3-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:cd68636516f9d131b908016ab6514057fba31401f81022c8df7385fdd308ff89", size = 8571921, upload-time = "2026-11-16T04:16:36.268Z" },
+    { url = "https://files.pythonhosted.org/packages/27/68/3ca6c654dccc5ee792bec196e76fb419ed641cba98f165ff149e457d813b/ast_grep_cli-0.51.3-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:c66a670ec71850bbdd01d5c519f4dad4a1c42194226225a2ee600a9ea6a6bdc7", size = 8924557, upload-time = "2026-11-16T04:16:38.784Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/3f/dba0fe390e01062f3711859cdfd5df32c0b245fd45372f34c3fb210c3eef/ast_grep_cli-0.51.3-py3-none-win32.whl", hash = "sha256:b39b1bd33010e6f840848827f0cd5a036e1f8a333cf4f807aafaf3d0fbf09bbc", size = 16794202, upload-time = "2026-11-16T04:16:41.187Z" },
+    { url = "https://files.pythonhosted.org/packages/68/c7/dab5607ff18b72bf1a4c176e2f70a0cde5da98ad1de1e1de73593498d13c/ast_grep_cli-0.51.3-py3-none-win_amd64.whl", hash = "sha256:073f51f01daebaa74c28b62ef822d94c9a6285274a4084cc36c81656baee6c0a", size = 17915839, upload-time = "2026-11-16T04:16:44.202Z" },
+    { url = "https://files.pythonhosted.org/packages/1f/6b/9b3e01290d9ea021d0df9b2aa018b5bec0ee7cedf7ba49bd3c053705c1cd/ast_grep_cli-0.51.3-py3-none-win_arm64.whl", hash = "sha256:6f9f59a07be81c2f4a4a15666d6731cd493dd9403553bf490ce09d8cf9d1eba7", size = 17148624, upload-time = "2026-11-16T04:16:46.894Z" },
 ]
 
 [[package]]
@@ -388,6 +403,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "ast-grep-cli" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
@@ -416,6 +432,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ast-grep-cli", specifier = ">=0.51.3" },
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pytest" },
     { name = "ruff", specifier = ">=0.17.5" },
@@ -1776,15 +1793,15 @@ version = "3.7"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version >= '3.15' and sys_platform == 'darwin'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
@@ -1881,15 +1898,15 @@ version = "2.5.5"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version >= '3.15' and sys_platform == 'darwin'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4e/3a/8770c288c47f0b5c2a786d3c20e79f66fd245f2d42cd232d7cd5e00e83e5/numpy-2.5.5.tar.gz", hash = "sha256:5cddc243c75114ba845f01b1f87aca1572dbf7b6c2d88636ed3e1d2bccd7f1bf", size = 20873892, upload-time = "2026-11-15T21:32:28.607Z" }
@@ -3103,15 +3120,15 @@ version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin'",
-    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version >= '3.15' and sys_platform == 'darwin'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform == 'darwin'",
 ]
 dependencies = [
@@ -3455,10 +3472,10 @@ source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform != 'darwin'",
     "python_full_version == '3.14.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
-    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.14.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
+    "python_full_version == '3.13.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.13.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
+    "python_full_version == '3.12.*' and sys_platform == 'emscripten'",
     "python_full_version == '3.12.*' and sys_platform != 'darwin' and sys_platform != 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'darwin'",
 ]

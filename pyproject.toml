@@ -33,6 +33,7 @@ chat-bridge = "chat_bridge.cli:main"
 
 [dependency-groups]
 dev = [
+    "ast-grep-cli>=0.51.3",
     "mypy>=2.4.1",
     "pytest",
     "ruff>=0.17.5",
