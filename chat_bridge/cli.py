@@ -52,8 +52,8 @@ def _command_modules() -> list[ModuleType]:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="chat-bridge",
-        description="A RAG demo over market news. Without a command, it starts the chat "
-        "service on http://127.0.0.1:8000.",
+        description="A RAG demo over market news. Without a command, it builds the chat page "
+        "if needed and serves it with the chat service on http://127.0.0.1:8000.",
     )
     parser.add_argument(
         "--version", action="version", version=f"chat-bridge {__version__}"

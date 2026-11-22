@@ -14,14 +14,17 @@ that permission is never given.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from chat_bridge import web
 from chat_bridge.chat.router import router
-from chat_bridge.cli import EXIT_OK
+from chat_bridge.cli import EXIT_OK, print_error
 from chat_bridge.database import stop_server
+from chat_bridge.errors import LocalSetupError
 
 HOST = "127.0.0.1"
 # The port FastAPI's own commands use, so the address in its docs and examples is this one.
@@ -38,14 +41,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop_server()
 
 
-def create_app() -> FastAPI:
+def create_app(page: Path | None = None) -> FastAPI:
+    """The service, and the built chat page at `/` when `page` names its folder."""
     app = FastAPI(title="chat-bridge", lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.include_router(router)
+    if page is not None:
+        # After the service's routes, so the page's fallback never answers for them.
+        web.mount_page(app, page)
     return app
 
 
 def serve() -> int:
-    """Run the chat service until it is stopped with Ctrl+C."""
-    uvicorn.run(create_app(), host=HOST, port=PORT)
+    """Build the chat page if needed, then run the service until it is stopped with Ctrl+C."""
+    try:
+        page = web.prepare_page()
+    except LocalSetupError as error:
+        return print_error(str(error))
+    uvicorn.run(create_app(page), host=HOST, port=PORT)
     return EXIT_OK

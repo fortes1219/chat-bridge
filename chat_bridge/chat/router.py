@@ -1,16 +1,14 @@
 """The chat endpoints."""
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from chat_bridge.chat import service
 from chat_bridge.chat.schemas import (
-    ChatDelta,
     ChatRecordPublic,
     ChatRequest,
     ProgramState,
@@ -29,40 +27,44 @@ MAX_LIMIT = 10_000
 DEFAULT_LIMIT = 100
 
 
-async def _as_ndjson(deltas: AsyncIterator[ChatDelta]) -> AsyncIterator[str]:
-    """One JSON object per line.
+# The event that ends a stream whose answer failed after it started.
+ERROR_EVENT = "error"
 
-    Once the stream has started, the HTTP status can no longer change, so an error becomes a
-    last line {"error": ...} that the client can still read.
-    """
+
+async def found_sections(request: ChatRequest) -> list[service.FoundSection]:
+    """The search, run as a dependency, so it finishes before the stream starts and a search
+    that cannot run is an HTTP error, not an event."""
     try:
-        async for delta in deltas:
-            # Nulls stay in, so a source without an event date says so instead of losing the field.
-            yield delta.model_dump_json() + "\n"
-    except Exception as error:
-        logger.exception("The answer stream stopped")
-        yield json.dumps({"error": str(error)}, ensure_ascii=False) + "\n"
-
-
-@router.post("/stream")
-async def chat_stream(request: ChatRequest) -> StreamingResponse:
-    """Answer a question from the knowledge base, streamed as NDJSON.
-
-    The search runs before the stream starts, so a search that cannot run is an HTTP error,
-    and the stream itself only waits on the model.
-    """
-    try:
-        sections = await service.find_sections(request.question)
+        return await service.find_sections(request.question)
     except LocalSetupError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     except tuple(KNOWN_ERRORS) as error:
         raise HTTPException(
             status_code=503, detail=KNOWN_ERRORS[type(error)]
         ) from error
-    return StreamingResponse(
-        _as_ndjson(service.answer_stream(request.question, sections, request.program)),
-        media_type="application/x-ndjson",
-    )
+
+
+@router.post("/stream", response_class=EventSourceResponse)
+async def chat_stream(
+    request: ChatRequest,
+    sections: Annotated[list[service.FoundSection], Depends(found_sections)],
+) -> AsyncIterator[ServerSentEvent]:
+    """Answer a question from the knowledge base, streamed as Server-Sent Events.
+
+    The context comes first, then the answer in pieces, one event each. Once the stream has
+    started, the HTTP status can no longer change, so an error becomes a last event named
+    `error` that the client can still read.
+    """
+    try:
+        async for delta in service.answer_stream(
+            request.question, sections, request.program
+        ):
+            # Nulls stay in, so a source without an event date says so instead of losing
+            # the field.
+            yield ServerSentEvent(data=delta.model_dump(mode="json"))
+    except Exception as error:
+        logger.exception("The answer stream stopped")
+        yield ServerSentEvent(event=ERROR_EVENT, data={"message": str(error)})
 
 
 @router.get("/programs")

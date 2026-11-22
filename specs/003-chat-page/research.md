@@ -26,12 +26,15 @@ the first time, then serves it.
 | Server state as an async state machine: pending, error, refetch, cancel | @tanstack/vue-query | 5.108 | MIT | 1.6 MB | `middleapi/orpc@26175d2:playgrounds/nuxt/package.json:19` | `middleapi/orpc@26175d2:playgrounds/nuxt/app/plugins/vue-query.ts:10-23`; `app/components/orpc-stream.vue:2`, `:6` |
 | Every page text in Traditional Chinese and English | vue-i18n | 11.4 | MIT | 1.7 MB | `vbenjs/vue-vben-admin@e726bc9:packages/locales/package.json:31` | `vbenjs/vue-vben-admin@e726bc9:packages/locales/src/i18n.ts:11`, `:22` |
 | Type-check the page | typescript, vue-tsc | 6, 3 | Apache-2.0, MIT | 23.2 MB, 7 KB (build only) | `nuxt-ui-templates/chat-vue@da02783:package.json:48`, `:53` | `nuxt-ui-templates/chat-vue@da02783:package.json:10` |
-| Lint the page | eslint, eslint-plugin-vue, typescript-eslint | 10, 10, 8 | MIT | 2.8 MB, 1.1 MB (dev only) | `nuxt-ui-templates/chat-vue@da02783:package.json:45`, `:47`, `:49` | `nuxt-ui-templates/chat-vue@da02783:package.json:9` |
+| TypeScript settings for Vue in the browser, and Node.js types for the build settings | @vue/tsconfig, @types/node | 0.9.1, 24.19.2 | MIT | 12 KB, 2.5 MB (build only) | `vuejs/create-vue@4a0464c:template/tsconfig/base/package.json:4`; `template/config/typescript/package.json:8` | `vuejs/create-vue@4a0464c:template/tsconfig/base/tsconfig.app.json:2`; `template/tsconfig/base/tsconfig.node.json:19` |
+| Lint the page | eslint, eslint-plugin-vue, @vue/eslint-config-typescript (brings typescript-eslint), @eslint/js, globals, eslint-config-prettier | 10.15.0, 10.12.1, 14.9.0, 10.0.1, 17.14.0, 10.1.8 | MIT | 2.8 MB, 1.1 MB, 84 KB, 15 KB, 253 KB, 58 KB (dev only) | `vuejs/create-vue@4a0464c:template/linting/core/ts/package.json:3-5`; `template/linting/core/js/package.json:3`, `:6`; `template/linting/formatter/package.json:3` | `vuejs/create-vue@4a0464c:template/linting/core/ts/eslint.config.js.ejs:2`, `:13`; `template/linting/core/js/eslint.config.js.ejs:2`, `:19`; `template/linting/formatter/eslint.config.js.data.mjs:7-8` |
+| Build every icon the page names into the page; one it does not name would still be fetched from the Iconify API, and Nuxt UI has no switch to stop that | @iconify-json/lucide | 1.2.158 | ISC | 676 KB | `nuxt/ui@422d015:playgrounds/vue/package.json:23` | `nuxt/ui@422d015:playgrounds/vue/vite.config.ts:3`, `:9`; `docs/content/docs/1.getting-started/6.integrations/1.icons/2.vue.md:84`, `:110-119`, `:126-144`, `:146-148` |
 | Format the page | prettier | 3.10 | MIT | 10.9 MB (dev only) | `vuejs/core@7de9e41:package.json:97` | `vuejs/core@7de9e41:package.json:17-18` |
 | Test the page's layers and views | vitest, @vue/test-utils, happy-dom | 5, 2.6, 21 | MIT | 2.8 MB, 1.4 MB, 8.8 MB (test only) | `vuejs/create-vue@4a0464c:template/config/vitest/package.json:9`, `:11`; `nuxt/ui@422d015:package.json:225` | `vuejs/create-vue@4a0464c:template/config/vitest/src/components/__tests__/HelloWorld.spec.js:1`, `:3`, `:8`; `nuxt/ui@422d015:vitest.config.ts:48` |
 | Stream the answer as Server-Sent Events | fastapi (`fastapi.sse`) | 0.163.2 | MIT | none added: already a dependency | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/pyproject.toml:6` | `fastapi/fastapi@b283119:docs_src/server_sent_events/tutorial001.py:4`, `:22-25` |
 | Serve the built page | fastapi (`StaticFiles`) | 0.163.2 | MIT | none added | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/pyproject.toml:6` | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/fastapi_app/routes/frontend_routes.py:4`, `:11`, `:22` |
 | Build the page with the reader's own Node.js, once, and say so when Node.js is missing or too old | npm (comes with Node.js) | Node.js 22.23.5, 24.22.3 or 26.13.1 or later in the same line | Artistic-2.0 | none added: the reader's own Node.js | `reflex-dev/reflex@df7f157:reflex/utils/js_runtimes.py:25` | `reflex-dev/reflex@df7f157:reflex/utils/js_runtimes.py:818`; `reflex/utils/build.py:297`, `:319-320` |
+| Check the project's own code rules by structure, in Python, TypeScript and the script and template of `.vue` files | ast-grep-cli | 0.51.3 | MIT | 17.9 MB on Windows, 8.9 MB on Linux (dev only) | `langgenius/dify@a7ea6e1:.github/workflows/autofix.yml:105` | `langgenius/dify@a7ea6e1:.github/workflows/autofix.yml:105-108`, `:126` |
 
 Sizes are npm's unpacked sizes of each package's version (2026-11-22), not the size each adds to
 the built page.
@@ -58,9 +61,32 @@ versions the page would install: vue 3.5.46, vite 8.3.8, @vitejs/plugin-vue 6.0.
 4.13.0, tailwindcss 4.3.5, vue-router 5.5.1, @comark/vue 0.9.2, @vueuse/core 14.4.0, zod 4.6.7,
 @orpc/contract 1.16.4, axios 1.21.1, eventsource-parser 4.1.3, @tanstack/vue-query 5.108.2,
 vue-i18n 11.4.23, typescript 6.0.3, vue-tsc 3.3.14, eslint 10.15.0, eslint-plugin-vue 10.12.1,
-prettier 3.10.1, vitest 5.1.1, @vue/test-utils 2.6.0, happy-dom 21.0.4. None has a known
-advisory. The packages they pull in are checked with `npm audit` once `package-lock.json` exists
+prettier 3.10.1, vitest 5.1.1, @vue/test-utils 2.6.0, happy-dom 21.0.4, and, added when the
+page was set up, @vue/tsconfig 0.9.1, @types/node 24.19.2, @vue/eslint-config-typescript 14.9.0,
+@eslint/js 10.0.1, globals 17.14.0, eslint-config-prettier 10.1.8, @iconify-json/lucide 1.2.158.
+None has a known advisory. eslint-config-prettier 10.1.6 and 10.1.7 were published by a hijacked
+account with malware in them (GHSA-f29h-pxvx-f335, MAL-2025-6022); 10.1.8 is the clean release
+after them, and the lock file must
+not hold either of the two.
+
+`npm audit` of the first `package-lock.json` (T006, 2026-11-22) reports five moderate advisories,
+all through one test-only chain: @vue/test-utils 2.6.0 → js-beautify 2.0.3 → glob 13.0.7
+(GHSA-3g3m-2fjr-6pw4) and editorconfig 3.0.2 → minimatch 10.2.6 (GHSA-g3hv-75wg-m249). Fixed
+glob (14.0.2 and later) and minimatch (11.0.1 and later) exist, but js-beautify 2.0.3, its latest
+release, asks for glob ^13 and editorconfig ^3, so no released version reaches them. The fixes
+wait in `beautifier/js-beautify` pull requests 2561 and 2569; @vue/test-utils pull request 3039
+replaces js-beautify altogether. Its maintainers' note on the override they tried (pull request
+3012, not merged) says the flawed code is used only by js-beautify's command line, not by the
+`beautify.html()` that @vue/test-utils calls. None of this is in the built page; it is installed
+for the build and runs only when the page's tests run.
+
+Decision (2026-11-22, the maintainer): keep these versions, as with the embedded PostgreSQL, since
+no released version reaches the fixes. No override is added. Each delivery checks again whether
+js-beautify or @vue/test-utils has a release that does, and moves to it. The packages they pull in are checked with `npm audit` once `package-lock.json` exists
 (T006, and again in T021).
+
+Python dev tool: ast-grep-cli 0.51.3 on PyPI and the `ast-grep` crate it is built from have no
+OSV entry (checked 2026-11-22).
 
 Runtime: Node.js 20 left security support on 2026-04-30. The lines that still get security fixes
 are 22, 24 and 26, whose latest security releases are 22.23.5, 24.22.3 and 26.13.1
@@ -119,19 +145,30 @@ so by name when the installed Node.js is older (decision 3).
 
 ### 2. Markdown
 
-- **Decision**: answers are rendered by `@comark/vue` with its security plugin
-  (`comarkdown/comark@74ba41b:docs/content/4.plugins/1.built-in/security.md:20`, `:37-52`, the
-  fixed sanitising at `:70`), set to:
-  - `blockedTags`: `script`, `iframe`, `object`, `embed`, `link`, `style` (`:194`, `:204-210`);
-  - `allowedProtocols`: `https` and `mailto`, so links the user clicks can only be those;
-  - `allowedImagePrefixes`: an empty list, so no image is loaded from any site, and
-    `allowDataImages`: `false` (`:199`, `:289-299`, `:201`, `:315-321`; the "Block external
-    images" recipe at `:374-381`). An answer or a passage can otherwise make the browser request
-    an outside address that carries data in it.
-  Sources are shown as plain text.
-- **To prove (T012)**: with the hostile test document of spec User Story 2, no script runs, no
-  dialog opens, and no request leaves for another site, an image included. If anything does,
-  stop and report.
+- **Decision**: answers are rendered by `@comark/vue` (`views/chat/components/AnswerMarkdown.ts`,
+  made with `defineMarkdownComponent` as in `nuxt-ui-templates/chat-vue@da02783:src/components/chat/Comark.ts:23-34`):
+  - `registerDefaultPlugins: false`: plain Markdown only. Comark's default plugins (raw HTML,
+    components, attributes, autolinks, alerts, task lists, frontmatter) are off
+    (`comark` 0.9.2 `dist/types.d.ts:537-544`), so raw HTML in an answer is shown as text and a
+    citation such as `[2]` is not read as an inline component;
+  - its security plugin, as a second layer
+    (`comarkdown/comark@74ba41b:docs/content/4.plugins/1.built-in/security.md:20`, `:37-52`, the
+    fixed sanitising at `:70`): `allowedTags` set to the tags plain Markdown produces, with every
+    other tag replaced by its own text through `tagFallback` and `textContent`; `allowedProtocols`
+    `https` and `mailto`; `allowedImagePrefixes` empty and `allowDataImages` `false`, so no image
+    is loaded from any site.
+  `img` is not an allowed tag, so an answer can neither load an image nor name an icon, which
+  Nuxt UI would otherwise fetch from the Iconify API. The renderer parses in an async `setup`,
+  which renders only under `<Suspense>`; `App.vue` wraps the app in it, as the template does
+  (`nuxt-ui-templates/chat-vue@da02783:src/App.vue:17-21`). Sources and the notice are shown as
+  plain text.
+- **Proved by (T015)**: `tests/views/chat/hostile.spec.ts` streams an answer and sources holding
+  the attacks of spec User Story 2 and more (an image with an error handler, a script, a
+  `javascript:` and a `data:` link, an iframe, an object, an embed, a stylesheet link, a style
+  block, an inline style with `url()`, a Markdown image from another site and a data image, an
+  `<a onclick>`, a component name): no dialog opens, `fetch` is never called, no executable or
+  loading element and no `on*` or `style` attribute is in the answer, the sources or the notice,
+  and the only link left is the `https` one. A real run in the browser is still due (T022).
 
 ### 3. Building and serving the page
 
@@ -145,6 +182,10 @@ so by name when the installed Node.js is older (decision 3).
 - **Rationale**: the maintainer's rule is one command on a machine with Python and Node.js, with
   no page built in advance. Serving a Vite build from FastAPI follows the retrieval template
   (`frontend_routes.py:4`, `:11`, `:22`); building on the user's machine follows Reflex.
+  Answering every other address with `index.html` is the server fallback that vue-router's
+  history mode asks for ("If the URL doesn't match any static assets, it should serve the same
+  `index.html` page", router.vuejs.org/guide/essentials/history-mode, read 2026-11-22). A path
+  that leads out of the build gets the page, not the file.
 
 ### 4. The login screen
 

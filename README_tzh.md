@@ -101,10 +101,10 @@ uv run chat-bridge
 
 - `uv run chat-bridge` 會在 http://127.0.0.1:8000 起聊天服務，按 Ctrl+C 停止。想直接試，開 http://127.0.0.1:8000/docs。
 - `GET /chat/programs` 回報 Claude Code 與 Codex 各自有沒有安裝、有沒有登入：`logged in`、`not logged in`、`not installed`，讀不到程式自己回報的狀態時是 `unknown`。不會啟動模型，也不會顯示程式自己的狀態文字，那裡面可能有你的帳號。
-- 用 `POST /chat/stream` 送問題，本文是 JSON，`Content-Type: application/json`：`{"question": "..."}`。要指定由誰回答，加上 `"program": "claude-code"` 或 `"program": "codex"`。沒指定時，Claude Code 有登入就由它回答，否則由 Codex。指定的程式沒登入就拒絕，不會偷偷換成另一個。回應是 NDJSON，一行一個 JSON：
-  - 第一行 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與其中最新的事件日期，寫明由哪個程式回答，並帶著揭露文字。
-  - 接下來的 `response.output_text.delta` 是答案。Claude Code 寫出一段就送一段；Codex 要等整段寫完才一次送出，因為 Codex 自己就是這樣回報的。
-  - 第一行之後才失敗的話，最後一行是 `{"error": "..."}`。
+- 用 `POST /chat/stream` 送問題，本文是 JSON，`Content-Type: application/json`：`{"question": "..."}`。要指定由誰回答，加上 `"program": "claude-code"` 或 `"program": "codex"`。沒指定時，Claude Code 有登入就由它回答，否則由 Codex。指定的程式沒登入就拒絕，不會偷偷換成另一個。回應是 Server-Sent Events 串流（`text/event-stream`），每個事件的 data 是一個 JSON：
+  - 第一個事件 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與其中最新的事件日期，寫明由哪個程式回答，並帶著揭露文字。
+  - 接下來的 `response.output_text.delta` 事件是答案。Claude Code 寫出一段就送一段；Codex 要等整段寫完才一次送出，因為 Codex 自己就是這樣回報的。
+  - 第一個事件之後才失敗的話，最後一個事件名為 `error`，data 是 `{"message": "..."}`。檢索跑不起來時，串流開始之前就拒絕，回 HTTP 503 與 `{"detail": "..."}`。
 - 問題照原樣拿去檢索，最符合的八段連同問題一起交給你自己的 Claude Code 或 Codex；用的是你自己的 Claude Code 或 Codex 裡存的登入：你的方案額度，或是你自己存進那個程式的 API key，這時費用就算在那個 key 上。金鑰變數會從它的環境裡拿掉（Claude Code 是 `ANTHROPIC_API_KEY` 等，Codex 是 `CODEX_API_KEY`、`CODEX_ACCESS_TOKEN`、`OPENAI_API_KEY`），所以你的 shell 裡就算設了金鑰也不會被用到。
 - 兩個程式各自怎麼跑：
   - Claude Code 的工具全部關掉，只能寫文字。

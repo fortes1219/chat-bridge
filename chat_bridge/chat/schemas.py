@@ -51,10 +51,10 @@ class ChatContext(BaseModel):
 
 
 class ChatDelta(BaseModel):
-    """One line of the NDJSON stream.
+    """One event of the answer's Server-Sent Events stream.
 
-    The first line carries the context, so the sources and the disclaimer arrive even when the
-    answer is cut off; each later line carries a piece of the answer.
+    The first event carries the context, so the sources and the disclaimer arrive even when the
+    answer is cut off; each later event carries a piece of the answer.
     """
 
     type: DeltaType
