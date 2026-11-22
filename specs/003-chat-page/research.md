@@ -19,6 +19,7 @@ the first time, then serves it.
 | Language and program in the address | vue-router | 5 | MIT | 1.3 MB | `nuxt-ui-templates/chat-vue@da02783:package.json:37` | `nuxt-ui-templates/chat-vue@da02783:src/main.ts:5`, `:16-19` |
 | Render the answer's Markdown, with scripts, handlers, unsafe links and outside images removed | @comark/vue | 0.9.2 | MIT | 62 KB | `nuxt-ui-templates/chat-vue@da02783:package.json:19` | `nuxt-ui-templates/chat-vue@da02783:src/components/chat/Comark.ts:1` |
 | Copy a login command | @vueuse/core | 14 | MIT | 883 KB | `nuxt-ui-templates/chat-vue@da02783:package.json:26` | `nuxt-ui-templates/chat-vue@da02783:src/components/chat/ChatVisibility.vue:4`, `:18`, `:68` |
+| Type the answer on screen frame by frame, follow the system's reduced-motion setting, and read the browser's preferred languages | @vueuse/core (`useRafFn`, `usePreferredReducedMotion`, `usePreferredLanguages`) | 14.4.0 | MIT | none added: already a dependency | `unovue/reka-ui@4dc1a23:packages/core/package.json:97` | `unovue/reka-ui@4dc1a23:packages/core/src/Toast/ToastRootImpl.vue:56`, `:92`; `vueuse/vueuse@24160f9:packages/core/usePreferredLanguages/demo.vue:4`; `packages/core/usePreferredReducedMotion/demo.vue:4` |
 | Schemas of every request, response and streamed event, checked at the boundary | zod | 4.6.7 | MIT | 5.9 MB | `middleapi/orpc@26175d2:playgrounds/contract-first/package.json:23` | `middleapi/orpc@26175d2:playgrounds/contract-first/src/contract/sse.ts:2`, `:11` |
 | The contract: each route's method, path and schemas, with types inferred from it | @orpc/contract | 1.16.4 | MIT | 90 KB | `middleapi/orpc@26175d2:playgrounds/contract-first/package.json:13` | `middleapi/orpc@26175d2:playgrounds/contract-first/src/contract/sse.ts:1`, `:4-11` |
 | The request module's one transport, for JSON calls and the chat stream (its fetch adapter returns the response body as a stream) | axios | 1.21 | MIT | 2.1 MB | `vbenjs/vue-vben-admin@e726bc9:packages/effects/request/package.json:28` | `vbenjs/vue-vben-admin@e726bc9:packages/effects/request/src/request-client/request-client.ts:7`, `:76` |
@@ -162,13 +163,24 @@ so by name when the installed Node.js is older (decision 3).
   which renders only under `<Suspense>`; `App.vue` wraps the app in it, as the template does
   (`nuxt-ui-templates/chat-vue@da02783:src/App.vue:17-21`). Sources and the notice are shown as
   plain text.
+- **Decision, code blocks**: every code block is drawn with Nuxt UI's `hideHeader`, set by the
+  renderer's `transformNode` hook (`comark` 0.9.2 `dist/types.d.ts:216-219`, `:243-261`). A code
+  fence can name a file (```` ```py [a.ext] ````); Comark passes it to `ProsePre` as `filename`
+  (`comark` 0.9.2 `dist/internal/parse/tree-utils.js:8-68`), whose header shows it with an icon
+  picked from the extension, falling back to `i-vscode-icons-file-type-<extension>`
+  (`@nuxt/ui` 4.13.0 `dist/runtime/components/prose/Pre.vue:41-45`, `prose/CodeIcon.vue`). That
+  icon set is not built into the page, so the browser asked `api.iconify.design` for a name the
+  answer chose; measured in Edge before the change, and no request left 127.0.0.1 after it. The
+  security plugin does not remove `filename`. The code and its copy button, a built-in icon,
+  stay.
 - **Proved by (T015)**: `tests/views/chat/hostile.spec.ts` streams an answer and sources holding
   the attacks of spec User Story 2 and more (an image with an error handler, a script, a
   `javascript:` and a `data:` link, an iframe, an object, an embed, a stylesheet link, a style
   block, an inline style with `url()`, a Markdown image from another site and a data image, an
   `<a onclick>`, a component name): no dialog opens, `fetch` is never called, no executable or
   loading element and no `on*` or `style` attribute is in the answer, the sources or the notice,
-  and the only link left is the `https` one. A real run in the browser is still due (T022).
+  and the only link left is the `https` one; a code block that names a file is drawn without
+  the name. A real run in the browser is still due (T022).
 
 ### 3. Building and serving the page
 
@@ -226,6 +238,38 @@ so by name when the installed Node.js is older (decision 3).
   plain message objects and a `status` (`chat-messages.md:13`, `:39-71`, `:80`) and
   `UChatPrompt`, which does not send twice while an answer streams (`chat-prompt.md:29`).
   Components emit to the page; they do not call the API.
+- **Decision, the chat column**: one CSS grid of three rows filling the window
+  (`grid-rows-[auto_minmax(0,1fr)_auto]`): the bar with the program choice and the language switch
+  on top, the conversation in the middle row, which alone scrolls, and the question box at the
+  bottom. The chat panel's root is `display: contents`, so its conversation and its question box
+  are the grid's two lower rows. The question box is not in `UChatMessages`' footer, as the chat
+  template puts it, because there it sits inside the scrolling area. Without a footer the list's
+  scroll-to-bottom button is placed by its `viewport` slot; it is set to stick to the bottom of the
+  conversation's row. The list shows that button only while the reader is 100 px or more from the
+  end (`nuxt/ui` 4.13.0 `dist/runtime/components/ChatMessages.vue`, `checkScrollPosition`), and
+  docs say it "appears when scrolled up" (`nuxt/ui@422d015:docs/content/docs/2.components/chat-messages.md:32`),
+  so it never covers the end of an answer.
+- **Decision, colors**: the page is always dark, in VS Code's default dark theme, Dark Modern
+  (`microsoft/vscode@f31439d:extensions/theme-defaults/themes/dark_modern.json`, MIT). Its values
+  are set on Nuxt UI's color variables under `.dark` in `main.css`, the way Nuxt UI documents
+  (`nuxt/ui@422d015:docs/content/docs/1.getting-started/5.theme/2.css-variables.md:324`, `:334`):
+  the conversation `#1F1F1F` (`editor.background`, :33), the bars `#181818` (`titleBar`, `panel`,
+  `sideBar` backgrounds, :126, :65, :83), the question box `#313131` with a `#3C3C3C` border
+  (`input.*`, :51, :52), borders `#2B2B2B` (`panel.border`, :66), the question's bubble and menus
+  `#2B2B2B` (`textCodeBlock.background`, :120), text `#CCCCCC` (`foreground`, :49), muted text
+  `#9D9D9D` (`descriptionForeground`, :28), placeholders `#989898` (:54), errors `#F85149` (:47).
+  The accent is `#4DAAFC` (`textLink.foreground`, :122), not the button blue `#0078D4` (:15):
+  Nuxt UI draws links and the selected radio in the same accent, and `#0078D4` on `#1F1F1F` is
+  3.6:1, under the 4.5:1 that text needs. Nuxt UI's color-mode plugin, which follows the system's
+  setting, is switched off with `colorMode: false`
+  (`nuxt/ui@422d015:docs/content/docs/1.getting-started/6.integrations/3.color-mode/2.vue.md:63`),
+  and `index.html` carries the `dark` class. The palettes behind the variables are `blue` and the
+  plain-grey `neutral` (`ui.colors`, `nuxt/ui@422d015:docs/content/docs/1.getting-started/5.theme/1.design-system.md:176-180`).
+- **Decision, an answer's lists and paragraphs**: Nuxt UI's typography components are built in
+  (`prose: true`), as the chat template does (`nuxt-ui-templates/chat-vue@da02783:vite.config.ts:19`).
+  The Markdown renderer draws each tag with the matching `Prose` component when the app has one;
+  without them Tailwind's reset leaves lists with no markers and paragraphs with no space between
+  them.
 
 ### 6. Texts and address
 
@@ -233,6 +277,84 @@ so by name when the installed Node.js is older (decision 3).
   levels; the language and the chosen program are query parameters of the address, read and
   written by one composable (the user's choice is a `push`; a correction to a valid value is a
   `replace`). Sample questions are part of the messages, so they follow the language.
+- **Decision, the language switch**: a Nuxt UI `USelect` on the top bar, bound to the language in
+  the address, on the login screen as well as with the chat, listing each language by its own name
+  from Nuxt UI's locales (繁體中文, English). Nuxt UI's `ULocaleSelect`
+  (`nuxt/ui@422d015:docs/content/docs/2.components/locale-select.md:74-77`) was used first and
+  dropped: it puts a flag emoji before each name, and Windows draws a flag emoji as two letters
+  ("TW", "US"), which name no language. `UApp` gets the matching Nuxt UI locale, so the components'
+  own texts follow the page's language; only the two locales the page has are imported
+  (`docs/content/docs/1.getting-started/6.integrations/4.i18n/2.vue.md:163-178`).
+- **Decision, the wait before the first words**: the answer's place shows a shimmering line in the
+  page's language from the moment a question is sent: "Searching the news…" in
+  `UChatMessages`' `indicator` slot while the search runs, then "Waiting for Claude Code to
+  answer…" (or Codex) under the sources until the first words arrive. Both are Nuxt UI's
+  `UChatShimmer`, the component its chat components use for a streaming state; it shows static
+  muted text to a reader who asked for reduced motion
+  (`nuxt/ui@422d015:docs/content/docs/2.components/chat-shimmer.md:16`, `:20`).
+- **Decision, the first language**: with no `lang` in the address, the page takes the first of the
+  browser's preferred languages (`usePreferredLanguages`) that it has: any `zh-*` reads the
+  Traditional Chinese page, `en-*` the English one, anything else English, since the demo is also
+  read by people who read neither Chinese. The choice is then written to the address with
+  `replace`, so a language picked on the page or given in a link wins over the browser from then
+  on. `<html lang>` follows the page's language, as Nuxt UI's docs set it from the locale
+  (`nuxt/ui@422d015:docs/content/docs/1.getting-started/6.integrations/4.i18n/2.vue.md:186-215`);
+  it is set on the document directly, since their `useHead` would add a direct dependency the page
+  does not otherwise need.
+- **Decision, the service's own words in two languages**: the service sends each text it writes
+  itself in both languages, keyed by language, and the page shows the one it is in, so switching
+  language changes them on answers already on screen. The shape is an API's localization
+  dictionary, as Discord's `name` with `name_localizations`
+  (`discord/discord-api-docs@9b737ec:developers/interactions/application-commands.mdx:61`, `:1113`,
+  `:1128`): the notice is `{"zh-TW": ..., "en": ...}`; a source keeps `heading` as the document
+  wrote it and adds `heading_localizations` only for the five section names the sample news is
+  written with (`docs/truth_format.md`), null for any other heading. The table of those texts is in
+  the service only. The fixed reply when the data has nothing is an answer, so it is sent in one
+  language, the question's: Traditional Chinese when the question has a character in U+4E00 to
+  U+9FFF, the range the tokenizer already uses, English otherwise. RAGFlow decides a text is
+  Chinese from the same range (`infiniflow/ragflow@8090ffd:rag/nlp/__init__.py:411-420`); this is
+  one comparison, with no package.
+- **Decision, errors in the page's words**: a refusal's `detail` and the stream's `error` event
+  carry a `code` beside the message (FastAPI's `detail` takes any JSON value,
+  `fastapi/fastapi@b283119:docs/en/docs/tutorial/handling-errors.md:64`). The page's messages are
+  keyed by that code, or by its own error kind for a network, contract or unknown error, each with
+  a title and what to do in both languages; the service's message and a library's error text are
+  never drawn. `not_logged_in` also makes the page read the login states again, which shows the
+  login screen when no program is left.
+- **Known limitation, a PDF page's heading**: a PDF section's heading is `Page <label>`, in English
+  on the Chinese page too. Translating it without taking the stored text apart again needs the page
+  label stored as its own field, as LangChain's PDF parser keeps `page_label` in the metadata
+  (`langchain-ai/langchain-community@f425a3e:libs/community/langchain_community/document_loaders/parsers/pdf.py:407`).
+  A new column makes every existing knowledge base read as built by another version, to be
+  deleted and imported again, and the sample data has no PDF, so it is not done here.
+
+### 7. Typing the answer
+
+- **Decision**: done in the page, so both answering programs are typed the same way and the
+  service and the contract stay as they are. The text received is the target; a frame loop
+  (`useRafFn`) shows more of it each frame. A character waits at most 5 ms, and less the more is
+  waiting: the wait is `min(5 ms, 250 ms / characters waiting)`, and time a frame did not use is
+  carried to the next. That is assistant-ui's streaming text animation, its defaults included
+  (`assistant-ui/assistant-ui@dc9cad2:packages/react/src/utils/smooth/useSmooth.ts:47-48`,
+  `:82-123`, MIT), written here as a few lines around VueUse's loop rather than as its class. Like
+  it, a reader whose system asks for reduced motion gets the whole text at once (`:144-146`).
+  Comark's `caret` marks the end while the answer is typed or still arriving. A stopped or failed
+  answer shows what had arrived at once. An answer drawn after it finished is shown whole. The pace
+  is counted from the time since the last frame, so a background tab, which runs no frames, shows
+  everything that arrived meanwhile when it comes back. The sources and the notice are not typed.
+- **Alternatives**: the AI SDK's `smoothStream` paces the stream in the service, word by word
+  (`vercel/ai@d55f3cf:packages/ai/src/generate-text/smooth-stream.ts:37-38`); it would change the
+  stream every client reads, and its word chunking does not suit Chinese. No Vue package for
+  streamed typing was found in a sample.
+- **Measured** (headless Edge on this machine, built page, a stand-in service that waits 12 s
+  before the first words and then streams like Claude Code, 4 to 12 characters every 30 ms with a
+  pause of 0.4 s every sixth piece, or sends one whole piece like Codex), counting characters as
+  drawn: English, 640 drawn characters (665 of Markdown) in pieces typed in 7.9 s (81 a second,
+  following the pieces), and in one piece in 0.86 s; Chinese, 214 (239 of Markdown) in pieces in
+  3.0 s, and in one piece in 0.6 s. Both ways ended at the same drawn length. Frames during
+  typing: 95th percentile 17 ms; longest 17 ms in English, 50 ms once in Chinese, with one long
+  task. Re-parsing the Markdown each frame did not hold frames back. That the typed text ends
+  exactly equal to the text received is checked by the view tests.
 
 ## Real runs (with the maintainer's consent)
 

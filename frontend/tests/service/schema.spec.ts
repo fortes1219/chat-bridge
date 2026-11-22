@@ -59,11 +59,16 @@ describe('ChatEventSchema', () => {
 });
 
 describe('ErrorBodySchema and StreamErrorSchema', () => {
-  it('accept the service’s two error shapes', () => {
-    expect(ErrorBodySchema.parse({ detail: 'the knowledge base is empty' })).toEqual({
-      detail: 'the knowledge base is empty'
-    });
-    expect(StreamErrorSchema.parse({ message: 'the program stopped' })).toEqual({ message: 'the program stopped' });
+  it('accept the service’s two error shapes, each with its reason', () => {
+    const refused = { detail: { code: 'knowledge_base_empty', message: 'the knowledge base is empty' } };
+    expect(ErrorBodySchema.parse(refused)).toEqual(refused);
+    const failed = { code: 'not_logged_in', message: 'Claude Code is not logged in' };
+    expect(StreamErrorSchema.parse(failed)).toEqual(failed);
+  });
+
+  it('refuse a reason the contract does not have, and a message without its reason', () => {
+    expect(() => StreamErrorSchema.parse({ code: 'other', message: 'x' })).toThrow();
+    expect(() => StreamErrorSchema.parse({ message: 'the program stopped' })).toThrow();
   });
 
   it('refuse FastAPI’s validation list, which the page never causes', () => {

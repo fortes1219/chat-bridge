@@ -13,6 +13,29 @@ MAX_QUESTION_LENGTH = 10_240
 
 DeltaType = Literal["response.context", "response.output_text.delta"]
 
+# The languages the service writes its own texts in. A client shows the one it needs; a reader
+# of the API gets both.
+Language = Literal["zh-TW", "en"]
+# One text in each language, keyed by language, as a localization dictionary in an API.
+Localized = dict[Language, str]
+
+# Why a question was refused or its answer failed, for a client to say so in its own language.
+# The message beside it is for people reading the API or the logs.
+ErrorCode = Literal[
+    "knowledge_base_empty",
+    "knowledge_base_outdated",
+    "setup_failed",
+    "not_logged_in",
+    "answer_failed",
+]
+
+
+class ErrorDetail(BaseModel):
+    """A refusal's `detail`, and the data of a stream's last `error` event."""
+
+    code: ErrorCode
+    message: str
+
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
@@ -34,7 +57,11 @@ class Source(BaseModel):
     number: int
     file: str
     title: str
+    # The document's own words: what the model reads and the records keep.
     heading: str
+    # The heading in each language, when it is a section name this app's sample format fixes;
+    # null for any other heading, which is shown as the document wrote it.
+    heading_localizations: Localized | None = None
     event_date: date | None
 
 
@@ -44,7 +71,7 @@ class ChatContext(BaseModel):
     sources: list[Source]
     # The newest event date among the sources: how recent the answer's data is.
     data_latest_date: date | None
-    disclaimer: str
+    disclaimer: Localized
     # The program that answers; none when no program is asked, as for a question the data has
     # nothing on, or when none can answer.
     program: Program | None = None

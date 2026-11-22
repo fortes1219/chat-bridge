@@ -42,11 +42,16 @@ function applyEvent(exchange: Exchange, event: ChatEvent): void {
 
 const UNKNOWN_ERROR: AppError = { source: 'unknown', code: 'unknown_error', message: 'unknown error' };
 
+export interface UseAskOptions {
+  /** Called when the answering program turned out to be logged out, so the page reads the states again. */
+  onLoggedOut(): void;
+}
+
 /**
  * Asking and stopping. Each question is one exchange kept for the visit; the answer grows as its
  * pieces arrive. Leaving the page stops an answer that is still being written.
  */
-export function useAsk(program: Ref<Program | null>): UseAsk {
+export function useAsk(program: Ref<Program | null>, { onLoggedOut }: UseAskOptions): UseAsk {
   const mutation = useAskMutation();
   const exchanges = ref<Exchange[]>([]);
   let controller: AbortController | null = null;
@@ -82,6 +87,7 @@ export function useAsk(program: Ref<Program | null>): UseAsk {
       }
       // Kept as it is: its `raw` detail is for debugging and is not made reactive.
       exchange.error = markRaw(isAppError(error) ? error : { ...UNKNOWN_ERROR, raw: error });
+      if (exchange.error.reason === 'not_logged_in') onLoggedOut();
     } finally {
       controller = null;
     }

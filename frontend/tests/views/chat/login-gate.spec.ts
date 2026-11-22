@@ -185,4 +185,14 @@ describe('the login screen', () => {
     expect(page.find('[data-test="login-gate"]').text()).toContain('請先登入 Claude Code 或 Codex');
     expect(page.find('[data-test="login-program-codex"]').text()).toContain('未登入');
   });
+
+  it('switches its language from the bar on top, before anyone has logged in', async () => {
+    getProgramsMock.mockResolvedValue(NEITHER);
+    const page = await open('zh-TW');
+
+    page.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'en');
+    await flushPromises();
+
+    expect(page.find('[data-test="login-gate"]').text()).toContain('Log in to Claude Code or Codex');
+  });
 });

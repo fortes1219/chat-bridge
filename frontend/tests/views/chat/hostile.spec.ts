@@ -48,10 +48,11 @@ const HOSTILE_CONTEXT: ChatEvent = {
         file: 'data/truth/<b>x</b>.md',
         title: `<script>alert('title')</script>`,
         heading: `<img src=x onerror="alert('heading')">`,
+        heading_localizations: null,
         event_date: null
       }
     ],
-    disclaimer: `<img src=x onerror="alert('notice')">`
+    disclaimer: { 'zh-TW': `<img src=x onerror="alert('聲明')">`, en: `<img src=x onerror="alert('notice')">` }
   }
 };
 
@@ -137,6 +138,22 @@ describe('hostile content in an answer and its sources', () => {
     expect(answer.text()).toContain('The Fed cut rates [1].');
     expect(answer.find('strong').text()).toBe('bold');
     expect(answer.text()).toContain(`<script>alert('script')</script>`);
+  });
+
+  it('draws a code block without the file name it names, so no icon for it is fetched', async () => {
+    askMock.mockImplementation(async function* () {
+      yield CONTEXT_EVENT;
+      // The part after the language names a file. Its extension would pick an icon that is not in
+      // the page, which a browser then fetches from the Iconify API; the icon sits in the header
+      // that shows the file name, so no file name means no icon.
+      yield textEvent(['```py [a.zzleak123]', 'x = 1', '```', '', '## Heading'].join('\n'));
+    });
+    const page = await askHostile();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const answer = page.find('[data-test="answer-text"]');
+    expect(answer.find('pre').text()).toContain('x = 1');
+    expect(answer.text()).not.toContain('zzleak123');
   });
 
   it('draws lists and tables the model writes, not their raw symbols', async () => {

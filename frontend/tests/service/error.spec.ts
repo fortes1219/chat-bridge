@@ -20,12 +20,21 @@ function axiosError(status?: number, data?: unknown): unknown {
 }
 
 describe('normalizeHttpError', () => {
-  it('keeps the service’s message and status', () => {
-    expect(normalizeHttpError(axiosError(503, { detail: 'the knowledge base is empty' }))).toMatchObject({
+  it('keeps the service’s reason, message and status', () => {
+    const detail = { code: 'knowledge_base_empty', message: 'the knowledge base is empty' };
+    expect(normalizeHttpError(axiosError(503, { detail }))).toMatchObject({
       source: 'backend',
       code: 'rejected',
+      reason: 'knowledge_base_empty',
       message: 'the knowledge base is empty',
       status: 503
+    });
+  });
+
+  it('calls a refusal without the service’s reason a contract error', () => {
+    expect(normalizeHttpError(axiosError(503, { detail: 'the knowledge base is empty' }))).toMatchObject({
+      source: 'contract',
+      code: 'contract_error'
     });
   });
 

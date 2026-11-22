@@ -66,30 +66,56 @@ function onSubmit(): void {
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-4">
-    <UChatMessages :messages="messages" :status="status" should-auto-scroll class="flex-1">
-      <template #content="{ message, streaming }">
-        <AnswerContent
-          v-if="exchangeOf.get(message.id)"
-          :exchange="exchangeOf.get(message.id)!"
-          :streaming="streaming"
-        />
-        <p v-else class="whitespace-pre-wrap">{{ message.parts[0]?.text }}</p>
-      </template>
-    </UChatMessages>
-    <SampleQuestions v-if="!exchanges.length" @pick="input = $event" />
-    <UChatPrompt
-      v-model="input"
-      data-test="question-box"
-      :status="status"
-      :placeholder="t('chat.placeholder')"
-      @submit="onSubmit"
-      @keydown.enter.exact="explainIfEmpty"
-    >
-      <UChatPromptSubmit data-test="send-or-stop" :status="status" @click="explainIfEmpty" @stop="emit('stop')" />
-    </UChatPrompt>
-    <p v-if="notSent" class="text-error text-sm" data-test="not-sent">
-      {{ t(`chat.${notSent}`, { limit: MAX_QUESTION_LENGTH.toLocaleString() }) }}
-    </p>
+  <!-- `contents`, so the conversation and the question box are the page grid's two lower rows:
+       the conversation scrolls in its row, the question box stays at the bottom. -->
+  <div class="contents">
+    <!-- The vertical padding is on the scrolling box itself: the list counts that box's padding
+         when it places a new question at the top, and padding inside it would push the question
+         under the top edge. -->
+    <div class="flex min-h-0 flex-col overflow-y-auto px-4 py-6">
+      <div class="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+        <SampleQuestions v-if="!exchanges.length" class="my-auto" @pick="input = $event" />
+        <!-- With no footer, the scroll-to-bottom button stays at the bottom of this row and shows
+             only while the reader has scrolled away from the end, so it never sits on the end. -->
+        <UChatMessages
+          v-else
+          :messages="messages"
+          :status="status"
+          should-auto-scroll
+          :ui="{ viewport: 'sticky top-auto bottom-4 h-0' }"
+        >
+          <!-- While the search runs, before the sources arrive. -->
+          <template #indicator>
+            <UChatShimmer data-test="searching" :text="t('chat.searching')" />
+          </template>
+          <template #content="{ message, streaming }">
+            <AnswerContent
+              v-if="exchangeOf.get(message.id)"
+              :exchange="exchangeOf.get(message.id)!"
+              :streaming="streaming"
+            />
+            <p v-else class="whitespace-pre-wrap">{{ message.parts[0]?.text }}</p>
+          </template>
+        </UChatMessages>
+      </div>
+    </div>
+    <footer class="border-default bg-muted border-t">
+      <div class="mx-auto w-full max-w-3xl px-4 py-3">
+        <UChatPrompt
+          v-model="input"
+          data-test="question-box"
+          :status="status"
+          :placeholder="t('chat.placeholder')"
+          :ui="{ root: 'bg-accented ring-accented' }"
+          @submit="onSubmit"
+          @keydown.enter.exact="explainIfEmpty"
+        >
+          <UChatPromptSubmit data-test="send-or-stop" :status="status" @click="explainIfEmpty" @stop="emit('stop')" />
+        </UChatPrompt>
+        <p v-if="notSent" class="text-error mt-2 text-sm" data-test="not-sent">
+          {{ t(`chat.${notSent}`, { limit: MAX_QUESTION_LENGTH.toLocaleString() }) }}
+        </p>
+      </div>
+    </footer>
   </div>
 </template>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ProgramSchema } from '@/service/schema/program';
+import { ErrorDetailSchema, LocalizedSchema } from '@/service/schema/common';
 
 /** The service's own limit on a question, so a longer one is refused before it is sent. */
 export const MAX_QUESTION_LENGTH = 10_240;
@@ -12,13 +13,18 @@ export const ChatRequestSchema = z
   })
   .strict();
 
-/** A section the answer may use, numbered as the model sees it. A section may have no event date. */
+/**
+ * A section the answer may use, numbered as the model sees it. A section may have no event date.
+ * `heading_localizations` is set only for the section names the sample news is written with; any
+ * other heading is the document's own words and is shown as written.
+ */
 export const SourceSchema = z
   .object({
     number: z.number().int().positive(),
     file: z.string(),
     title: z.string(),
     heading: z.string(),
+    heading_localizations: LocalizedSchema.nullable(),
     event_date: z.iso.date().nullable()
   })
   .strict();
@@ -31,7 +37,7 @@ export const ChatContextSchema = z
   .object({
     sources: SourceSchema.array(),
     data_latest_date: z.iso.date().nullable(),
-    disclaimer: z.string(),
+    disclaimer: LocalizedSchema,
     program: ProgramSchema.nullable()
   })
   .strict();
@@ -58,8 +64,4 @@ export const TextEventSchema = z
 export const ChatEventSchema = z.discriminatedUnion('type', [ContextEventSchema, TextEventSchema]);
 
 /** The event named `error` that ends a stream whose answer failed after it started. */
-export const StreamErrorSchema = z
-  .object({
-    message: z.string()
-  })
-  .strict();
+export const StreamErrorSchema = ErrorDetailSchema;

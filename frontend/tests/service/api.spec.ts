@@ -98,15 +98,20 @@ describe('ask', () => {
     expect(events.slice(1).map(event => event.delta)).toEqual(['聯準會', '降息。']);
   });
 
-  it('ends with the service’s message when an error event arrives', async () => {
+  it('ends with the service’s reason and message when an error event arrives', async () => {
     requestMock.mockResolvedValue(
-      streamOf(sseEvent(CONTEXT_EVENT), sseEvent({ message: 'the program stopped' }, 'error'))
+      streamOf(sseEvent(CONTEXT_EVENT), sseEvent({ code: 'answer_failed', message: 'the program stopped' }, 'error'))
     );
 
     const { events, error } = await collect(ask({ question: 'q' }));
 
     expect(events).toHaveLength(1);
-    expect(error).toMatchObject({ source: 'backend', code: 'stream_error', message: 'the program stopped' });
+    expect(error).toMatchObject({
+      source: 'backend',
+      code: 'stream_error',
+      reason: 'answer_failed',
+      message: 'the program stopped'
+    });
   });
 
   it('never yields an event that does not match its schema', async () => {

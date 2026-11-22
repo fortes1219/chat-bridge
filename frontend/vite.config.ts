@@ -11,6 +11,17 @@ export default defineConfig({
   plugins: [
     vue(),
     ui({
+      // Nuxt UI's typography components, which the answer's Markdown renderer draws each tag
+      // with; without them Tailwind's reset leaves lists without markers and paragraphs touching.
+      prose: true,
+      // The page is always dark, in VS Code's dark colors (src/assets/css/main.css), so it does
+      // not follow the system's light or dark setting.
+      colorMode: false,
+      ui: {
+        // VS Code's accent is blue and its greys are plain, not Nuxt UI's green and blue-tinted
+        // defaults. The exact shades are set in main.css.
+        colors: { primary: 'blue', neutral: 'neutral' }
+      },
       // Every icon the page names is built into it. Nuxt UI still asks the Iconify API for an icon
       // that is not, and has no switch to stop that, so the scan also reads .ts files, where
       // icon names in lookup tables live; the default scan skips them.

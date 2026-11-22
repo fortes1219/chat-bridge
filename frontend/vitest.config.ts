@@ -7,7 +7,12 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
-      environment: 'happy-dom'
+      environment: 'happy-dom',
+      // The view tests read each answer whole, as a reader who asked for reduced motion sees it;
+      // the typing tests turn the motion back on for themselves.
+      environmentOptions: {
+        happyDOM: { settings: { device: { prefersReducedMotion: 'reduce' } } }
+      }
     }
   })
 );

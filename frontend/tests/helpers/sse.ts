@@ -24,11 +24,25 @@ export const CONTEXT_EVENT: Extract<ChatEvent, { type: 'response.context' }> = {
   delta: null,
   context: {
     sources: [
-      { number: 1, file: 'data/truth/a.md', title: 'T', heading: 'H', event_date: '2026-09-17' },
-      { number: 2, file: 'data/truth/b.md', title: 'T2', heading: 'H2', event_date: null }
+      {
+        number: 1,
+        file: 'data/truth/a.md',
+        title: 'T',
+        heading: '影響股市證據',
+        heading_localizations: { 'zh-TW': '影響股市證據', en: 'Evidence of market impact' },
+        event_date: '2026-09-17'
+      },
+      {
+        number: 2,
+        file: 'data/truth/b.md',
+        title: 'T2',
+        heading: 'My own heading',
+        heading_localizations: null,
+        event_date: null
+      }
     ],
     data_latest_date: '2026-09-17',
-    disclaimer: 'notice',
+    disclaimer: { 'zh-TW': '聲明', en: 'notice' },
     program: 'codex'
   }
 };

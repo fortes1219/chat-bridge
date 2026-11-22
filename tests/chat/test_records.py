@@ -62,7 +62,7 @@ def test_a_question_the_data_cannot_answer_gets_the_fixed_reply(
     assert context.context is not None
     assert context.context.sources == []
     assert context.context.disclaimer == service.DISCLAIMER
-    assert reply.delta == service.NOT_IN_DATA
+    assert reply.delta == service.NOT_IN_DATA["en"]
 
 
 def test_every_question_is_recorded_and_only_the_unanswered_are_listed(

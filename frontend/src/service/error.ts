@@ -1,6 +1,6 @@
 import axios, { CanceledError } from 'axios';
 import type { ZodType } from 'zod';
-import { ErrorBodySchema } from '@/service/schema/common';
+import { ErrorBodySchema, type ServiceErrorCode } from '@/service/schema/common';
 
 /**
  * Where an error came from: the service, or the page's own network, contract check, input check
@@ -18,12 +18,14 @@ export type BackendErrorCode = 'rejected' | 'stream_error';
 export type LocalErrorCode = 'network_error' | 'contract_error' | 'invalid_input' | 'unknown_error';
 
 /**
- * The page's one error type. `raw` is for debugging only and is never drawn or serialised into
- * the page.
+ * The page's one error type. `reason` is the service's own reason for a backend error, which the
+ * page words in its language. `message` and `raw` are for debugging only and are never drawn or
+ * serialised into the page.
  */
 export interface AppError {
   source: AppErrorSource;
   code: BackendErrorCode | LocalErrorCode;
+  reason?: ServiceErrorCode;
   message: string;
   status?: number;
   raw?: unknown;
@@ -34,8 +36,14 @@ export function isAppError(value: unknown): value is AppError {
   return typeof value === 'object' && value !== null && 'source' in value && 'code' in value && 'message' in value;
 }
 
-function backendError(code: BackendErrorCode, message: string, raw: unknown, status?: number): AppError {
-  return { source: 'backend', code, message, status, raw };
+function backendError(
+  code: BackendErrorCode,
+  reason: ServiceErrorCode,
+  message: string,
+  raw: unknown,
+  status?: number
+): AppError {
+  return { source: 'backend', code, reason, message, status, raw };
 }
 
 function localError(
@@ -69,7 +77,7 @@ export function normalizeHttpError(error: unknown): AppError {
     const { status, data } = response;
     const parsed = ErrorBodySchema.safeParse(data);
     if (parsed.success) {
-      return backendError('rejected', parsed.data.detail, error, status);
+      return backendError('rejected', parsed.data.detail.code, parsed.data.detail.message, error, status);
     }
 
     // A status with a body that is not the service's error body: the service drifted.
@@ -80,8 +88,8 @@ export function normalizeHttpError(error: unknown): AppError {
 }
 
 /** The answer failed after its stream started; the service says why in the `error` event. */
-export function streamError(message: string, raw: unknown): AppError {
-  return backendError('stream_error', message, raw);
+export function streamError(reason: ServiceErrorCode, message: string, raw: unknown): AppError {
+  return backendError('stream_error', reason, message, raw);
 }
 
 /** The service sent something the contract does not allow. */

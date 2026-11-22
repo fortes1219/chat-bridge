@@ -11,10 +11,14 @@ from chat_bridge.chat import service
 from chat_bridge.chat.schemas import (
     ChatRecordPublic,
     ChatRequest,
+    ErrorCode,
+    ErrorDetail,
     ProgramState,
 )
+from chat_bridge.database import SchemaMismatchError
 from chat_bridge.errors import LocalSetupError
 from chat_bridge.search.cli import KNOWN_ERRORS
+from chat_bridge.search.service import EmptyKnowledgeBaseError, IndexMismatchError
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,20 @@ DEFAULT_LIMIT = 100
 # The event that ends a stream whose answer failed after it started.
 ERROR_EVENT = "error"
 
+# Why a search could not run, by the error it raised. Any other local setup error, such as a
+# model or a word list that could not be loaded, is `setup_failed`.
+SEARCH_ERROR_CODES: dict[type[Exception], ErrorCode] = {
+    EmptyKnowledgeBaseError: "knowledge_base_empty",
+    IndexMismatchError: "knowledge_base_outdated",
+    SchemaMismatchError: "knowledge_base_outdated",
+}
+
+
+def _refusal(code: ErrorCode, message: str) -> HTTPException:
+    return HTTPException(
+        status_code=503, detail=ErrorDetail(code=code, message=message).model_dump()
+    )
+
 
 async def found_sections(request: ChatRequest) -> list[service.FoundSection]:
     """The search, run as a dependency, so it finishes before the stream starts and a search
@@ -37,10 +55,11 @@ async def found_sections(request: ChatRequest) -> list[service.FoundSection]:
     try:
         return await service.find_sections(request.question)
     except LocalSetupError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+        code = SEARCH_ERROR_CODES.get(type(error), "setup_failed")
+        raise _refusal(code, str(error)) from error
     except tuple(KNOWN_ERRORS) as error:
-        raise HTTPException(
-            status_code=503, detail=KNOWN_ERRORS[type(error)]
+        raise _refusal(
+            SEARCH_ERROR_CODES[type(error)], KNOWN_ERRORS[type(error)]
         ) from error
 
 
@@ -64,7 +83,15 @@ async def chat_stream(
             yield ServerSentEvent(data=delta.model_dump(mode="json"))
     except Exception as error:
         logger.exception("The answer stream stopped")
-        yield ServerSentEvent(event=ERROR_EVENT, data={"message": str(error)})
+        # A program that logged out since the page read its state is the one failure a page
+        # acts on: it reads the login states again.
+        code: ErrorCode = (
+            "not_logged_in"
+            if isinstance(error, service.NoLoginError)
+            else "answer_failed"
+        )
+        detail = ErrorDetail(code=code, message=str(error))
+        yield ServerSentEvent(event=ERROR_EVENT, data=detail.model_dump())
 
 
 @router.get("/programs")

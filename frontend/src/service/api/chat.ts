@@ -31,8 +31,8 @@ const EVENT_READERS = new Map<string, (data: string) => ChatEvent>([
   [
     'error',
     data => {
-      const { message } = parseJsonContract(StreamErrorSchema, data);
-      throw streamError(message, data);
+      const { code, message } = parseJsonContract(StreamErrorSchema, data);
+      throw streamError(code, message, data);
     }
   ]
 ]);

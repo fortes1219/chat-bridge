@@ -41,12 +41,15 @@ describe('request', () => {
   });
 
   it('reads the error body of a refused stream request into the service’s message', async () => {
-    fetchMock.mockResolvedValue(json({ detail: 'the knowledge base is empty' }, 503));
+    fetchMock.mockResolvedValue(
+      json({ detail: { code: 'knowledge_base_empty', message: 'the knowledge base is empty' } }, 503)
+    );
     await expect(
       request({ url: `${SERVICE}/chat/stream`, method: 'POST', data: { question: 'q' }, responseType: 'stream' })
     ).rejects.toMatchObject({
       source: 'backend',
       code: 'rejected',
+      reason: 'knowledge_base_empty',
       message: 'the knowledge base is empty',
       status: 503
     });

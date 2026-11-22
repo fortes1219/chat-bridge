@@ -1,4 +1,4 @@
-import { defineMarkdownComponent } from '@comark/vue';
+import { defineMarkdownComponent, type NodeTransform } from '@comark/vue';
 import security from '@comark/vue/plugins/security';
 import { textContent } from '@comark/vue/utils';
 
@@ -35,6 +35,15 @@ const ALLOWED_TAGS = [
   'td'
 ];
 
+/**
+ * Draws every code block without its header. A code fence can name a file (```` ```py [a.ext] ````),
+ * and Nuxt UI's code block shows that name with an icon picked from its extension; an icon not
+ * built into the page is fetched from the Iconify API, so the answer's text would choose a request
+ * the browser makes. The code and its copy button stay.
+ */
+const hideCodeBlockHeader: NodeTransform = ({ tag, props }) =>
+  tag === 'pre' ? { props: { ...props, hideHeader: true } } : undefined;
+
 /** Renders an answer's Markdown with everything outside {@link ALLOWED_TAGS} shown as text. */
 export default defineMarkdownComponent({
   name: 'AnswerMarkdown',
@@ -51,5 +60,6 @@ export default defineMarkdownComponent({
       allowDataImages: false
     })
   ],
+  transformNode: hideCodeBlockHeader,
   class: '*:first:mt-0 *:last:mb-0'
 });

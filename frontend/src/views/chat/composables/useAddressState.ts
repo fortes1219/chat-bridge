@@ -1,7 +1,8 @@
 import { computed, watch, type ComputedRef } from 'vue';
 import { useRoute, useRouter, type LocationQuery } from 'vue-router';
 import { useI18n } from 'vue-i18n';
-import { LOCALES, type Locale } from '@/i18n';
+import { usePreferredLanguages } from '@vueuse/core';
+import { LOCALES, localeForBrowser, type Locale } from '@/i18n';
 import type { Program, ProgramState } from '@/service/api/programs';
 import { PROGRAM_ORDER } from '../constants';
 
@@ -33,9 +34,13 @@ export function useAddressState(states: ComputedRef<ProgramState[]>): UseAddress
   const router = useRouter();
   const { locale } = useI18n({ useScope: 'global' });
 
+  const browserLanguages = usePreferredLanguages();
+
+  // The address decides: a language chosen on the page or in a shared link. A first visit, with
+  // none in the address, takes the browser's preferred language; it is then written to the address.
   const language = computed<Locale>(() => {
     const raw = route.query[LANGUAGE_KEY];
-    return isLocale(raw) ? raw : LOCALES[0];
+    return isLocale(raw) ? raw : localeForBrowser(browserLanguages.value);
   });
 
   const loggedIn = computed<Program[]>(() =>
@@ -49,7 +54,16 @@ export function useAddressState(states: ComputedRef<ProgramState[]>): UseAddress
     return loggedIn.value.find(candidate => candidate === raw) ?? loggedIn.value[0] ?? null;
   });
 
-  watch(language, value => (locale.value = value), { immediate: true });
+  // The document's language follows the page's, so the browser and a screen reader read an
+  // English page as English.
+  watch(
+    language,
+    value => {
+      locale.value = value;
+      document.documentElement.lang = value;
+    },
+    { immediate: true }
+  );
 
   watch(
     [language, program],

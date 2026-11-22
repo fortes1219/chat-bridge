@@ -134,6 +134,33 @@ describe('asking a question', () => {
     expect(page.find('[data-test="not-sent"]').exists()).toBe(false);
   });
 
+  it('says it is working from sending until the first words, in the page’s language', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
+    await typeAndSend(page, '聯準會降息了嗎？');
+    expect(page.find('[data-test="searching"]').text()).toBe('正在查新聞資料……');
+
+    answer.send(CONTEXT_EVENT);
+    await flushPromises();
+    expect(page.find('[data-test="searching"]').exists()).toBe(false);
+    expect(page.find('[data-test="waiting"]').text()).toBe('正在等 Codex 回答……');
+
+    answer.send(textEvent('聯準會'));
+    await flushPromises();
+    expect(page.find('[data-test="waiting"]').exists()).toBe(false);
+    answer.end();
+  });
+
+  it('names each language by its own name only in the language switch', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=en');
+
+    const items = page.findComponent({ name: 'Select' }).props('items') as { label: string }[];
+    expect(items.map(item => item.label)).toEqual(['繁體中文', 'English']);
+    expect(page.find('[data-test="language"]').text()).toBe('English');
+  });
+
   it('shows the sources first, then the answer as it grows, with the notice', async () => {
     const answer = controlledAnswer();
     askMock.mockImplementation(answer.events);
@@ -144,8 +171,11 @@ describe('asking a question', () => {
 
     answer.send(CONTEXT_EVENT);
     await flushPromises();
-    expect(page.find('[data-test="source-1"]').text()).toBe('[1] data/truth/a.md · H · 2026-09-17');
-    expect(page.find('[data-test="source-2"]').text()).toBe('[2] data/truth/b.md · H2 · No date');
+    // A section name the sample news fixes is shown in the page's language; any other heading as written.
+    expect(page.find('[data-test="source-1"]').text()).toBe(
+      '[1] data/truth/a.md · Evidence of market impact · 2026-09-17'
+    );
+    expect(page.find('[data-test="source-2"]').text()).toBe('[2] data/truth/b.md · My own heading · No date');
     expect(page.find('[data-test="latest-date"]').text()).toBe('The sources reach 2026-09-17.');
     expect(page.find('[data-test="notice"]').text()).toBe('notice');
     expect(page.find('[data-test="answer-text"]').text()).toBe('');
@@ -192,11 +222,14 @@ describe('asking a question', () => {
     answer.send(textEvent('so far'));
     await flushPromises();
 
-    answer.fail({ source: 'backend', code: 'stream_error', message: 'the program stopped' });
+    answer.fail({ source: 'backend', code: 'stream_error', reason: 'answer_failed', message: 'the program stopped' });
     await flushPromises();
 
     expect(page.find('[data-test="answer-text"]').text()).toBe('so far');
-    expect(page.find('[data-test="answer-error"]').text()).toContain('the program stopped');
+    const error = page.find('[data-test="answer-error"]').text();
+    expect(error).toContain('The answer stopped with an error.');
+    // The service's own message is for logs, in one language; the page says it in its own words.
+    expect(error).not.toContain('the program stopped');
   });
 
   it('says a refused question could not be answered, not that it stopped midway', async () => {
@@ -205,6 +238,7 @@ describe('asking a question', () => {
       throw {
         source: 'backend',
         code: 'rejected',
+        reason: 'knowledge_base_empty',
         status: 503,
         message: 'the knowledge base is empty; run `chat-bridge ingest <folder>` first'
       };
@@ -213,9 +247,49 @@ describe('asking a question', () => {
     await typeAndSend(page, 'q');
 
     const error = page.find('[data-test="answer-error"]').text();
-    expect(error).toContain('This question could not be answered.');
-    expect(error).toContain('the knowledge base is empty');
+    expect(error).toContain('No news has been imported yet.');
+    expect(error).toContain('start it again');
     expect(error).not.toContain('stopped with an error');
+  });
+
+  it('reads the login states again when the answering program has logged out, and shows the login screen', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY);
+    expect(getProgramsMock).toHaveBeenCalledTimes(1);
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    await flushPromises();
+
+    getProgramsMock.mockResolvedValue([
+      { program: 'claude-code', state: 'not logged in' },
+      { program: 'codex', state: 'not logged in' }
+    ]);
+    answer.fail({
+      source: 'backend',
+      code: 'stream_error',
+      reason: 'not_logged_in',
+      message: 'Codex is not logged in'
+    });
+    await flushPromises();
+
+    expect(getProgramsMock).toHaveBeenCalledTimes(2);
+    expect(page.find('[data-test="login-gate"]').exists()).toBe(true);
+    expect(page.find('[data-test="chat-open"]').exists()).toBe(false);
+  });
+
+  it('says what went wrong in the page’s language, not in the service’s or the library’s words', async () => {
+    askMock.mockImplementation(async function* () {
+      yield* [];
+      throw { source: 'network', code: 'network_error', message: 'Network Error' };
+    });
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, '聯準會降息了嗎？');
+
+    const error = page.find('[data-test="answer-error"]').text();
+    expect(error).toContain('連不到聊天服務。');
+    expect(error).toContain('uv run chat-bridge');
+    expect(error).not.toContain('Network Error');
   });
 
   it('sends each question on its own and keeps earlier exchanges on screen', async () => {
@@ -271,9 +345,67 @@ describe('which program answers', () => {
 });
 
 describe('the language in the address', () => {
-  it('opens in the language the address names, and writes the default when it names none', async () => {
-    const page = await open(CODEX_ONLY, '/');
+  /** The browser's preferred languages, most preferred first, as the page reads them. */
+  function preferLanguages(...languages: string[]): void {
+    vi.spyOn(navigator, 'languages', 'get').mockReturnValue(languages);
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { browser: ['en-US', 'en'], page: 'en', sample: 'Which of the Fed’s moves' },
+    { browser: ['zh-TW', 'zh'], page: 'zh-TW', sample: '聯準會在這近半年的動向' },
+    { browser: ['zh-CN', 'zh'], page: 'zh-TW', sample: '聯準會在這近半年的動向' },
+    { browser: ['ja-JP', 'ja'], page: 'en', sample: 'Which of the Fed’s moves' },
+    { browser: ['ja-JP', 'zh-TW', 'en'], page: 'zh-TW', sample: '聯準會在這近半年的動向' }
+  ])(
+    'with no language in the address, a browser preferring $browser opens in $page',
+    async ({ browser, page: language, sample }) => {
+      preferLanguages(...browser);
+      const page = await open(CODEX_ONLY, '/');
+
+      expect(router.currentRoute.value.query.lang).toBe(language);
+      expect(page.find('[data-test="sample-questions"]').text()).toContain(sample);
+      expect(document.documentElement.lang).toBe(language);
+    }
+  );
+
+  it('opens in the language the address names, whatever the browser prefers', async () => {
+    preferLanguages('en-US', 'en');
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
     expect(router.currentRoute.value.query.lang).toBe('zh-TW');
-    expect(page.find('[data-test="sample-questions"]').text()).toContain('聯準會在這近半年的動向哪些行為導致股市動盪');
+    expect(page.find('[data-test="sample-questions"]').text()).toContain('聯準會在這近半年的動向');
+  });
+
+  it('switches language from the bar on top, keeps it in the address and leaves the answers as they are', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    answer.send(textEvent('答案'));
+    answer.end();
+    await flushPromises();
+
+    page.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'en');
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.lang).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
+    expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe(
+      'Ask about the market news since June…'
+    );
+    // The answer stays as it is; the page's own words around it follow the switch.
+    expect(page.text()).toContain('答案');
+    expect(page.find('[data-test="notice"]').text()).toBe('notice');
+    expect(page.find('[data-test="source-1"]').text()).toContain('Evidence of market impact');
+
+    page.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'zh-TW');
+    await flushPromises();
+    expect(page.find('[data-test="notice"]').text()).toBe('聲明');
+    expect(page.find('[data-test="source-1"]').text()).toContain('影響股市證據');
   });
 });

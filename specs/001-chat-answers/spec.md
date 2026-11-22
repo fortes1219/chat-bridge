@@ -128,9 +128,9 @@ commands and the existing test suites.
 - **FR-002**: The service MUST retrieve passages with the existing hybrid search using the user's question as asked, and finish retrieval before the response starts.
 - **FR-003**: The model MUST receive only the retrieved passages, each with its file name, event date and heading path. It MUST NOT receive whole source files.
 - **FR-004**: The instructions to the model MUST state today's date, require it to answer only from the passages, to say it does not know when they are not enough, and to number each source it uses.
-- **FR-005**: The answer MUST be in the language of the question.
+- **FR-005**: The answer MUST be in the language of the question. The fixed answer of FR-008, written without the model, is in Traditional Chinese when the question has a Han character and in English otherwise.
 - **FR-006**: The response MUST list each source with its event date and state the latest date its sources reach.
-- **FR-007**: Every response MUST carry the same fixed notice, in Traditional Chinese and English, that the answer is AI-generated from public material and is not investment advice. Code attaches it; the model does not write it.
+- **FR-007**: Every response MUST carry the same fixed notice that the answer is AI-generated from public material and is not investment advice, as one text in Traditional Chinese and one in English, sent apart and keyed by language, so a client shows the one it is in and a reader of the API gets both. Code attaches it; the model does not write it.
 - **FR-008**: When retrieval returns no passage, the service MUST return a fixed answer saying the data does not have it, without starting the model.
 - **FR-009**: The service MUST record every question with its answer, the passages retrieved and any error, and MUST be able to list the questions that retrieved no passage.
 - **FR-010**: The model MUST be the Claude Code installed and logged in on the user's machine, started with all tools off and with API-key environment variables removed.
@@ -142,6 +142,8 @@ commands and the existing test suites.
 - **FR-016**: `uv run chat-bridge` with no arguments MUST start the service, listening on 127.0.0.1 only.
 - **FR-017**: The existing `ingest` and `search` commands MUST keep their behaviour, printed output, ranking and exit codes. The only change to retrieval is that each result additionally carries its passage id and full passage text.
 - **FR-018**: The README MUST state that this is a local single-user demo and give the reason.
+- **FR-019**: A refused question (the search cannot run) and an answer that fails after it started MUST each carry a code naming why, besides a message for logs: `knowledge_base_empty`, `knowledge_base_outdated` or `setup_failed` for a refusal; `not_logged_in` or `answer_failed` for a failure. A client words each code in its own language and never shows the message.
+- **FR-020**: Each source MUST keep its heading as the document wrote it. When that heading is one of the section names the sample news is written with, the source MUST also carry the name in Traditional Chinese and in English, keyed by language; any other heading carries none.
 
 ### Key Entities
 

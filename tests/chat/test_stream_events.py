@@ -9,10 +9,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from chat_bridge.chat import service
-from chat_bridge.chat.programs import Program
+from chat_bridge.chat.programs import Login, LoginStatus, Program
 from chat_bridge.chat.schemas import ChatContext, ChatDelta, Source
 from chat_bridge.chat.server import create_app
+from chat_bridge.database import SchemaMismatchError
 from chat_bridge.errors import LocalSetupError
+from chat_bridge.search.service import EmptyKnowledgeBaseError, IndexMismatchError
 
 SECTION = service.FoundSection(
     section_id=7,
@@ -31,7 +33,7 @@ CONTEXT = ChatDelta(
     context=ChatContext(
         sources=[SECTION.source],
         data_latest_date=date(2026, 9, 17),
-        disclaimer="notice",
+        disclaimer={"zh-TW": "聲明", "en": "notice"},
         program=Program.CODEX,
     ),
 )
@@ -95,7 +97,24 @@ def test_an_error_after_the_start_is_a_last_event_named_error(
 
     events = _events(response.text)
     assert events[0]["data"]["type"] == "response.context"
-    assert events[-1] == {"event": "error", "data": {"message": "the program stopped"}}
+    assert events[-1] == {
+        "event": "error",
+        "data": {"code": "answer_failed", "message": "the program stopped"},
+    }
+
+
+def test_a_program_logged_out_since_the_page_opened_is_named_so(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def answer(*args: Any) -> AsyncIterator[ChatDelta]:
+        yield CONTEXT
+        raise service.NoLoginError(LoginStatus(Login.NOT_LOGGED_IN, "logged out"))
+
+    monkeypatch.setattr(service, "answer_stream", answer)
+
+    response = client.post("/chat/stream", json={"question": "q"})
+
+    assert _events(response.text)[-1]["data"]["code"] == "not_logged_in"
 
 
 def test_a_search_that_cannot_run_is_an_http_error_not_an_event(
@@ -109,4 +128,30 @@ def test_a_search_that_cannot_run_is_an_http_error_not_an_event(
         response = client.post("/chat/stream", json={"question": "q"})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "the knowledge base is empty"}
+    assert response.json() == {
+        "detail": {"code": "setup_failed", "message": "the knowledge base is empty"}
+    }
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        pytest.param(EmptyKnowledgeBaseError(), "knowledge_base_empty", id="empty"),
+        pytest.param(IndexMismatchError(), "knowledge_base_outdated", id="index"),
+        pytest.param(
+            SchemaMismatchError(["table x"]), "knowledge_base_outdated", id="tables"
+        ),
+    ],
+)
+def test_each_knowledge_base_refusal_has_its_own_code(
+    monkeypatch: pytest.MonkeyPatch, error: Exception, code: str
+) -> None:
+    async def refused(question: str) -> list[service.FoundSection]:
+        raise error
+
+    monkeypatch.setattr(service, "find_sections", refused)
+    with TestClient(create_app(), base_url="http://127.0.0.1") as client:
+        response = client.post("/chat/stream", json={"question": "q"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == code

@@ -43,8 +43,13 @@ description: "Task list for A chat page in the browser"
 
 ## Phase 5: User Story 3 to 5 and the layout (P2)
 
-- [ ] T016 [US3] A message for each condition of FR-006; logged out after opening returns to the login screen
-- [ ] T017 [US4] `i18n/` for every page text in `zh-TW` and `en`, at most three key levels; the language in the address (FR-007, SC-004)
+- [x] T016 [US3] A message for each condition of FR-006, in both languages, chosen by the service's code (001 FR-019) or the page's own error kind; logged out after opening reads the login states again and returns to the login screen
+- [x] T016a The service's own texts per language: the notice keyed by language, the fixed reply in the question's language, the sample news's five section names in both languages; refusals and stream errors with a code (001 FR-005, FR-007, FR-019, FR-020)
+- [x] T017 [US4] `i18n/` for every page text in `zh-TW` and `en`, at most three key levels; the language in the address; a language switch on the top bar (FR-007, SC-004)
+- [x] T017b The first visit opens in the browser's preferred language; the document's language follows the page's (FR-007)
+- [x] T017d From sending until the first words, a shimmering line says it is searching, then waiting for the named program (FR-018); the language switch lists the languages by name only
+- [x] T017c The answer is typed at a steady pace with a caret, faster the more is waiting; stop, failure and reduced motion show what arrived at once (FR-017)
+- [x] T017a Layout and colors: a three-row grid with the program choice and the question box fixed and the conversation scrolling between them; the scroll-to-bottom button inside the conversation; VS Code's Dark Modern colors; answer lists and paragraphs drawn with Nuxt UI's typography components (FR-015, FR-016)
 - [ ] T018 Layout: chat as the main panel, a resizable `StrategyPlace` saying it comes later, a drawer in a narrow window (FR-013)
 - [ ] T019 [P] View tests for the messages of US3, the language switch and the layout's drawer
 
