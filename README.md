@@ -20,9 +20,14 @@ uv run chat-bridge
 
 On the first run, uv creates `.venv` inside the repository and installs dependencies from `uv.lock`; if the Python version in `.python-version` is not on your machine, uv downloads it. The dependencies take about 1.2 GB, most of it the CPU-only build of PyTorch. Later runs start directly as long as the dependencies have not changed.
 
-Without arguments, `uv run chat-bridge` starts the chat service on http://127.0.0.1:8000 (see "Ask questions" below); `uv run chat-bridge --help` lists the other commands.
+Without arguments, `uv run chat-bridge` does what is needed and opens the chat page in your default browser at http://127.0.0.1:8000:
 
-Current status: you can ingest documents, search them from the command line, and ask questions through the chat service. The chat page is not built yet.
+- It builds the page with your Node.js when it has not been built, or when its source changed. Node.js must be at the latest security release of a line that still gets fixes (22.23.5, 24.22.3 or 26.13.1 or later in the same line); an older one is named with the version to install.
+- When nothing has been ingested yet, it ingests the sample news in `data/truth` first. The first time, this downloads a word list and a 2.3 GB embedding model and takes several minutes; later runs start in a few seconds.
+- If chat-bridge is already running, it says so and opens that page instead. If another program holds port 8000, it says so.
+- `--no-browser` starts the service without opening the page. `uv run chat-bridge --help` lists the other commands.
+
+Current status: the chat page checks which of Claude Code and Codex is logged in, then answers questions with their sources. The strategy screen, the language switch and the page texts for every error are still being built.
 
 ## Ingest documents and search them
 

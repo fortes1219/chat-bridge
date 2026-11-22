@@ -199,6 +199,25 @@ describe('asking a question', () => {
     expect(page.find('[data-test="answer-error"]').text()).toContain('the program stopped');
   });
 
+  it('says a refused question could not be answered, not that it stopped midway', async () => {
+    askMock.mockImplementation(async function* () {
+      yield* [];
+      throw {
+        source: 'backend',
+        code: 'rejected',
+        status: 503,
+        message: 'the knowledge base is empty; run `chat-bridge ingest <folder>` first'
+      };
+    });
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'q');
+
+    const error = page.find('[data-test="answer-error"]').text();
+    expect(error).toContain('This question could not be answered.');
+    expect(error).toContain('the knowledge base is empty');
+    expect(error).not.toContain('stopped with an error');
+  });
+
   it('sends each question on its own and keeps earlier exchanges on screen', async () => {
     const first = controlledAnswer();
     askMock.mockImplementationOnce(first.events);

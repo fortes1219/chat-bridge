@@ -58,6 +58,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action="version", version=f"chat-bridge {__version__}"
     )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="start the chat service without opening the page in the default browser",
+    )
     commands = parser.add_subparsers(title="commands")
     for module in _command_modules():
         module.register(commands)
@@ -98,5 +103,5 @@ def main(argv: list[str] | None = None) -> int:
         # Imported here, so `ingest` and `search` do not load the web server.
         from chat_bridge.chat.server import serve
 
-        return serve()
+        return serve(open_browser=not args.no_browser)
     return handler(args)

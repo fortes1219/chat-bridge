@@ -24,11 +24,23 @@ logger = logging.getLogger(__name__)
 
 FRONTEND = PROJECT_ROOT / "frontend"
 BUILD_FOLDER = "dist"
-# Not sources: what `npm ci` installs and what the build writes.
-NOT_SOURCES = frozenset({"node_modules", BUILD_FOLDER})
-# Written into the build after `npm ci` and the build both succeed, so a build that stopped
-# halfway is done again on the next run.
+PACKAGES_FOLDER = "node_modules"
+LOCK_FILE = "package-lock.json"
+# Not sources: what the install writes and what the build writes.
+NOT_SOURCES = frozenset({PACKAGES_FOLDER, BUILD_FOLDER})
+# Written into the build after the build succeeds, so a build that stopped halfway is done
+# again on the next run.
 STAMP_FILE = ".sources-sha256"
+# Written into node_modules after an install succeeds: the lock file it installed from.
+INSTALL_STAMP_FILE = ".chat-bridge-lock-sha256"
+# `install` updates node_modules in place. `ci` deletes it first, and on Windows that fails
+# whenever any program has one of its native modules loaded, such as a dev server or a test
+# run. The lock file pins every version either way. Install scripts stay off: the packages were
+# checked with them off, and the one package that has one only rewrites files for Vue 2.
+NPM_INSTALL = ("install", "--ignore-scripts", "--no-audit", "--no-fund")
+NPM_BUILD = ("run", "build")
+# Windows reports a failed process's negative exit code as an unsigned 32-bit number.
+UNSIGNED_EXIT_CODES = 2**32
 
 # The Node.js lines that still get security fixes, each with its latest security release
 # (nodejs.org/dist/index.json and endoflife.date, checked 2026-11-22). An older Node.js
@@ -119,23 +131,44 @@ def sources_digest(frontend: Path) -> str:
     return digest.hexdigest()
 
 
-def _run_npm(npm: str, args: list[str], frontend: Path) -> None:
+def _exit_code(returncode: int) -> int:
+    return returncode - UNSIGNED_EXIT_CODES if returncode >= 2**31 else returncode
+
+
+def _run_npm(npm: str, args: tuple[str, ...], frontend: Path) -> None:
     # npm's own output goes to the terminal, so the reader sees what it is doing and why it
     # failed.
     done = subprocess.run([npm, *args], cwd=frontend, check=False)
     if done.returncode != 0:
         raise LocalSetupError(
-            f"`npm {' '.join(args)}` failed with exit code {done.returncode}; "
-            "its output is above."
+            f"`npm {' '.join(args)}` failed with exit code {_exit_code(done.returncode)}; "
+            "its output is above. If it says a file is in use, close what is using "
+            f"{frontend.name}/{PACKAGES_FOLDER}, such as a dev server or a test run, and run "
+            "the command again."
         )
+
+
+def _file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _install_if_needed(npm: str, frontend: Path) -> None:
+    """Install the locked packages when node_modules is missing or the lock file changed."""
+    lock_digest = _file_digest(frontend / LOCK_FILE)
+    stamp = frontend / PACKAGES_FOLDER / INSTALL_STAMP_FILE
+    if stamp.is_file() and stamp.read_text(encoding="utf-8").strip() == lock_digest:
+        return
+    _run_npm(npm, NPM_INSTALL, frontend)
+    stamp.write_text(lock_digest + "\n", encoding="utf-8", newline="\n")
 
 
 def prepare_page(frontend: Path = FRONTEND) -> Path:
     """The folder of the built page, built first when it is missing or out of date."""
-    if not (frontend / "package.json").is_file():
-        raise LocalSetupError(
-            f"The chat page's source is missing: {frontend / 'package.json'}"
-        )
+    for name in ("package.json", LOCK_FILE):
+        if not (frontend / name).is_file():
+            raise LocalSetupError(
+                f"The chat page's source is missing: {frontend / name}"
+            )
     dist = frontend / BUILD_FOLDER
     stamp = dist / STAMP_FILE
     digest = sources_digest(frontend)
@@ -151,8 +184,8 @@ def prepare_page(frontend: Path = FRONTEND) -> Path:
     logger.info(
         "Building the chat page with Node.js %s; this runs once.", reported.strip()
     )
-    _run_npm(npm, ["ci"], frontend)
-    _run_npm(npm, ["run", "build"], frontend)
+    _install_if_needed(npm, frontend)
+    _run_npm(npm, NPM_BUILD, frontend)
     stamp.write_text(digest + "\n", encoding="utf-8", newline="\n")
     return dist
 

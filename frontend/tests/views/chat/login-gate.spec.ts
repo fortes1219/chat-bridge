@@ -57,11 +57,17 @@ describe('the login screen', () => {
 
     const claude = page.find('[data-test="login-program-claude-code"]').text();
     expect(claude).toContain('Not installed');
-    expect(claude).toContain('Install Claude Code, then check again.');
+    expect(claude).toContain('Install Claude Code with a command below');
+    const claudeCommands = page.findAll('[data-test="login-program-claude-code"] [data-test="command"]');
+    expect(claudeCommands.map(command => command.text())).toEqual([
+      'irm https://claude.ai/install.ps1 | iex',
+      'curl -fsSL https://claude.ai/install.sh | bash',
+      'claude auth login'
+    ]);
 
     const codex = page.find('[data-test="login-program-codex"]');
     expect(codex.text()).toContain('Not logged in');
-    expect(codex.find('[data-test="login-command"]').text()).toBe('codex login');
+    expect(codex.findAll('[data-test="command"]').map(command => command.text())).toEqual(['codex login']);
 
     expect(checkAgainButton(page)).toBeDefined();
     expect(page.find('[data-test="chat-open"]').exists()).toBe(false);

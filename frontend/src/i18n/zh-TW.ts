@@ -21,7 +21,7 @@ const zhTW: typeof en = {
   loginNext: {
     loggedIn: '可以回答。',
     notLoggedIn: '在終端機執行這個指令登入：',
-    notInstalled: '請先安裝 {program}，再按「重新偵測」。',
+    notInstalled: '用下面的指令安裝 {program}，再用最後一行登入，然後按「重新偵測」。',
     unknown: '讀不到它的狀態，請再偵測一次。'
   },
   chat: {
@@ -34,6 +34,8 @@ const zhTW: typeof en = {
     noLatestDate: '出處都沒有日期。',
     stopped: '已停止。',
     failed: '回答中途出錯。',
+    notAnswered: '這一題沒辦法回答。',
+    unreachable: '連不到聊天服務。',
     emptyQuestion: '請先輸入問題。',
     longQuestion: '問題最多 {limit} 個字。'
   },

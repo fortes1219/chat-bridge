@@ -174,8 +174,14 @@ so by name when the installed Node.js is older (decision 3).
 
 - **Decision**: `frontend/` holds the page's source and its `package-lock.json`. On
   `uv run chat-bridge` with no other command, the service checks for Node.js; when the built page
-  is missing or the page's sources changed since the last build, it runs `npm ci` and
-  `npm run build` once, then serves `frontend/dist` (git-ignored) at `/`, with unknown paths
+  is missing or the page's sources changed since the last build, it runs `npm run build`, and
+  before it `npm install --ignore-scripts` when `node_modules` is missing or `package-lock.json`
+  changed since the last install (`reflex-dev/reflex@df7f157:reflex/utils/js_runtimes.py:818`
+  installs the same way). `install` updates `node_modules` in place: `npm ci` deletes it first,
+  and on Windows that fails while any program has one of its native modules loaded, which
+  happened on the first real start. Install scripts stay off, as the packages were checked with
+  them off (refusing install scripts: `vuejs/test-utils@6588ec8:pnpm-workspace.yaml:8-9`). The
+  service then serves `frontend/dist` (git-ignored) at `/`, with unknown paths
   answered by `index.html` so the address can hold state. A missing Node.js, or one older than
   the latest security release of a supported line (## Advisories), is reported by name with the
   version to install.
@@ -186,6 +192,17 @@ so by name when the installed Node.js is older (decision 3).
   history mode asks for ("If the URL doesn't match any static assets, it should serve the same
   `index.html` page", router.vuejs.org/guide/essentials/history-mode, read 2026-11-22). A path
   that leads out of the build gets the page, not the file.
+
+- **Starting, as a person runs it (added after the first real start, 2026-11-22)**: before the
+  service starts, the command ingests `data/truth` when nothing has been ingested, so a fresh
+  clone can answer with no other command; a database made by another version is not deleted,
+  since it also holds the question records, and the error names what to delete. It checks that
+  port 8000 can be bound and, when it cannot, says whether chat-bridge is already running there
+  (and opens that page) or another program holds it, as Reflex checks a port before it starts
+  (`reflex-dev/reflex@df7f157:reflex/utils/processes.py:66-90`, `:133-180`). It prints where
+  the page is and opens it in the default browser once the service accepts connections, as
+  Streamlit does when its server starts (`streamlit/streamlit@259fbb6:lib/streamlit/web/bootstrap.py:169-194`);
+  `--no-browser` turns that off.
 
 ### 4. The login screen
 

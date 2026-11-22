@@ -20,7 +20,7 @@ export default {
   loginNext: {
     loggedIn: 'Ready to answer.',
     notLoggedIn: 'Run this in a terminal to log in:',
-    notInstalled: 'Install {program}, then check again.',
+    notInstalled: 'Install {program} with a command below, log in with the last one, then check again.',
     unknown: 'Its state could not be read. Check again.'
   },
   chat: {
@@ -33,6 +33,8 @@ export default {
     noLatestDate: 'None of the sources has a date.',
     stopped: 'Stopped.',
     failed: 'The answer stopped with an error.',
+    notAnswered: 'This question could not be answered.',
+    unreachable: 'The chat service cannot be reached.',
     emptyQuestion: 'Type a question first.',
     longQuestion: 'A question can be at most {limit} characters.'
   },

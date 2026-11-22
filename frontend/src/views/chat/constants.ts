@@ -7,6 +7,25 @@ export const PROGRAM_NAMES: Record<Program, string> = {
   codex: 'Codex'
 };
 
+/** The command each program logs in with. */
+export const LOGIN_COMMANDS: Record<Program, string> = {
+  'claude-code': 'claude auth login',
+  codex: 'codex login'
+};
+
+/**
+ * How each program is installed, from its own README: Claude Code's recommended installers
+ * (anthropics/claude-code README "Get started"), Codex from npm (openai/codex README). Node.js is
+ * already on the machine, since the page is built with it.
+ */
+export const INSTALL_COMMANDS: Record<Program, readonly { system?: string; command: string }[]> = {
+  'claude-code': [
+    { system: 'Windows (PowerShell)', command: 'irm https://claude.ai/install.ps1 | iex' },
+    { system: 'macOS / Linux', command: 'curl -fsSL https://claude.ai/install.sh | bash' }
+  ],
+  codex: [{ command: 'npm install -g @openai/codex' }]
+};
+
 /** The service's order when no program is named: the first one logged in answers. */
 export const PROGRAM_ORDER: readonly Program[] = ['claude-code', 'codex'];
 

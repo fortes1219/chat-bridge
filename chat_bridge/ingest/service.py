@@ -455,3 +455,16 @@ async def ingest_folder(root: Path) -> IngestReport:
             await session.execute(text("SELECT pg_stat_force_next_flush()"))
         await vacuum(engine)
     return report
+
+
+async def knowledge_base_is_empty() -> bool:
+    """Whether nothing has been ingested yet: the states an ingest writes are not there.
+
+    Raises SchemaMismatchError for a database made by another version of chat-bridge.
+    """
+    async with open_engine() as engine:
+        await create_tables(engine)
+        async with async_sessionmaker(engine)() as session:
+            tokenizer_state = await session.get(TokenizerState, TOKENIZER_STATE_ID)
+            embedding_state = await session.get(EmbeddingState, EMBEDDING_STATE_ID)
+    return tokenizer_state is None or embedding_state is None

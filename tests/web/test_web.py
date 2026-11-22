@@ -19,12 +19,21 @@ from chat_bridge.errors import LocalSetupError
 PAGE = "<!doctype html><title>chat</title>"
 
 
-class FakeNode:
-    """Stands in for `node` and `npm`: records each run, and a build writes a page."""
+INSTALL = ["npm", *web.NPM_INSTALL]
+BUILD = ["npm", *web.NPM_BUILD]
+VERSION = ["node", "--version"]
 
-    def __init__(self, version: str = "v24.22.3", build_exit: int = 0) -> None:
+
+class FakeNode:
+    """Stands in for `node` and `npm`: records each run; an install makes node_modules and a
+    build writes a page."""
+
+    def __init__(
+        self, version: str = "v24.22.3", build_exit: int = 0, install_exit: int = 0
+    ) -> None:
         self.version = version
         self.build_exit = build_exit
+        self.install_exit = install_exit
         self.runs: list[list[str]] = []
 
     def run(
@@ -32,9 +41,13 @@ class FakeNode:
     ) -> subprocess.CompletedProcess[str]:
         command = [Path(args[0]).name, *args[1:]]
         self.runs.append(command)
-        if command == ["node", "--version"]:
+        if command == VERSION:
             return subprocess.CompletedProcess(args, 0, stdout=self.version + "\n")
-        if command == ["npm", "run", "build"] and cwd is not None:
+        if command == INSTALL and cwd is not None:
+            if self.install_exit:
+                return subprocess.CompletedProcess(args, self.install_exit)
+            (cwd / "node_modules").mkdir(exist_ok=True)
+        if command == BUILD and cwd is not None:
             if self.build_exit:
                 return subprocess.CompletedProcess(args, self.build_exit)
             (cwd / "dist" / "assets").mkdir(parents=True, exist_ok=True)
@@ -47,6 +60,7 @@ def frontend(tmp_path: Path) -> Path:
     folder = tmp_path / "frontend"
     (folder / "src").mkdir(parents=True)
     (folder / "package.json").write_text("{}", encoding="utf-8")
+    (folder / "package-lock.json").write_text('{"v": 1}', encoding="utf-8")
     (folder / "src" / "main.ts").write_text("export {}", encoding="utf-8")
     return folder
 
@@ -76,7 +90,7 @@ def test_a_missing_node_or_npm_is_named_with_the_version_to_install(
         web.prepare_page(frontend)
 
     assert "24.22.3" in str(raised.value)
-    assert ["npm", "ci"] not in fake.runs
+    assert INSTALL not in fake.runs
 
 
 @pytest.mark.parametrize(
@@ -134,20 +148,66 @@ def test_the_page_is_built_once_and_again_only_after_a_source_changes(
 ) -> None:
     fake = FakeNode()
     _use(monkeypatch, fake)
-    build = [["node", "--version"], ["npm", "ci"], ["npm", "run", "build"]]
 
     web.prepare_page(frontend)
-    assert fake.runs == build
+    assert fake.runs == [VERSION, INSTALL, BUILD]
 
     fake.runs.clear()
     web.prepare_page(frontend)
     assert fake.runs == []
 
+    # A changed source is built again; the packages, still from the same lock, are kept.
     (frontend / "src" / "main.ts").write_text(
         "export const changed = 1", encoding="utf-8"
     )
+    fake.runs.clear()
     web.prepare_page(frontend)
-    assert fake.runs == build
+    assert fake.runs == [VERSION, BUILD]
+
+
+def test_the_packages_are_installed_again_only_after_the_lock_file_changes(
+    frontend: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeNode()
+    _use(monkeypatch, fake)
+    web.prepare_page(frontend)
+
+    (frontend / "package-lock.json").write_text('{"v": 2}', encoding="utf-8")
+    fake.runs.clear()
+    web.prepare_page(frontend)
+
+    assert fake.runs == [VERSION, INSTALL, BUILD]
+
+
+def test_packages_installed_by_hand_are_updated_in_place_not_deleted(
+    frontend: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kept = frontend / "node_modules" / "vue" / "index.js"
+    kept.parent.mkdir(parents=True)
+    kept.write_text("1", encoding="utf-8")
+    fake = FakeNode()
+    _use(monkeypatch, fake)
+
+    web.prepare_page(frontend)
+
+    assert fake.runs == [VERSION, INSTALL, BUILD]
+    assert kept.is_file()
+
+
+def test_a_failed_install_reads_as_a_signed_exit_code_with_what_to_do(
+    frontend: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows reports EPERM (-4048) as 4294963248.
+    fake = FakeNode(install_exit=4_294_963_248)
+    _use(monkeypatch, fake)
+
+    with pytest.raises(LocalSetupError) as raised:
+        web.prepare_page(frontend)
+
+    message = str(raised.value)
+    assert "failed with exit code -4048" in message
+    assert "close what is using frontend/node_modules" in message
+    assert BUILD not in fake.runs
 
 
 def test_installed_packages_and_the_build_are_not_sources(
@@ -185,6 +245,19 @@ def test_a_failed_build_is_reported_and_done_again_on_the_next_run(
 def test_a_missing_source_folder_is_named(tmp_path: Path) -> None:
     with pytest.raises(LocalSetupError, match="source is missing"):
         web.prepare_page(tmp_path / "frontend")
+
+
+def test_a_missing_lock_file_is_named_and_nothing_is_installed(
+    frontend: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = FakeNode()
+    _use(monkeypatch, fake)
+    (frontend / "package-lock.json").unlink()
+
+    with pytest.raises(LocalSetupError, match="package-lock.json"):
+        web.prepare_page(frontend)
+
+    assert fake.runs == []
 
 
 # --- Serving ----------------------------------------------------------------------------

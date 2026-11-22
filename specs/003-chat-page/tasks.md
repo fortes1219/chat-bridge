@@ -19,7 +19,7 @@ description: "Task list for A chat page in the browser"
 
 - [x] T002 `chat_bridge/chat/router.py`: `/chat/stream` answers through `fastapi.sse.EventSourceResponse`; each context and piece is one unnamed event; an error after the start is one `error` event with `{"message": ...}`; what the endpoint accepts and refuses is unchanged (FR-002, FR-009)
 - [x] T003 [P] Fast tests in `tests/chat/test_stream_events.py`: the event lines for a context, two pieces and an error; the refusal tests pass unchanged (SC-006)
-- [x] T004 `chat_bridge/web.py` and `cli.py`: check Node.js and name it when missing or older than the latest security release of a supported line (research.md, ## Advisories), with the version to install; run `npm ci` and `npm run build` in `frontend/` when the built page is missing or its sources changed; serve `frontend/dist` at `/` with unknown paths answered by `index.html` (FR-001, FR-008)
+- [x] T004 `chat_bridge/web.py` and `cli.py`: check Node.js and name it when missing or older than the latest security release of a supported line (research.md, ## Advisories), with the version to install; run `npm run build` in `frontend/` when the built page is missing or its sources changed, and `npm install --ignore-scripts` before it when `node_modules` is missing or the lock file changed; serve `frontend/dist` at `/` with unknown paths answered by `index.html` (FR-001, FR-008)
 - [x] T005 [P] Fast tests in `tests/web/test_web.py`: Node.js missing or too old is reported by name; a build is skipped when nothing changed and run when a source changed; `/` and an unknown path return the page; `/chat/*` still reaches the service
 
 ## Phase 2: The page's data layer (research.md decision 0)
