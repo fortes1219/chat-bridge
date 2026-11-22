@@ -7,7 +7,7 @@ name = "chat-bridge"
 version = "0.1.0"
 description = "A RAG demo that turns market news into a searchable knowledge base, so users can ask questions in natural language and adjust their investment settings against metrics they define themselves."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 dependencies = [
     "asyncpg>=0.32.0",
     "fastapi[standard]>=0.163.2",
@@ -21,7 +21,7 @@ dependencies = [
     "pixeltable-pgserver==0.7.2",
     "psutil>=7.2.2",
     "pydantic>=2.14.3",
-    "pypdf==6.21.2",
+    "pypdf==6.21.4",
     "pyyaml>=6.0.3",
     "sentence-transformers>=6.3.0",
     "sqlalchemy[asyncio]>=2.1.9",
