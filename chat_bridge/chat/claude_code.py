@@ -21,10 +21,10 @@ import sys
 import tempfile
 from asyncio.subprocess import Process
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
+
+from chat_bridge.chat.programs import Login, LoginStatus, ProgramError
 
 # Nothing from the user's own Claude Code setup (settings, hooks, MCP servers), no built-in
 # tools, and no session saved to disk. With no tools the model can only write text, and the
@@ -65,23 +65,11 @@ ERROR_TAIL_CHARS = 300
 MAX_LINE_BYTES = 1024 * 1024
 
 
-class ClaudeCodeError(Exception):
+__all__ = ["ClaudeCodeError", "Login", "LoginStatus", "login_status", "stream_answer"]
+
+
+class ClaudeCodeError(ProgramError):
     """Claude Code could not be run, or it reported an error. The message says which."""
-
-
-class Login(StrEnum):
-    LOGGED_IN = "logged in"
-    NOT_LOGGED_IN = "not logged in"
-    NOT_INSTALLED = "not installed"
-    # The status could not be read. It is never taken for a login.
-    UNKNOWN = "unknown"
-
-
-@dataclass(frozen=True)
-class LoginStatus:
-    state: Login
-    # How Claude Code is signed in, as `claude auth status` names it, or why the state is unknown.
-    detail: str
 
 
 def child_env() -> dict[str, str]:

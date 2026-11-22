@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from chat_bridge.chat.programs import Login, Program
+
 # Far longer than any question; the limit keeps one request from filling the model's input or
 # the record table.
 MAX_QUESTION_LENGTH = 10_240
@@ -14,6 +16,16 @@ DeltaType = Literal["response.context", "response.output_text.delta"]
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
+    # The program that should answer. Without it, the first logged-in one answers.
+    program: Program | None = None
+
+
+class ProgramState(BaseModel):
+    """One program's login state. The program's own status text stays out: it can name the
+    account."""
+
+    program: Program
+    state: Login
 
 
 class Source(BaseModel):
@@ -33,6 +45,9 @@ class ChatContext(BaseModel):
     # The newest event date among the sources: how recent the answer's data is.
     data_latest_date: date | None
     disclaimer: str
+    # The program that answers; none when no program is asked, as for a question the data has
+    # nothing on, or when none can answer.
+    program: Program | None = None
 
 
 class ChatDelta(BaseModel):

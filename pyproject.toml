@@ -19,6 +19,7 @@ dependencies = [
     "office-oxide==0.1.17",
     "pgvector>=0.5.1",
     "pixeltable-pgserver==0.7.2",
+    "psutil>=7.2.2",
     "pydantic>=2.14.3",
     "pypdf==6.21.2",
     "pyyaml>=6.0.3",
@@ -68,7 +69,7 @@ plugins = ["pydantic.mypy"]
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["jieba", "jieba.*", "yaml"]
+module = ["jieba", "jieba.*", "psutil", "yaml"]
 ignore_missing_imports = true
 
 [tool.ruff]

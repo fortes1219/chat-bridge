@@ -22,10 +22,22 @@ import anyio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from chat_bridge.chat import claude_code
-from chat_bridge.chat.claude_code import Login, LoginStatus
+from chat_bridge.chat import claude_code, codex
 from chat_bridge.chat.models import UNANSWERED, ChatRecord
-from chat_bridge.chat.schemas import ChatContext, ChatDelta, ChatRecordPublic, Source
+from chat_bridge.chat.programs import (
+    AnsweringProgram,
+    Login,
+    LoginStatus,
+    Program,
+    ProgramError,
+)
+from chat_bridge.chat.schemas import (
+    ChatContext,
+    ChatDelta,
+    ChatRecordPublic,
+    ProgramState,
+    Source,
+)
 from chat_bridge.database import create_tables, open_engine
 from chat_bridge.search.service import search
 
@@ -44,28 +56,88 @@ CUT_OFF = "the client went away before the answer ended"
 PROMPT_FILE = Path(__file__).with_name("answer_prompt.md")
 TEXT_DELTA = "response.output_text.delta"
 
-# What to tell the user for each state that gives no answer.
+# The programs that can answer, each a module with the same two functions.
+PROGRAMS: dict[Program, AnsweringProgram] = {
+    Program.CLAUDE_CODE: claude_code,
+    Program.CODEX: codex,
+}
+# With no program named, the first one logged in answers. Claude Code comes first, so a user
+# with both gets the same program as before Codex could answer.
+PROGRAM_ORDER = (Program.CLAUDE_CODE, Program.CODEX)
+
+# What to tell the user for each state that gives no answer, per program.
 NO_LOGIN_MESSAGES: dict[Login, str] = {
     Login.NOT_INSTALLED: (
-        "Claude Code is not installed. Install it, run `claude auth login`, "
-        "then ask again."
+        "Claude Code is not installed. Install it and run `claude auth login`, "
+        "or log in to Codex with `codex login`, then ask again."
     ),
     Login.NOT_LOGGED_IN: (
         "Claude Code is not logged in. Run `claude auth login` in a terminal, "
-        "then ask again."
+        "or log in to Codex with `codex login`, then ask again."
     ),
     Login.UNKNOWN: (
         "Could not tell whether Claude Code is logged in ({detail}), so no answer was "
         "given. Check `claude auth status` in a terminal."
     ),
 }
+CODEX_NO_LOGIN_MESSAGES: dict[Login, str] = {
+    Login.NOT_INSTALLED: (
+        "Codex is not installed. Install it, run `codex login`, then ask again."
+    ),
+    Login.NOT_LOGGED_IN: (
+        "Codex is not logged in. Run `codex login` in a terminal, then ask again."
+    ),
+    Login.UNKNOWN: (
+        "Could not tell whether Codex is logged in ({detail}), so no answer was "
+        "given. Check `codex login status` in a terminal."
+    ),
+}
+LOGIN_MESSAGES: dict[Program, dict[Login, str]] = {
+    Program.CLAUDE_CODE: NO_LOGIN_MESSAGES,
+    Program.CODEX: CODEX_NO_LOGIN_MESSAGES,
+}
 
 
 class NoLoginError(Exception):
-    """Claude Code is not installed, not logged in, or its login could not be read."""
+    """The program that was to answer is not installed, not logged in, or its login could not
+    be read."""
 
-    def __init__(self, status: LoginStatus) -> None:
-        super().__init__(NO_LOGIN_MESSAGES[status.state].format(detail=status.detail))
+    def __init__(
+        self, status: LoginStatus, program: Program = Program.CLAUDE_CODE
+    ) -> None:
+        super().__init__(
+            LOGIN_MESSAGES[program][status.state].format(detail=status.detail)
+        )
+
+
+async def program_states() -> list[ProgramState]:
+    """Each program's login state, read without starting a model."""
+    return [
+        ProgramState(
+            program=program, state=(await PROGRAMS[program].login_status()).state
+        )
+        for program in PROGRAM_ORDER
+    ]
+
+
+async def choose_program(requested: Program | None) -> Program:
+    """The program that answers. A named program is used only when it is logged in; it is
+    never swapped for the other. With no name, the first in PROGRAM_ORDER that is logged in.
+    Raises NoLoginError when none can answer."""
+    if requested is not None:
+        status = await PROGRAMS[requested].login_status()
+        if status.state is not Login.LOGGED_IN:
+            raise NoLoginError(status, requested)
+        return requested
+    first_refusal: NoLoginError | None = None
+    for program in PROGRAM_ORDER:
+        status = await PROGRAMS[program].login_status()
+        if status.state is Login.LOGGED_IN:
+            return program
+        first_refusal = first_refusal or NoLoginError(status, program)
+    raise first_refusal or NoLoginError(
+        LoginStatus(Login.UNKNOWN, "no program"), PROGRAM_ORDER[0]
+    )
 
 
 @dataclass(frozen=True)
@@ -148,12 +220,14 @@ async def _record(
     sent_to_model: str | None,
     command_line: list[str] | None,
     error: str | None,
+    program: Program | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
         "sent_to_model": sent_to_model,
-        # How Claude Code was started, kept as evidence that the command line held no text
-        # from the user or the documents and that its tools were off.
+        # The program that answered, and how it was started, kept as evidence that the command
+        # line held no text from the user or the documents and that its tools were off.
+        "program": program,
         "command_line": command_line,
         "error": error,
     }
@@ -165,17 +239,27 @@ async def _record(
 
 
 async def answer_stream(
-    question: str, sections: list[FoundSection]
+    question: str, sections: list[FoundSection], requested: Program | None = None
 ) -> AsyncGenerator[ChatDelta, None]:
     """The context first, then the answer in pieces.
 
-    Every question is recorded however the answer ends: answered, refused before the model,
-    failed, or cut off because the client stopped reading. Raises NoLoginError or
-    claude_code.ClaudeCodeError after the context when no answer can be had.
+    The program is chosen before the context, so the context can name it; a refusal is still
+    raised after the context, so the sources go out either way. Every question is recorded
+    however the answer ends: answered, refused before the model, failed, or cut off because the
+    client stopped reading. Raises NoLoginError or a ProgramError after the context when no
+    answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
     command: list[str] = []
+    program: Program | None = None
+    refusal: NoLoginError | None = None
+    # A question the data has nothing on is answered without a model, so no login is read.
+    if sections:
+        try:
+            program = await choose_program(requested)
+        except NoLoginError as error:
+            refusal = error
 
     async def record(error: str | None) -> None:
         await _record(
@@ -185,6 +269,7 @@ async def answer_stream(
             sent_to_model=sent,
             command_line=command or None,
             error=error,
+            program=program,
         )
 
     try:
@@ -194,6 +279,7 @@ async def answer_stream(
                 sources=[section.source for section in sections],
                 data_latest_date=_latest_event_date(sections),
                 disclaimer=DISCLAIMER,
+                program=program,
             ),
         )
         if not sections:
@@ -201,18 +287,16 @@ async def answer_stream(
             yield ChatDelta(type=TEXT_DELTA, delta=NOT_IN_DATA)
             await record(None)
             return
-
-        status = await claude_code.login_status()
-        if status.state is not Login.LOGGED_IN:
-            raise NoLoginError(status)
+        if refusal is not None or program is None:
+            raise refusal or NoLoginError(LoginStatus(Login.UNKNOWN, "no program"))
 
         sent = model_input(question, sections)
-        async for piece in claude_code.stream_answer(
+        async for piece in PROGRAMS[program].stream_answer(
             system_prompt(date.today()), sent, on_start=command.extend
         ):
             pieces.append(piece)
             yield ChatDelta(type=TEXT_DELTA, delta=piece)
-    except (NoLoginError, claude_code.ClaudeCodeError) as error:
+    except (NoLoginError, ProgramError) as error:
         await record(str(error))
         raise
     except (asyncio.CancelledError, GeneratorExit):

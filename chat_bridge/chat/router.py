@@ -9,7 +9,12 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from chat_bridge.chat import service
-from chat_bridge.chat.schemas import ChatDelta, ChatRecordPublic, ChatRequest
+from chat_bridge.chat.schemas import (
+    ChatDelta,
+    ChatRecordPublic,
+    ChatRequest,
+    ProgramState,
+)
 from chat_bridge.errors import LocalSetupError
 from chat_bridge.search.cli import KNOWN_ERRORS
 
@@ -55,9 +60,16 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
             status_code=503, detail=KNOWN_ERRORS[type(error)]
         ) from error
     return StreamingResponse(
-        _as_ndjson(service.answer_stream(request.question, sections)),
+        _as_ndjson(service.answer_stream(request.question, sections, request.program)),
         media_type="application/x-ndjson",
     )
+
+
+@router.get("/programs")
+async def chat_programs() -> list[ProgramState]:
+    """Whether Claude Code and Codex are each installed and logged in, read without starting
+    a model."""
+    return await service.program_states()
 
 
 @router.get("/records")
