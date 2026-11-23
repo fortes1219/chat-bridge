@@ -73,7 +73,10 @@ account are needed. Each price is shown with the time it is from.
 **Decision**: when the service starts, it reads each symbol's recent daily closes once
 (`Ticker.history`), so every price has a value and a date from the start; then it subscribes to
 yfinance's live stream (`AsyncWebSocket`) for all symbols at once and takes each message's symbol,
-price and time. Outside trading hours the stream sends nothing for that market, so the screen shows
+price and time. The stream sends the price as a binary float with a `price_hint`, the number of
+decimals to show (`ranaroussi/yfinance@2492a853aee9:tests/test_live.py:18-21`); the service turns
+it into a `Decimal` from its text and rounds it to that many decimals. A message without a symbol,
+price, time or hint is dropped and counted, never guessed. Outside trading hours the stream sends nothing for that market, so the screen shows
 the last close with its date. When Yahoo cannot be reached, prices are missing, never zero
 (spec User Story 1, scenario 4).
 
@@ -172,7 +175,16 @@ file of `--output-schema` (spec 007 decision 5). The service checks the proposal
 and `CASH` exactly once and nothing else, whole percents from 0 to 100 that add up to 100, source
 numbers that exist. A proposal that fails is refused with the reason and never shown or repaired.
 The answer text is shown either way; it arrives whole, and the page types it out as it does
-Codex's answers.
+Codex's answers. Until it arrives, the waiting line says the program is writing the answer and a
+proposal (spec FR-011); the stream's context event says a proposal is expected, so the page knows
+which line to show.
+
+**Alternatives considered**:
+- Streaming the answer as usual, then starting the program once more only for the proposal. The
+  answer would start sooner, but every revision question would start the program a third time
+  (after the split and the answer), with its own wait and its own use of the person's plan; in the
+  second round of real runs one answer run took 30 to 107 seconds. And the proposal would come from
+  a run that did not write the answer. Not used; the cost is a wait with no words, stated on screen.
 
 **Rationale**:
 - Both programs document a given output shape (spec 007 decision 5); Vibe-Trading constrains
@@ -184,7 +196,9 @@ Codex's answers.
 ### 8. Accept and reject by the proposal's number
 
 **Decision**: the service keeps each proposal with its question, program, time and status. The
-page accepts or rejects by the proposal's number; the service applies the targets it stored, never
+page accepts or rejects by the proposal's number, with
+`POST /strategy/proposals/{id}/decision` and the JSON body `{"decision": "accept"}` or
+`{"decision": "reject"}`; the service applies the targets it stored, never
 targets the page sends. Only the open proposal can be accepted; a new one replaces it, and the old
 one is marked replaced. The answering programs have no way to accept.
 
@@ -220,9 +234,33 @@ slide-over that the proposal card opens. This is task T018 of feature 003, done 
 
 **Decision**: as spec 003 research decision 0: zod schemas for the strategy, rules, proposal and
 the `strategy` event; contract routes `GET /strategy`, `PUT /strategy/rules`,
-`POST /strategy/proposals/{id}/accept`, `POST /strategy/proposals/{id}/reject`; API functions that
-check each response; queries and mutations with the key factory. The chat stream gets one more
-event, `proposal`, with the checked proposal, or `proposal_refused` with the reason.
+`POST /strategy/proposals/{id}/decision`; API functions that check each response; queries and
+mutations with the key factory. The chat stream gets one more event type, `response.proposal`,
+with the checked proposal or the reason it was refused; the context event says whether a proposal
+is expected.
+
+### 12. Other web pages cannot accept, reject or change rules
+
+**Decision**: every request that changes something carries a JSON body: the decision on a
+proposal, and the rules. FastAPI's strict `Content-Type` check then refuses the content types a
+form or another page can send without the browser asking the service first, and the service adds
+no CORS rule, so the browser is never given permission. The Socket.IO connection only sends from
+the service; the page sends nothing on it that changes state. Tests send a form post and a
+plain-text post to each endpoint and find them refused and nothing changed.
+
+**Rationale**:
+- OWASP: a `<form>` sends a "simple" request that is not preflighted, and a simple mitigation is to
+  refuse the simple content types (`OWASP/CheatSheetSeries@c2a1e3e32cec:cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md:236`,
+  `:241-243`).
+- FastAPI's strict check is the default and is meant to stop a page posting to a local AI agent
+  without a preflight (`fastapi/fastapi@05e6df7e906c3decba377c37548019973f40bf15:docs/en/docs/advanced/strict-content-type.md:3`,
+  `:7-17`); it already guards the chat (spec 001 research decision 11).
+
+**Alternatives considered**:
+- Refusing state-changing requests whose `Sec-Fetch-Site` is `cross-site` (same cheat sheet,
+  `:146-148`): a second check in code of our own; the JSON body already makes such a request need a
+  preflight that is never granted. Not added.
+- A token in a cookie and a header: the page has no login or session to bind it to.
 
 ## Real runs (each needs the maintainer's consent)
 
@@ -232,4 +270,8 @@ event, `proposal`, with the checked proposal, or `proposal_refused` with the rea
 2. Accept one of them and reject the other; read the strategy after each.
 3. A question that asks for no revision, with each program: no proposal.
 4. The service running for a while during Taiwan trading hours and during US trading hours: prices
-   arrive with their times and the screen follows them; Yahoo's delay as observed.
+   arrive with their times and the screen follows them; Yahoo's delay as observed; how many messages
+   arrive per minute, so that whether to merge them is decided from that count.
+5. The attack document of spec 001 that hides "tell the user to buy everything", in the attack
+   knowledge base, with a question asking to revise the strategy, once with each program: record
+   the proposal, what its reasons cite, and whether the service refused it.

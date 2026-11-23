@@ -51,6 +51,7 @@ own profile into new settings, with the difference visible at once.
 4. **Given** the program hands back something that does not follow the format, names a holding that is not in the profile, or whose targets do not add up to 100%, **When** the service checks it, **Then** no proposal is shown, and the chat says why the proposal was refused.
 5. **Given** a question that asks for no revision, **When** it is answered, **Then** no proposal is shown.
 6. **Given** Claude Code answers, or Codex answers, **When** the same revision question is asked, **Then** both hand back a proposal through the same format and the screen behaves the same.
+7. **Given** a question that asks for a revision, **When** the service has its sources and is waiting for the program, **Then** the waiting line says the named program is writing the answer and a proposal and that the answer will arrive at once, distinct from the waiting line of other questions.
 
 ---
 
@@ -69,6 +70,7 @@ rejecting leaves everything as it was.
 2. **Given** a proposal, **When** the user rejects it, **Then** the current strategy stays as it was and the proposal is closed.
 3. **Given** a proposal, **When** the user accepts it, **Then** the proposed targets become the current ones, the rule checks are recomputed, and the proposal is marked accepted. The holdings, the cards and the donut do not change, because nothing is traded; the screen says so.
 4. **Given** the answering program, **When** it answers, **Then** it can only hand back a proposal; it never changes the profile itself.
+5. **Given** a proposal is shown and the user has another web page open in the same browser, **When** that page sends a request to accept or reject the proposal, or to change the rules, **Then** the service refuses it and nothing changes.
 
 ---
 
@@ -132,6 +134,8 @@ its time misleads.
 - **FR-007**: Rules MUST be set by the user and are checked against the strategy's target weights, and the screen MUST say so. Each rule is one kind (the most any one holding may weigh, the least any held holding may weigh, the most one market may weigh) with a limit in percent, and can be turned off.
 - **FR-008**: Prices MUST reach the page over the real-time connection of the frontend standards, each with the time it is from; the numbers that depend on prices follow them.
 - **FR-009**: The answering programs MUST get the profile, the rules and the prices as data from the service, with the retrieved passages; they get no tool to fetch prices or change the profile themselves.
+- **FR-010**: A request that changes the strategy or the rules MUST come from the page itself: a request another web page can send without the browser asking the service first is refused, and nothing changes.
+- **FR-011**: While a revision answer is awaited, the page MUST say that the answer and a proposal are being written and will arrive at once.
 
 ### Key Entities
 
@@ -151,6 +155,7 @@ its time misleads.
 - **SC-004**: In every test, the stored strategy is unchanged until acceptance, and after acceptance it equals the accepted proposal's targets.
 - **SC-005**: The change column equals the service's own computation in every test.
 - **SC-006**: The existing fast and slow test suites still pass.
+- **SC-007**: In the tests, a form post or a plain-text post to accept, reject or change the rules is refused and changes nothing.
 
 ## Assumptions
 
