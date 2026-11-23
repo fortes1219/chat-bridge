@@ -406,6 +406,43 @@ whitelist and used as a filter, as the Azure template's search tool takes a type
 and LlamaIndex's `VectorIndexAutoRetriever` has a model set metadata filters. It changes the
 split's format and is a later feature.
 
+### 16. Time to the sources: what the code spent, and the two fixes
+
+The real runs' sources arrived 8 to 26 seconds after the question. Timed piece by piece in the
+container, without a model, on the six-part question and the parts listed for it (six rounds, the
+first cold; the median of the other five):
+
+| Piece | Calls a question | Before | After |
+|---|---|---|---|
+| Building the jieba tokenizer on the 8.6 MB dictionary | 3 | 3.10 s | 0.02 s |
+| Embedding the queries | 3 | 0.50 s | 0.47 s |
+| Opening the database | 5 | 0.06 s | 0.06 s |
+| The question's two searches, in all | 1 | 2.58 s | 0.50 s |
+| The parts' searches and the market sections, in all | 1 | 1.48 s | 0.43 s |
+| Loading the embedding model, on the first question only | 1 | 5.2 s | at start |
+
+**Decision**:
+- A tokenizer is built once per dictionary and word set and kept for the process. jieba keeps one
+  default tokenizer for the process and initialises it once
+  (`fxsjy/jieba@67fa2e3:jieba/__init__.py:520`, `:93-163`). The key holds the dictionary's path,
+  because tests use separate data folders.
+- `serve()` loads the embedding model after preparing the knowledge base and before taking
+  requests, as FastAPI's documentation loads a shared model before requests
+  (`fastapi/fastapi@b283119:docs/en/docs/advanced/events.md:9`, `:15-35`). It is not in the
+  app's `lifespan`, because the fast tests open the app with its lifespan and would then load the
+  model, the slow tests that page warns about.
+
+**Not changed**:
+- Searching the question once instead of twice: after the fix the second search costs one more
+  embedding, about 0.17 s.
+- Starting the split while the question is searched: the search now takes about half a second,
+  and a question the search finds nothing for must not start a program (FR-007).
+
+**What is left is the programs' own time**: the split run, 4.5 to 11.3 s in the real runs; the
+time before the first word once the sources are in, 3 s for a question about one number and 20 to
+34 s for the six-part question; and writing the answer, 20 to 60 s. Using a smaller model for the
+split was not looked into.
+
 ## Real runs (each needs the maintainer's consent)
 
 To run after the code, each recorded in full:
