@@ -124,8 +124,12 @@ the answers part by part.
 standard input, key variables removed) and asks for one field, `parts`, a list of texts.
 - Claude Code: `--output-format json --json-schema '<schema>'`; the parts are in the response's
   `structured_output` field.
-- Codex: `--output-schema <file>`, the schema in a file in the run's empty folder; the parts are
-  the final agent message, read from the `--json` events as the answer is today.
+- Codex: `--output-schema <file>`, the schema in a file of its own folder, so the working folder
+  stays empty; the parts are the final agent message, read from the `--json` events as the answer
+  is today.
+- The schema both are given asks for one field, `parts`, a list of strings, and no other field.
+  The count and the lengths are checked by the service on whatever comes back (decision 6), so
+  they do not depend on how either program reads a schema.
 
 **Rationale**:
 - `https://code.claude.com/docs/en/cli-reference` `cli-reference.md:104`: `--json-schema` gives
@@ -255,6 +259,27 @@ the programs listed.
 **What the test cannot show**: what parts a program lists for a question it has not been asked
 before. That needs the model. It is shown by the recorded real runs, and by questions that took no
 part in building this feature, which are kept apart from this work and run only after delivery.
+
+### 13. The page: the answer first, then the sources it cites; every source one click away
+
+**Decision**: before the first answer text, one line says how many sources were found; it opens
+the whole list (Nuxt UI's `UCollapsible`, already installed). Under the answer, only the sources
+the answer cites, read from its bracketed source numbers. A finished answer that cites none says
+so.
+
+**Rationale**:
+- With 30 to 70 sources, listing them all above the answer pushes its first word one or two
+  screens down.
+- The retrieval template draws the answer, then a "References" list of only the citations it
+  parsed from the answer's brackets
+  (`Azure-Samples/rag-postgres-openai-python@ecaafc4:src/frontend/src/components/Answer/AnswerParser.tsx:9`,
+  `:29`, `:39`; `src/frontend/src/components/Answer/Answer.tsx:56`, `:66-71`), and keeps
+  everything the model was given behind a separate button (`Answer.tsx:43-45`).
+- A bracket counts only when it holds source numbers alone, `[3]` or `[3, 5]`; a date in brackets
+  is not a citation. A number no source has is ignored.
+- Checked in headless Edge with a stand-in `claude` that answers with fixed text and calls no
+  model: the line read 「找到 60 個出處」 above the answer, four cited sources were listed under it,
+  and the open list held 60.
 
 ## Real runs (each needs the maintainer's consent)
 

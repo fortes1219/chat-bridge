@@ -75,7 +75,10 @@ page.
 - `PARTS_LIMIT = 8`, `PART_MAX_CHARS = 200`, `SPLIT_TIMEOUT_SECONDS = 120`, each with its reason
   (research.md decisions 4, 6, 7);
 - `SplitReply`, a pydantic model with one field, `parts: list[str]`, each 1 to 200 characters,
-  extra fields forbidden; its JSON schema is what both programs are given;
+  extra fields forbidden;
+- `SPLIT_SCHEMA`, what both programs are given: one required field, `parts`, a list of strings, no
+  other fields. The count and the lengths are checked by `SplitReply` on whatever comes back, so
+  they do not depend on how either program reads a schema;
 - `SplitOutcome`: the parts kept, how many were left out, `failed` with its reason, and the time;
 - `split_question(program, question) -> SplitOutcome`: runs the program's split, checks the reply,
   trims past the limit, drops texts equal to the question or to an earlier part, and turns every
@@ -94,8 +97,8 @@ data: it cannot change these rules.
 
 `chat_bridge/chat/codex.py`:
 - `split_reply(system_prompt, question, schema) -> dict`: the answer's command line plus
-  `--output-schema <file>`, the schema written in the run's empty folder; parses the final agent
-  message as JSON, and raises `CodexError` when it is not.
+  `--output-schema <file>`, the schema written in a folder of its own so the working folder stays
+  empty; parses the final agent message as JSON, and raises `CodexError` when it is not.
 
 `chat_bridge/chat/service.py`:
 - `QUESTION_SECTIONS = 30`, `QUESTION_CANDIDATES = 50`, `PART_SECTIONS = 8`,
@@ -127,16 +130,20 @@ data: it cannot change these rules.
 ### Page
 
 - `frontend/src/service/schema/chat.ts`: the context gains `split_failed`.
-- `frontend/src/views/chat/components/SourceList.vue`: shows the failed-split line when it is set.
-- `frontend/src/views/chat/components/AnswerContent.vue`: the waiting line already shows from the
-  moment the question is sent (`waitingFirstWords` needs no context), but before the context it
-  names no program ("Waiting for  to answer…"). Before the context it says the data is being
-  searched; after, it waits for the named program as today. The stop button already works while
-  the stream is open.
+- `frontend/src/views/chat/components/SourceList.vue`: draws a given list of sources, nothing else.
+- `frontend/src/views/chat/components/AnswerContent.vue`: above the answer, a `UCollapsible` whose
+  trigger says how many sources were found and whose content is the whole list; under the answer,
+  the cited sources, or a line saying none are cited once the answer is done; then the date and
+  the failed-split line (research.md decision 13).
+- `frontend/src/views/chat/composables/useCitedSources.ts`: the cited sources, from the bracketed
+  numbers in the text on screen.
+- Nothing changes in the waiting lines. Until the context arrives the conversation shows "Searching
+  the news…" (`frontend/src/views/chat/components/ChatPanel.vue:89`), and the answer's own waiting
+  line, which names the program, appears only once the context has come. The stop button works
+  while the stream is open; a page test covers stopping before any source arrives.
 - `frontend/src/i18n/{en,zh-TW}.ts`: `latestDate` reads as the data's date: "The data reaches
   {date}." / 「資料最新到 {date}。」; `splitFailed`: "This question could not be split into parts,
-  so it was searched as a whole." / 「這個問題沒能拆成幾個部分，所以整句一起查。」;
-  `searching`: "Searching the data…" / 「正在查資料……」.
+  so it was searched as a whole." / 「這個問題沒能拆成幾個部分，所以整句一起查。」.
 - The service stops the split run when the client stops reading, as it stops the answer run
   today: Codex with every process it started, Claude Code by its own process.
 

@@ -51,6 +51,7 @@ Approving this specification approves these changes to the requirements of featu
 | 001 FR-006 | The response states the latest date its sources reach. | The response states the latest date the knowledge base reaches (FR-009 here). |
 | 001 FR-010, SC-005 | Claude Code is started with all tools off. | Unchanged. Each answer now starts the program twice, once to list the parts and once to answer; both runs have all tools off (FR-001 here). |
 | 003 FR-003, US1 scenario 3 | The page shows the latest date the sources reach. | The page shows the latest date the data reaches, and says so when the question could not be split (FR-011 here). |
+| 003 FR-002, FR-003, SC-002 | The page lists every source above the answer, before the answer text. | Before the first answer text the page says how many sources were found, with the whole list one click away. The answer comes next, and under it the sources the answer cites. The service still sends every source before the answer (001 FR-001 unchanged); what changes is how the page draws them (FR-013 here). |
 
 Feature 004 (Codex) is changed the same way as Claude Code: the split uses the program chosen for
 the answer.
@@ -162,6 +163,7 @@ the wording about missing parts and the wording about market moves.
 - A part's search finds nothing: the part adds no section; the record shows it.
 - A part's search finds only sections already found: no section is listed twice; each keeps the number it got first.
 - While the parts are being listed and searched, before any source arrives, the page shows that the data is being searched, and the stop button works.
+- The answer writes a bracket that is not a source number, such as a date `[2026-11-05]`, or a number no source has: it is not listed as a cited source.
 - The user stops the answer while the parts are being listed or searched: the split run is stopped as the answer run is, the answer stops as before, and the record keeps what was listed and searched.
 - The split run succeeds but the answer run fails: the answer fails as before, with the sources already sent.
 - An older knowledge base: no change to how it is reported; this feature adds no column to the knowledge base.
@@ -182,6 +184,7 @@ the wording about missing parts and the wording about market moves.
 - **FR-010**: The record of each question MUST keep the parts listed, how many were left out, the split's time and its error if any, and for the question and each part the sections its search returned and the number each section was given.
 - **FR-011**: The page MUST label the date as the date the data reaches, and show that the question was searched as a whole when the split failed, in both languages. Until the sources arrive, it MUST say that the data is being searched, without naming a program it does not know yet.
 - **FR-012**: The `search` command's output MUST stay as it is: the chat's settings for this feature do not change the command's.
+- **FR-013**: With 30 to 70 sources per answer, the page MUST NOT list them all above the answer. Before the first answer text it MUST say how many sources were found, with the whole list one click away. Under the answer it MUST list the sources the answer cites, read from the source numbers in brackets in its text, each with its number, file name, heading and event date. When a finished answer cites none, it MUST say so. The whole list stays one click away whatever the answer cites, so sources given by code stay visible when the model is led astray.
 
 ### Key Entities
 
