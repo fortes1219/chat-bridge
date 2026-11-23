@@ -44,9 +44,20 @@ from chat_bridge.chat.schemas import (
 )
 from chat_bridge.chat.split import SplitOutcome, split_question
 from chat_bridge.database import create_tables, open_engine
-from chat_bridge.search.service import SearchHit, latest_event_date, search, search_many
+from chat_bridge.search.service import (
+    SearchHit,
+    latest_event_date,
+    search,
+    search_many,
+    sections_headed,
+)
 from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
 
+# The question's search as it ran before parts were searched: 8 sections, 20 candidates per
+# method, every section ranking. Kept whole and first, so nothing it finds is crowded out by what
+# the wider searches add.
+KEPT_SECTIONS = 8
+KEPT_CANDIDATES = 20
 # Measured on 20 questions about the sample news, with each part keeping its own 8 sections:
 # the question keeping 30 found the most and lost none of what 8 found. Ranking 30 well takes
 # more candidates than the 20 each method ranks by default.
@@ -55,6 +66,11 @@ QUESTION_CANDIDATES = 50
 # One part is one topic, which one search of 8 already answers well.
 PART_SECTIONS = 8
 PART_CANDIDATES = 20
+# The section of the sample news that holds its market table (docs/truth_format.md). Its tables
+# and its short preface read nearly the same in every file, so ranked on their own they match
+# almost any market question whatever the event, and push the news out. So it does not rank: it
+# comes with its document, as a parent document's parts come with it.
+MARKET_SECTION = "當日與之後的行情"
 # Sent in both languages, each on its own, so a page shows the one it is in and a reader of the
 # API still gets it whatever language the question was in.
 DISCLAIMER: Localized = {
@@ -74,7 +90,7 @@ SECTION_NAMES: dict[str, Localized] = {
     "事件發生": {"zh-TW": "事件發生", "en": "What happened"},
     "影響股市證據": {"zh-TW": "影響股市證據", "en": "Evidence of market impact"},
     "相關標的": {"zh-TW": "相關標的", "en": "Related assets"},
-    "當日與之後的行情": {
+    MARKET_SECTION: {
         "zh-TW": "當日與之後的行情",
         "en": "Market moves on the day and after",
     },
@@ -198,17 +214,32 @@ def _found_section(hit: SearchHit, number: int) -> FoundSection:
 
 
 async def find_sections(question: str) -> list[FoundSection]:
-    """The sections the search finds for the question as asked, numbered from 1."""
-    result = await search(question, QUESTION_SECTIONS, candidates=QUESTION_CANDIDATES)
-    return [
-        _found_section(hit, number) for number, hit in enumerate(result.hits, start=1)
-    ]
+    """The sections the search finds for the question as asked, numbered from 1.
+
+    First the question's search as it ran before parts were searched, whole; then the wider
+    search, with market sections left out, adding what the first did not find.
+    """
+    kept = await search(question, KEPT_SECTIONS, candidates=KEPT_CANDIDATES)
+    wide = await search(
+        question,
+        QUESTION_SECTIONS,
+        candidates=QUESTION_CANDIDATES,
+        left_out_heading=MARKET_SECTION,
+    )
+    seen: set[int] = set()
+    hits = []
+    for hit in [*kept.hits, *wide.hits]:
+        if hit.section_id not in seen:
+            seen.add(hit.section_id)
+            hits.append(hit)
+    return [_found_section(hit, number) for number, hit in enumerate(hits, start=1)]
 
 
 async def gather_sections(
     question: str, sections: list[FoundSection], parts: list[str]
 ) -> tuple[list[FoundSection], list[dict[str, Any]]]:
-    """The question's sections, then each part's in the order listed, and every search made.
+    """The question's sections, then each part's in the order listed, then the market section of
+    each document among them; and every search made.
 
     Each part keeps the sections its own search found, and none of the question's is dropped:
     nothing is cut to fit a total, because ranking the lists against each other and cutting would
@@ -219,17 +250,27 @@ async def gather_sections(
     searches: list[dict[str, Any]] = [
         {"query": question, "numbers": [s.source.number for s in sections]}
     ]
-    if not parts:
-        return gathered, searches
-    results = await search_many(parts, PART_SECTIONS, candidates=PART_CANDIDATES)
-    for part, result in zip(parts, results, strict=True):
-        for hit in result.hits:
+
+    def add(hits: list[SearchHit]) -> list[int]:
+        for hit in hits:
             if hit.section_id not in numbers:
                 numbers[hit.section_id] = len(gathered) + 1
                 gathered.append(_found_section(hit, numbers[hit.section_id]))
-        searches.append(
-            {"query": part, "numbers": [numbers[hit.section_id] for hit in result.hits]}
+        return [numbers[hit.section_id] for hit in hits]
+
+    if parts:
+        results = await search_many(
+            parts,
+            PART_SECTIONS,
+            candidates=PART_CANDIDATES,
+            left_out_heading=MARKET_SECTION,
         )
+        for part, result in zip(parts, results, strict=True):
+            searches.append({"query": part, "numbers": add(result.hits)})
+    attached = await sections_headed(
+        [section.section_id for section in gathered], MARKET_SECTION
+    )
+    searches.append({"attached": MARKET_SECTION, "numbers": add(attached)})
     return gathered, searches
 
 

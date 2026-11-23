@@ -4,7 +4,8 @@ With no program named, the service falls back to Codex when Claude Code is not l
 test that makes Claude Code look missing would otherwise reach the Codex on the machine.
 
 Nor does a chat test start a program to split a question, or read the database for the date the
-data reaches, unless it says otherwise: the split lists no parts, and the date is fixed.
+data reaches or for the market sections of the documents found, unless it says otherwise: the
+split lists no parts, the date is fixed, and no document has a market section.
 """
 
 from datetime import date
@@ -33,5 +34,9 @@ def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
     async def latest() -> date:
         return LATEST_EVENT_DATE
 
+    async def no_market_sections(section_ids: object, heading: str) -> list[object]:
+        return []
+
     monkeypatch.setattr(service, "split_question", no_parts)
     monkeypatch.setattr(service, "latest_event_date", latest)
+    monkeypatch.setattr(service, "sections_headed", no_market_sections)

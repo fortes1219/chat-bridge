@@ -118,6 +118,17 @@ data: it cannot change these rules.
   built once and the queries are embedded in one call;
 - `latest_event_date()` returns `max(documents.event_date)`.
 
+`chat_bridge/search/service.py` and `chat_bridge/chat/service.py`, for FR-014:
+- `search()` and `search_many()` take `left_out_heading` (default none), applied inside both
+  candidate queries next to the date filter; the `search` command passes none;
+- `sections_headed(section_ids, heading)` returns the sections with that heading of the documents
+  the given sections belong to, in the order the documents first appear;
+- `find_sections` searches the question twice: first as before this feature (`KEPT_SECTIONS` 8,
+  `KEPT_CANDIDATES` 20, every section ranking), kept whole and first; then the wider search with
+  `MARKET_SECTION` left out, adding what the first did not find;
+- the parts' searches leave `MARKET_SECTION` out, and `gather_sections` appends each document's
+  market section after the searched sections, recording them as one more entry of `searches`.
+
 `chat_bridge/embedding.py`: `embed_queries(model, texts)`, one batched `encode_query` call, as
 `embed_documents` already batches documents.
 

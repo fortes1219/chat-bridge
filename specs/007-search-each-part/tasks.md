@@ -45,10 +45,15 @@ description: "Task list for searching each part of a question before answering"
 
 - [x] T021 `AnswerContent.vue`, `SourceList.vue`, `useCitedSources.ts`, both i18n files: the count above the answer with the whole list behind it, the cited sources under the answer, the line for an answer that cites none (FR-013). Page tests: 60 sources, a date in brackets and a number no source has are not cited, an answer that cites none; the hostile-content check covers the opened list. Looked at in headless Edge with a stand-in `claude` (research.md decision 13).
 
+- [x] T022 FR-014: `left_out_heading` in `search()` and `search_many()`, `sections_headed()`, `MARKET_SECTION` passed by the chat, the market sections appended after the searched sections (research.md decision 14).
+- [x] T023 Fast tests: the question's and the parts' searches leave the market section out; each document's market section comes last, numbered on, once. Slow test: replaying the parts each program listed, every market section comes after the searched sections and belongs to a document found by them.
+
+- [x] T024 The question's search as before this feature, 8 sections from 20 candidates with every section ranking, kept whole and first (FR-003, FR-004). Fast test: both searches and the order. Slow test: today's 8 come first, whole, in order, for every replayed set of parts. Replayed the 26 cases and the market-number questions (research.md decision 14).
+
 ## Phase 6: Checks and real runs
 
 - [ ] T016 Run the fast suite, `ruff`, `mypy`, the page tests and type check, and the slow suite in the container; check `git ls-files --eol` shows no `w/crlf`.
 - [x] T017 Start the service with `uv run chat-bridge` as a person would: the page loads, and a question the data has nothing on still gets the fixed answer without starting a program. Any question that starts a program is a real run (T018).
-- [ ] T018 Real run (consent): the runs listed in research.md "Real runs", each recorded with the times of SC-007; save the parts each program listed to `tests/data/multi_part_question.json` and run T009's test with them (SC-001, SC-002, SC-004, SC-007).
+- [x] T018 Real run (consent, 2026-11-23; results in research.md "Results"; the English runs fail the 0050 part, open): the runs listed in research.md "Real runs", each recorded with the times of SC-007; save the parts each program listed to `tests/data/multi_part_question.json` and run T009's test with them (SC-001, SC-002, SC-004, SC-007).
 - [x] T019 README (both languages): what the split does, what the measurement and the tests show, what only the real runs show, and the open gap of spec Assumptions.
 - [ ] T020 Hand over the file list and a one-line commit message.

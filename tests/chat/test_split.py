@@ -180,20 +180,35 @@ def _hit(section_id: int) -> SimpleNamespace:
     )
 
 
-def test_the_question_is_searched_for_30_sections_from_50_candidates(
+def test_the_questions_own_search_comes_first_whole_then_the_wider_one(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    asked: dict[str, Any] = {}
+    asked: list[dict[str, Any]] = []
+    found = {8: [_hit(3), _hit(1)], 30: [_hit(1), _hit(5), _hit(3), _hit(7)]}
 
     async def search(question: str, limit: int, **kwargs: Any) -> SimpleNamespace:
-        asked.update(question=question, limit=limit, **kwargs)
-        return SimpleNamespace(hits=[_hit(1)])
+        asked.append({"question": question, "limit": limit, **kwargs})
+        return SimpleNamespace(hits=found[limit])
 
     monkeypatch.setattr(service, "search", search)
 
-    asyncio.run(service.find_sections(QUESTION))
+    sections = asyncio.run(service.find_sections(QUESTION))
 
-    assert asked == {"question": QUESTION, "limit": 30, "candidates": 50}
+    assert asked == [
+        {"question": QUESTION, "limit": 8, "candidates": 20},
+        {
+            "question": QUESTION,
+            "limit": 30,
+            "candidates": 50,
+            "left_out_heading": service.MARKET_SECTION,
+        },
+    ]
+    assert [(s.section_id, s.source.number) for s in sections] == [
+        (3, 1),
+        (1, 2),
+        (5, 3),
+        (7, 4),
+    ]
 
 
 def test_each_part_keeps_its_sections_after_the_questions_and_nothing_is_cut(
@@ -215,7 +230,12 @@ def test_each_part_keeps_its_sections_after_the_questions_and_nothing_is_cut(
         service.gather_sections(QUESTION, question_sections, ["利率政策", "0050"])
     )
 
-    assert asked == {"parts": ["利率政策", "0050"], "limit": 8, "candidates": 20}
+    assert asked == {
+        "parts": ["利率政策", "0050"],
+        "limit": 8,
+        "candidates": 20,
+        "left_out_heading": service.MARKET_SECTION,
+    }
     assert [(s.section_id, s.source.number) for s in gathered] == [
         (1, 1),
         (2, 2),
@@ -227,6 +247,7 @@ def test_each_part_keeps_its_sections_after_the_questions_and_nothing_is_cut(
         {"query": QUESTION, "numbers": [1, 2]},
         {"query": "利率政策", "numbers": [1, 3, 4]},
         {"query": "0050", "numbers": [4, 5]},
+        {"attached": service.MARKET_SECTION, "numbers": []},
     ]
 
 
@@ -241,7 +262,44 @@ def test_with_no_parts_no_further_search_runs(monkeypatch: pytest.MonkeyPatch) -
     )
 
     assert [s.section_id for s in gathered] == [1]
-    assert searches == [{"query": QUESTION, "numbers": [1]}]
+    assert searches == [
+        {"query": QUESTION, "numbers": [1]},
+        {"attached": service.MARKET_SECTION, "numbers": []},
+    ]
+
+
+def test_each_documents_market_section_comes_last_numbered_on_and_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def search_many(
+        parts: list[str], limit: int, **kwargs: Any
+    ) -> list[SimpleNamespace]:
+        return [SimpleNamespace(hits=[_hit(10)])]
+
+    asked: dict[str, Any] = {}
+
+    async def sections_headed(section_ids: list[int], heading: str) -> list[Any]:
+        asked.update(section_ids=section_ids, heading=heading)
+        # The document of section 10 has its market section 11; section 1's has 12, which a
+        # part had already found, so it is not listed twice.
+        return [_hit(12), _hit(11)]
+
+    monkeypatch.setattr(service, "search_many", search_many)
+    monkeypatch.setattr(service, "sections_headed", sections_headed)
+    question_sections = [_section(1, 1), _section(12, 2)]
+
+    gathered, searches = asyncio.run(
+        service.gather_sections(QUESTION, question_sections, ["利率政策"])
+    )
+
+    assert asked == {"section_ids": [1, 12, 10], "heading": service.MARKET_SECTION}
+    assert [(s.section_id, s.source.number) for s in gathered] == [
+        (1, 1),
+        (12, 2),
+        (10, 3),
+        (11, 4),
+    ]
+    assert searches[-1] == {"attached": service.MARKET_SECTION, "numbers": [2, 4]}
 
 
 # --- The answer ------------------------------------------------------------------------------
@@ -325,11 +383,13 @@ def test_a_split_that_worked_is_not_reported_as_failed_and_its_sections_reach_th
     assert "[3] file: data/truth/21.md" in answering["input_text"]
     [written] = answering["records"]
     assert written["split"].parts == ["利率政策", "0050"]
-    assert [search["query"] for search in written["searches"]] == [
+    assert [search.get("query") for search in written["searches"]] == [
         QUESTION,
         "利率政策",
         "0050",
+        None,
     ]
+    assert written["searches"][-1]["attached"] == service.MARKET_SECTION
 
 
 def test_a_part_is_only_ever_search_text(

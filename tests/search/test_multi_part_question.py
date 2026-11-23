@@ -47,12 +47,16 @@ def test_each_part_reaches_the_model_and_nothing_the_question_finds_is_lost(
 ) -> None:
     question = CASE["questions"][language]
 
-    async def run() -> tuple[list[service.FoundSection], list[service.FoundSection]]:
+    async def run() -> tuple[
+        list[str], list[service.FoundSection], list[service.FoundSection]
+    ]:
+        # The question's search as it ran before parts were searched.
+        kept = await search(question, service.KEPT_SECTIONS)
         own = await service.find_sections(question)
         gathered, _ = await service.gather_sections(question, own, parts)
-        return own, gathered
+        return [f"{h.source_path}#{h.heading}" for h in kept.hits], own, gathered
 
-    own, gathered = asyncio.run(run())
+    kept, own, gathered = asyncio.run(run())
 
     def stem(section: service.FoundSection) -> str:
         return Path(section.source.file).stem
@@ -76,6 +80,18 @@ def test_each_part_reaches_the_model_and_nothing_the_question_finds_is_lost(
     assert market & market_core, "no market section for the 0050 part"
     assert {s.section_id for s in own} <= {s.section_id for s in gathered}
     assert [s.source.number for s in gathered] == list(range(1, len(gathered) + 1))
+    # Nothing the question's own search found is crowded out: it comes first, whole, in order.
+    assert [
+        f"{s.source.file}#{s.source.heading}" for s in gathered[: len(kept)]
+    ] == kept
+    # After it, market sections do not rank: they come last, each with a document found by a
+    # news section.
+    rest = gathered[len(kept) :]
+    headings = [s.source.heading for s in rest]
+    first_market = headings.index(MARKET)
+    assert all(heading == MARKET for heading in headings[first_market:])
+    news_found = {stem(s) for s in gathered if s.source.heading != MARKET}
+    assert {stem(s) for s in rest[first_market:]} <= news_found
 
 
 def test_several_queries_in_one_session_find_what_each_finds_alone(

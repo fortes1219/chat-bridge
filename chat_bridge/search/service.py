@@ -55,6 +55,12 @@ MIN_SIMILARITY = 0.52
 AVAILABLE_ON_DATE = (
     "(CAST(:as_of AS date) IS NULL OR documents.event_date <= CAST(:as_of AS date))"
 )
+# Keeps the entries of every section except those headed :left_out; a NULL :left_out keeps
+# them all. Applied inside each method's candidate query, as the date is, so a section left out
+# cannot take a candidate's place.
+NOT_LEFT_OUT = (
+    "(CAST(:left_out AS text) IS NULL OR sections.heading <> CAST(:left_out AS text))"
+)
 
 # pgvector's README: with an approximate index the filter runs after the index scan, so
 # iterative scans keep scanning until enough rows pass; and for a filter on distance, take
@@ -67,7 +73,7 @@ HYBRID_QUERY = text(
         FROM search_entries entries
         JOIN sections ON sections.id = entries.section_id
         JOIN documents ON documents.id = sections.document_id
-        WHERE entries.embedding_bge_m3 IS NOT NULL AND {AVAILABLE_ON_DATE}
+        WHERE entries.embedding_bge_m3 IS NOT NULL AND {AVAILABLE_ON_DATE} AND {NOT_LEFT_OUT}
         ORDER BY entries.embedding_bge_m3 <=> :embedding
         LIMIT :candidates
     ),
@@ -83,7 +89,7 @@ HYBRID_QUERY = text(
         JOIN sections ON sections.id = entries.section_id
         JOIN documents ON documents.id = sections.document_id
         CROSS JOIN websearch_to_tsquery('simple', :query) query
-        WHERE entries.search_vector @@ query AND {AVAILABLE_ON_DATE}
+        WHERE entries.search_vector @@ query AND {AVAILABLE_ON_DATE} AND {NOT_LEFT_OUT}
         ORDER BY relevance DESC
         LIMIT :candidates
     ),
@@ -177,13 +183,21 @@ async def search(
     as_of: date | None = None,
     *,
     candidates: int = CANDIDATES_PER_METHOD,
+    left_out_heading: str | None = None,
 ) -> SearchResult:
     """Return the best-ranked sections for the question. No hits means the data has no match.
 
     With `as_of`, only files whose event happened on or before that day are searched.
-    `candidates` is how many each method ranks before the two lists are merged.
+    `candidates` is how many each method ranks before the two lists are merged. Sections headed
+    `left_out_heading` do not take part in the ranking.
     """
-    [result] = await search_many([question], limit, as_of, candidates=candidates)
+    [result] = await search_many(
+        [question],
+        limit,
+        as_of,
+        candidates=candidates,
+        left_out_heading=left_out_heading,
+    )
     return result
 
 
@@ -193,6 +207,7 @@ async def search_many(
     as_of: date | None = None,
     *,
     candidates: int = CANDIDATES_PER_METHOD,
+    left_out_heading: str | None = None,
 ) -> list[SearchResult]:
     """Search each question as `search()` does, in one session.
 
@@ -253,6 +268,7 @@ async def search_many(
                             "query": query,
                             "embedding": embedding,
                             "as_of": as_of,
+                            "left_out": left_out_heading,
                             "min_similarity": MIN_SIMILARITY,
                             "candidates": candidates,
                             "k": RRF_K,
@@ -291,6 +307,56 @@ async def _hits(
             vector_rank=row.vector_rank,
         )
         for row in ranked
+    ]
+
+
+async def sections_headed(section_ids: Sequence[int], heading: str) -> list[SearchHit]:
+    """The sections headed `heading` of the documents the given sections belong to, in the order
+    those documents first appear, and within a document in its own order. A document without such
+    a section adds none.
+
+    This is how a section that does not rank on its own comes with its document: found by its
+    document, not by the question.
+    """
+    if not section_ids:
+        return []
+    async with open_engine() as engine:
+        await create_tables(engine)
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        async with sessions() as session:
+            pairs = await session.execute(
+                select(Section.id, Section.document_id).where(
+                    Section.id.in_(section_ids)
+                )
+            )
+            document_of = {row.id: row.document_id for row in pairs}
+            documents = list(dict.fromkeys(document_of[i] for i in section_ids))
+            rows = await session.execute(
+                select(
+                    Section, Document.source_path, Document.title, Document.event_date
+                )
+                .join(Document, Section.document_id == Document.id)
+                .where(Section.document_id.in_(documents), Section.heading == heading)
+                .order_by(Section.position)
+            )
+            by_document: dict[int, list[Any]] = {}
+            for row in rows:
+                by_document.setdefault(row.Section.document_id, []).append(row)
+    return [
+        SearchHit(
+            section_id=row.Section.id,
+            source_path=row.source_path,
+            title=row.title,
+            event_date=row.event_date,
+            heading=row.Section.heading,
+            snippet=_snippet(row.Section.content, []),
+            content=row.Section.content,
+            score=0.0,
+            keyword_rank=None,
+            vector_rank=None,
+        )
+        for document in documents
+        for row in by_document.get(document, [])
     ]
 
 
