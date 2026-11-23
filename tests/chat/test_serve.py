@@ -39,6 +39,7 @@ def started(
         "prepare_knowledge_base",
         lambda: calls["prepared"].append("knowledge base"),
     )
+    monkeypatch.setattr(server, "load_model", lambda: calls["prepared"].append("model"))
     monkeypatch.setattr(
         webbrowser, "open", lambda address: calls["browser"].append(address)
     )
@@ -49,6 +50,17 @@ def started(
         server, "open_when_ready", lambda *args: calls["waiter"].append(args)
     )
     yield calls
+
+
+def test_the_page_the_knowledge_base_and_the_model_are_ready_before_requests(
+    started: dict[str, list[object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "port_is_free", lambda host, port: True)
+
+    assert server.serve(open_browser=False) == cli.EXIT_OK
+
+    assert started["prepared"] == ["page", "knowledge base", "model"]
+    assert len(started["uvicorn"]) == 1
 
 
 def test_a_free_port_starts_the_service_and_opens_the_page_once_it_answers(

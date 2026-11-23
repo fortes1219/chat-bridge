@@ -33,6 +33,7 @@ from chat_bridge.chat.router import router
 from chat_bridge.cli import EXIT_OK, print_error
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.database import stop_server
+from chat_bridge.embedding import load_model
 from chat_bridge.errors import LocalSetupError
 from chat_bridge.ingest import service as ingest_service
 
@@ -142,6 +143,9 @@ def serve(open_browser: bool = True) -> int:
     try:
         page = web.prepare_page()
         prepare_knowledge_base()
+        # Loaded before requests are taken, so the first question does not wait for it.
+        logger.info("Loading the embedding model.")
+        load_model()
     except LocalSetupError as error:
         return print_error(str(error))
     logger.info("The chat page is at %s. Stop the service with Ctrl+C.", ADDRESS)

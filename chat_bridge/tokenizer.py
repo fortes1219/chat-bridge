@@ -5,6 +5,7 @@ and PostgreSQL stores them as a tsvector with the `simple` configuration. Indexi
 searching use the same tokenizer, including the same user words.
 """
 
+import functools
 import hashlib
 import logging
 import re
@@ -139,14 +140,22 @@ def user_words_digest(user_words: Iterable[str]) -> str:
 
 
 def build_tokenizer(user_words: Iterable[str]) -> SearchTokenizer:
-    """Build a jieba tokenizer on the Traditional Chinese dictionary plus the given user words."""
-    jieba.setLogLevel(logging.WARNING)
-    dictionary = ensure_dictionary()
-    words = _usable_words(user_words)
+    """A jieba tokenizer on the Traditional Chinese dictionary plus the given user words.
 
-    tokenizer = jieba.Tokenizer(dictionary=str(dictionary))
+    Loading the dictionary takes about a second, and a question searches several times, so a
+    tokenizer is built once per dictionary and word set and kept for the process, as jieba keeps
+    its own default tokenizer. It is never changed after it is built.
+    """
+    return _tokenizer(str(ensure_dictionary()), _usable_words(user_words))
+
+
+# A few word sets at most: the knowledge base's, and the one an ingest is about to write.
+@functools.lru_cache(maxsize=8)
+def _tokenizer(dictionary: str, words: tuple[str, ...]) -> SearchTokenizer:
+    jieba.setLogLevel(logging.WARNING)
+    tokenizer = jieba.Tokenizer(dictionary=dictionary)
     # Keep jieba's prefix-dictionary cache next to the dictionary instead of the system temp folder.
-    tokenizer.tmp_dir = str(dictionary.parent)
+    tokenizer.tmp_dir = str(Path(dictionary).parent)
     for word in words:
         tokenizer.add_word(word)
 
