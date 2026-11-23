@@ -9,9 +9,15 @@ significance: supporting
 keyword_groups:
   - [川普, Trump, Donald Trump]
   - [晶片關稅, 半導體關稅, chip tariffs]
-  - [經濟部, 龔明鑫, 經濟部長]
-  - [台美, MOU, 關稅ART, 免稅額度, quota]
-  - [供應鏈, 台積電, TSMC]
+  - [經濟部]
+  - [龔明鑫]
+  - [經濟部長]
+  - [台美]
+  - [MOU]
+  - [關稅ART]
+  - [免稅額度, quota]
+  - [供應鏈]
+  - [台積電, TSMC]
 sources:
   - id: s1
     url: https://uanalyze.com.tw/articles/2003055076

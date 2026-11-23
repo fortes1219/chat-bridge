@@ -8,11 +8,13 @@ exposure: [semiconductors, ai_infrastructure, china_export_controls, corporate_l
 significance: supporting
 keyword_groups:
   - [輝達, NVIDIA, NVDA]
-  - [財報, earnings, financial results, 第三季, Q3 FY2027]
+  - [財報, earnings, financial results]
+  - [第三季, Q3 FY2027]
   - [資料中心, Data Center]
   - [中國, China]
   - [財測, outlook, guidance]
-  - [克瑞斯, Colette Kress, 臨時執行長, interim CEO]
+  - [克瑞斯, Colette Kress]
+  - [臨時執行長, interim CEO]
   - [Vera Rubin]
 sources:
   - id: s1

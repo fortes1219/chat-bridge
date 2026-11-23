@@ -7,11 +7,13 @@ tickers: []
 exposure: [fed_policy, us_politics]
 significance: background
 keyword_groups:
-  - [聯準會, Fed, Federal Reserve, 理事, Governor]
+  - [聯準會, Fed, Federal Reserve]
+  - [理事, Governor]
   - [庫克, Lisa Cook, Cook]
   - [川普, Trump]
   - [調查委員會, committee of inquiry]
-  - [最高法院, Supreme Court, Trump v. Cook]
+  - [最高法院, Supreme Court]
+  - [Trump v. Cook]
   - [聯準會獨立性, Fed independence]
 sources:
   - id: s1

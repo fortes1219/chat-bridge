@@ -7,10 +7,16 @@ tickers: [MU, AMD, AVGO, INTC, META, GOOGL]
 exposure: [us_equity_broad, ai_debt_credit, semiconductors, big_tech_cloud]
 significance: supporting
 keyword_groups:
-  - [美股, Wall Street, US stocks]
+  - [美股, US stocks]
+  - [Wall Street]
   - [科技股, technology companies]
-  - [舉債, 借貸, borrowing, AI支出, spending]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [舉債]
+  - [借貸, borrowing]
+  - [AI支出]
+  - [spending]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://www.newser.com/story/398303/stocks-close-worst-week-since-june.html

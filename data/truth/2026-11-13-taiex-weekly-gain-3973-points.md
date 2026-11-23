@@ -7,11 +7,17 @@ tickers: ["2330", "2454"]
 exposure: [tw_equity_broad, semiconductors, corporate_leadership]
 significance: supporting
 keyword_groups:
-  - [台股, 加權指數, 集中市場, TAIEX]
-  - [反彈, 回穩, 利空出盡, 週線]
+  - [台股]
+  - [加權指數, TAIEX]
+  - [集中市場]
+  - [反彈]
+  - [回穩]
+  - [利空出盡]
+  - [週線]
   - [台積電, TSMC, "2330"]
   - [聯發科, MediaTek, "2454"]
-  - [Google, TPU, 張量處理單元]
+  - [Google]
+  - [TPU, 張量處理單元]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611130142.aspx

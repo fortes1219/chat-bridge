@@ -7,9 +7,13 @@ tickers: []
 exposure: [ai_debt_credit]
 significance: supporting
 keyword_groups:
-  - [英格蘭銀行, Bank of England, BoE, 金融政策委員會, FPC]
-  - [AI債務, AI-related debt issuance, 舉債]
-  - [估值, valuations, 重新定價, repricing]
+  - [英格蘭銀行, Bank of England, BoE]
+  - [金融政策委員會, FPC]
+  - [AI債務]
+  - [AI-related debt issuance]
+  - [舉債]
+  - [估值, valuations]
+  - [重新定價, repricing]
   - [金融穩定, financial stability]
   - [摩根士丹利, Morgan Stanley]
 sources:

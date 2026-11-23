@@ -9,8 +9,10 @@ significance: supporting
 keyword_groups:
   - [國際貨幣基金, IMF, International Monetary Fund]
   - [全球金融穩定報告, Global Financial Stability Report, GFSR]
-  - [AI修正, AI-related market corrections, correction]
-  - [槓桿, leverage, 集中曝險, concentrated exposures]
+  - [AI修正, AI-related market corrections]
+  - [correction]
+  - [槓桿, leverage]
+  - [集中曝險, concentrated exposures]
   - [金融穩定, financial stability]
 sources:
   - id: s1

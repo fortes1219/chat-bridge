@@ -3,7 +3,14 @@ dist/
 coverage/
 .tmp/
 
+# Type declarations that Nuxt UI's build plugin writes on every build.
+/frontend/auto-imports.d.ts
+/frontend/components.d.ts
+
 .claude/
+
+# Run-time data: the embedded database and the downloaded dictionary.
+/local_data/
 
 __pycache__/
 *.py[cod]

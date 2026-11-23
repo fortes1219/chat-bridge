@@ -7,12 +7,20 @@ tickers: [NVDA, JPM]
 exposure: [us_equity_broad, rates_treasuries, fed_policy, ai_infrastructure]
 significance: supporting
 keyword_groups:
-  - [美股, Wall Street, US stocks]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
-  - [公債殖利率, Treasury yield, 10-year Treasury]
-  - [聯準會, Fed, 穆薩萊姆, Musalem]
+  - [美股, US stocks]
+  - [Wall Street]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
+  - [公債殖利率, Treasury yield]
+  - [10-year Treasury]
+  - [聯準會, Fed]
+  - [穆薩萊姆, Musalem]
   - [瑞銀, UBS]
-  - [回穩, 反彈, recovery, gains]
+  - [回穩]
+  - [反彈]
+  - [recovery]
+  - [gains]
 sources:
   - id: s1
     url: https://www.wistv.com/2026/11/17/another-wipeout-hits-wall-street-nvidia-other-jittery-ai-stocks-swing-lower/

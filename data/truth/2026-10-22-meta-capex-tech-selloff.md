@@ -9,8 +9,10 @@ significance: key
 keyword_groups:
   - [Meta, META, 臉書]
   - [資本支出, capital investments, capex]
-  - [AI支出, AI spending, sustainability]
-  - [標普500, S&P 500, 那斯達克, Nasdaq]
+  - [AI支出, AI spending]
+  - [sustainability]
+  - [標普500, S&P 500]
+  - [那斯達克, Nasdaq]
   - [微軟, Microsoft, MSFT]
   - [輝達, NVIDIA, NVDA]
 sources:

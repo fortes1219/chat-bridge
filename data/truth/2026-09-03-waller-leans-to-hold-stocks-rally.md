@@ -9,8 +9,11 @@ significance: supporting
 keyword_groups:
   - [聯準會, Fed, Federal Reserve]
   - [沃勒, Waller, Christopher Waller]
-  - [升息機率, rate hike odds, CME FedWatch]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [升息機率, rate hike odds]
+  - [CME FedWatch]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://wealthinsights.metrobank.com.ph/news/global-markets-bond-yields-fall-stocks-rally-as-feds-waller-comments-curb-rate-hike-bets

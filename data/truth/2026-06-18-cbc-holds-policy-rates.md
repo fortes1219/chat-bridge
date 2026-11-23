@@ -7,10 +7,18 @@ tickers: []
 exposure: [tw_monetary_policy, tw_equity_broad, fed_policy]
 significance: background
 keyword_groups:
-  - [中央銀行, 央行, 理監事會, Central Bank of the Republic of China]
-  - [政策利率, 重貼現率, 擔保放款融通利率, 短期融通利率]
-  - [經濟成長率, CPI, 消費者物價]
-  - [台股, 理財, 借貸, 信用擴張]
+  - [中央銀行, 央行, Central Bank of the Republic of China]
+  - [理監事會]
+  - [政策利率]
+  - [重貼現率]
+  - [擔保放款融通利率]
+  - [短期融通利率]
+  - [經濟成長率]
+  - [CPI, 消費者物價]
+  - [台股]
+  - [理財]
+  - [借貸]
+  - [信用擴張]
   - [聯準會, Fed, 美國聯邦準備體系]
 sources:
   - id: s1

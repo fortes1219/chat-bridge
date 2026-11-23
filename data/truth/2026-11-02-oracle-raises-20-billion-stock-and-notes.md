@@ -9,9 +9,12 @@ significance: key
 keyword_groups:
   - [甲骨文, Oracle, ORCL]
   - [增資, 現金增資, common stock offering, 發行新股]
-  - [公司債, senior notes, 舉債, 發債, bonds]
+  - [公司債, senior notes, bonds]
+  - [舉債]
+  - [發債]
   - [資本支出, capital expenditures, capex]
-  - [AI基礎建設, AI infrastructure, 資料中心]
+  - [AI基礎建設, AI infrastructure]
+  - [資料中心]
 sources:
   - id: s1
     url: https://www.sec.gov/Archives/edgar/data/0001341439/000119312526447507/d131790d8k.htm

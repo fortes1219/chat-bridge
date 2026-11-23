@@ -8,7 +8,9 @@ exposure: [ai_debt_credit, big_tech_cloud]
 significance: supporting
 keyword_groups:
   - [微軟, Microsoft, MSFT]
-  - [公司債, notes, 發債, 舉債, bond]
+  - [公司債, notes, bond]
+  - [發債]
+  - [舉債]
   - [資本支出, capital expenditures]
 sources:
   - id: s1

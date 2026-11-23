@@ -7,11 +7,17 @@ tickers: []
 exposure: [tw_authorities, tw_equity_broad, tw_foreign_flows]
 significance: key
 keyword_groups:
-  - [國安基金, 國家金融安定基金, 護盤, 市場安定任務]
-  - [財政部, 莊翠雲]
-  - [中央銀行, 央行, 楊金龍]
-  - [台股, 加權指數, TAIEX]
-  - [退場, 進場]
+  - [國安基金, 國家金融安定基金]
+  - [護盤]
+  - [市場安定任務]
+  - [財政部]
+  - [莊翠雲]
+  - [中央銀行, 央行]
+  - [楊金龍]
+  - [台股]
+  - [加權指數, TAIEX]
+  - [退場]
+  - [進場]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611060270.aspx

@@ -8,10 +8,13 @@ exposure: [fed_policy, rates_treasuries, us_equity_broad, ai_infrastructure]
 significance: supporting
 keyword_groups:
   - [聯準會, Fed, Federal Reserve]
-  - [華許, Warsh, Kevin Warsh, 聯準會主席]
+  - [華許, Warsh, Kevin Warsh]
+  - [聯準會主席]
   - [傑克森洞, Jackson Hole, 全球央行年會]
-  - [升息機率, rate hike odds, CME]
-  - [公債殖利率, Treasury yield, two-year Treasury]
+  - [升息機率, rate hike odds]
+  - [CME]
+  - [公債殖利率, Treasury yield]
+  - [two-year Treasury]
   - [AI基礎建設, AI-related infrastructure]
 sources:
   - id: s1

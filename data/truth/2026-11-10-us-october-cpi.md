@@ -7,10 +7,13 @@ tickers: [NVDA]
 exposure: [us_macro_data, rates_treasuries, fed_policy, us_equity_broad, semiconductors]
 significance: supporting
 keyword_groups:
-  - [消費者物價指數, CPI, Consumer Price Index, 通膨, inflation]
-  - [核心CPI, all items less food and energy, core]
+  - [消費者物價指數, CPI, Consumer Price Index]
+  - [通膨, inflation]
+  - [核心CPI, all items less food and energy]
+  - [core]
   - [美國勞工統計局, BLS, Bureau of Labor Statistics]
-  - [公債殖利率, Treasury yield, 10-year Treasury]
+  - [公債殖利率, Treasury yield]
+  - [10-year Treasury]
   - [升息, rate hike]
   - [輝達, NVIDIA, NVDA]
 sources:

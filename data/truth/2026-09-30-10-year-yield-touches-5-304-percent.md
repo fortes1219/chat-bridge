@@ -7,8 +7,11 @@ tickers: []
 exposure: [rates_treasuries, us_macro_data, oil_energy]
 significance: supporting
 keyword_groups:
-  - [公債殖利率, Treasury yield, 10-year Treasury, 十年期公債]
-  - [PCE, 核心PCE, core PCE, 通膨, inflation]
+  - [公債殖利率, Treasury yield]
+  - [10-year Treasury, 十年期公債]
+  - [PCE]
+  - [核心PCE, core PCE]
+  - [通膨, inflation]
   - [油價, oil]
 sources:
   - id: s1

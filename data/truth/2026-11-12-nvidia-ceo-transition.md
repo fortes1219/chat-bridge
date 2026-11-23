@@ -9,9 +9,12 @@ significance: key
 keyword_groups:
   - [輝達, NVIDIA, NVDA]
   - [黃仁勳, Jensen Huang]
-  - [克瑞斯, Colette Kress, 臨時執行長, interim CEO]
-  - [Harvey C. Jones, 董事長, Chair of the Board]
-  - [執行長交接, CEO transition, 辭職, 去職, resigned]
+  - [克瑞斯, Colette Kress]
+  - [臨時執行長, interim CEO]
+  - [Harvey C. Jones]
+  - [董事長, Chair of the Board]
+  - [執行長交接, CEO transition]
+  - [辭職, 去職, resigned]
 sources:
   - id: s1
     url: https://nvidianews.nvidia.com/news/nvidia-announces-ceo-transition

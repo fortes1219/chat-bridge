@@ -7,10 +7,15 @@ tickers: []
 exposure: [us_equity_broad]
 significance: supporting
 keyword_groups:
-  - [摩根士丹利, Morgan Stanley, 威爾森, Michael Wilson, Mike Wilson]
-  - [修正, correction, final innings]
-  - [標普500, S&P 500, 年底目標, year-end target]
-  - [回穩, 加碼, add risk, quality cyclicals]
+  - [摩根士丹利, Morgan Stanley]
+  - [威爾森, Michael Wilson, Mike Wilson]
+  - [修正, correction]
+  - [final innings]
+  - [標普500, S&P 500]
+  - [年底目標, year-end target]
+  - [回穩]
+  - [加碼, add risk]
+  - [quality cyclicals]
 sources:
   - id: s1
     url: https://www.thewealthadvisor.com/article/morgan-stanley-says-stock-market-correction-its-final-innings

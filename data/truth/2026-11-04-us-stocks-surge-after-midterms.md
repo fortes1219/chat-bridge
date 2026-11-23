@@ -7,11 +7,16 @@ tickers: [NVDA, GOOGL, TSLA]
 exposure: [us_equity_broad, us_politics, oil_energy]
 significance: supporting
 keyword_groups:
-  - [美股, Wall Street, US stocks]
-  - [美國期中選舉, midterm elections, 民主黨, Democrats]
+  - [美股, US stocks]
+  - [Wall Street]
+  - [美國期中選舉, midterm elections]
+  - [民主黨, Democrats]
   - [川普, Trump]
-  - [油價, Brent, 布蘭特原油]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [油價]
+  - [Brent, 布蘭特原油]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://www.eastidahonews.com/2026/11/stocks-surge-and-the-dow-soars-1500-points-as-oil-prices-tumble-following-the-us-midterm-elections/

@@ -8,10 +8,15 @@ exposure: [fx_twd, tw_foreign_flows, tw_monetary_policy, semiconductors, ai_debt
 significance: supporting
 keyword_groups:
   - [中央銀行, 央行]
-  - [新台幣, 匯率, 貶值]
-  - [外資, 外資賣超, 資金匯出]
+  - [新台幣]
+  - [匯率]
+  - [貶值]
+  - [外資]
+  - [外資賣超]
+  - [資金匯出]
   - [費城半導體指數, 費半, SOX]
-  - [AI估值, AI產業融資風險]
+  - [AI估值]
+  - [AI產業融資風險]
 sources:
   - id: s1
     url: https://www.cbc.gov.tw/tw/cp-302-193046-bb130-1.html

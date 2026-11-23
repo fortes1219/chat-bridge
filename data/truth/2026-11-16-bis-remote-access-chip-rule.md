@@ -7,10 +7,15 @@ tickers: []
 exposure: [china_export_controls, semiconductors, ai_infrastructure]
 significance: supporting
 keyword_groups:
-  - [美國商務部, Department of Commerce, 工業安全局, BIS, Bureau of Industry and Security]
-  - [出口管制, export restrictions, 遠端存取, remote access, remote computing]
-  - [先進晶片, advanced super intelligence chips, SI chips, servers]
-  - [資料中心, data centers, 第三國, third countries]
+  - [美國商務部, Department of Commerce]
+  - [工業安全局, BIS, Bureau of Industry and Security]
+  - [出口管制, export restrictions]
+  - [遠端存取, remote access, remote computing]
+  - [先進晶片]
+  - [advanced super intelligence chips, SI chips]
+  - [servers]
+  - [資料中心, data centers]
+  - [第三國, third countries]
 sources:
   - id: s1
     url: https://www.bis.gov/press-release/bis-issues-rule-addressing-remote-access-american-super-intelligence-technology

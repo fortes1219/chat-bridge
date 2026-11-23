@@ -7,12 +7,18 @@ tickers: [NVDA, AMD]
 exposure: [fed_policy, us_equity_broad, rates_treasuries]
 significance: key
 keyword_groups:
-  - [聯準會, Fed, Federal Reserve, FOMC, 聯邦公開市場委員會]
+  - [聯準會, Fed, Federal Reserve]
+  - [FOMC, 聯邦公開市場委員會]
   - [升息, rate hike, raise the target range]
-  - [華許, Warsh, Kevin Warsh, 聯準會主席, Fed Chairman]
+  - [華許, Warsh, Kevin Warsh]
+  - [聯準會主席, Fed Chairman]
   - [通膨, inflation]
-  - [公債殖利率, Treasury yield, 10-year Treasury, two-year Treasury]
-  - [標普500, S&P 500, 道瓊, Dow Jones Industrial Average, 那斯達克, Nasdaq composite]
+  - [公債殖利率, Treasury yield]
+  - [10-year Treasury]
+  - [two-year Treasury]
+  - [標普500, S&P 500]
+  - [道瓊, Dow Jones Industrial Average]
+  - [那斯達克, Nasdaq composite]
 sources:
   - id: s1
     url: https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm

@@ -7,12 +7,21 @@ tickers: []
 exposure: [tw_monetary_policy, tw_equity_broad, fed_policy]
 significance: background
 keyword_groups:
-  - [中央銀行, 央行, 理監事會]
-  - [政策利率, 重貼現率, 擔保放款融通利率, 短期融通利率]
-  - [選擇性信用管制, 第2戶購屋貸款, 房貸成數]
-  - [經濟成長率, CPI, 消費者物價]
-  - [台股, 理財週轉金]
-  - [聯準會, Fed, 升息]
+  - [中央銀行, 央行]
+  - [理監事會]
+  - [政策利率]
+  - [重貼現率]
+  - [擔保放款融通利率]
+  - [短期融通利率]
+  - [選擇性信用管制]
+  - [第2戶購屋貸款]
+  - [房貸成數]
+  - [經濟成長率]
+  - [CPI, 消費者物價]
+  - [台股]
+  - [理財週轉金]
+  - [聯準會, Fed]
+  - [升息]
 sources:
   - id: s1
     url: https://www.cbc.gov.tw/tw/cp-302-192864-4319f-1.html

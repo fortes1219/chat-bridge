@@ -7,11 +7,18 @@ tickers: []
 exposure: [rates_treasuries, oil_energy, middle_east_conflict, us_equity_broad, fed_policy]
 significance: supporting
 keyword_groups:
-  - [公債殖利率, Treasury yield, 10-year Treasury, 十年期公債]
-  - [油價, Brent, 布蘭特原油, WTI]
-  - [荷莫茲海峽, Strait of Hormuz, 沙烏地, Saudi Arabia, 油管]
+  - [公債殖利率, Treasury yield]
+  - [10-year Treasury, 十年期公債]
+  - [油價]
+  - [Brent, 布蘭特原油]
+  - [WTI]
+  - [荷莫茲海峽, Strait of Hormuz]
+  - [沙烏地, Saudi Arabia]
+  - [油管]
   - [升息, rate hikes]
-  - [標普500, S&P 500, 道瓊, Dow, 那斯達克, Nasdaq]
+  - [標普500, S&P 500]
+  - [道瓊, Dow]
+  - [那斯達克, Nasdaq]
 sources:
   - id: s1
     url: https://view.asiae.co.kr/en/article/2026091423531905019

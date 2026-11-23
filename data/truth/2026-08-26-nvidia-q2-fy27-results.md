@@ -8,9 +8,11 @@ exposure: [semiconductors, ai_infrastructure, china_export_controls]
 significance: supporting
 keyword_groups:
   - [輝達, NVIDIA, NVDA]
-  - [財報, earnings, financial results, 第二季, Q2 FY2027]
+  - [財報, earnings, financial results]
+  - [第二季, Q2 FY2027]
   - [資料中心, Data Center]
-  - [中國, China, 出口管制]
+  - [中國, China]
+  - [出口管制]
   - [財測, outlook, guidance]
 sources:
   - id: s1

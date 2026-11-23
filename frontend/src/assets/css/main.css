@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+/*
+ * The colors of VS Code's default dark theme, Dark Modern
+ * (microsoft/vscode, extensions/theme-defaults/themes/dark_modern.json), set on the variables
+ * every Nuxt UI component is drawn with. The page is always dark: index.html carries the class.
+ */
+.dark {
+  color-scheme: dark;
+
+  --ui-bg: #1f1f1f; /* editor.background: the conversation */
+  --ui-bg-muted: #181818; /* titleBar, panel and sideBar background: the bars above and below it */
+  --ui-bg-elevated: #2b2b2b; /* textCodeBlock.background: the question's bubble, menus */
+  --ui-bg-accented: #313131; /* input.background: the question box */
+
+  --ui-border: #2b2b2b; /* panel.border */
+  --ui-border-muted: #2b2b2b;
+  --ui-border-accented: #3c3c3c; /* input.border */
+
+  --ui-text: #cccccc; /* foreground */
+  --ui-text-toned: #cccccc;
+  --ui-text-highlighted: #ffffff;
+  --ui-text-muted: #9d9d9d; /* descriptionForeground */
+  --ui-text-dimmed: #989898; /* input.placeholderForeground */
+
+  /* textLink.foreground. The theme's button blue, #0078d4, is too dark for text on #1f1f1f. */
+  --ui-primary: #4daafc;
+  --ui-error: #f85149; /* errorForeground */
+}

@@ -7,12 +7,16 @@ tickers: [GOOGL]
 exposure: [big_tech_cloud, ai_debt_credit, ai_infrastructure]
 significance: supporting
 keyword_groups:
-  - [Alphabet, Google, GOOGL, 谷歌]
-  - [財報, earnings, quarterly results, 第三季, Q3 2026]
-  - [Google Cloud, 雲端]
+  - [Alphabet, GOOGL]
+  - [Google, 谷歌]
+  - [財報, earnings, quarterly results]
+  - [第三季, Q3 2026]
+  - [Google Cloud]
+  - [雲端]
   - [資本支出, capital expenditures, purchases of property and equipment, capex]
   - [自由現金流, free cash flow]
-  - [發債, 公司債, senior unsecured notes, debt issuance]
+  - [發債, debt issuance]
+  - [公司債, senior unsecured notes]
 sources:
   - id: s1
     url: https://www.sec.gov/Archives/edgar/data/0001652044/000165204426000080/googexhibit991q32026.htm

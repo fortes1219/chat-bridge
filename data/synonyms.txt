@@ -1,0 +1,115 @@
+# Synonyms for search, in the Solr synonyms format: each line is one group of names that
+# mean the same thing, separated by commas. Lines that start with "#" are comments.
+#
+# A question that mentions one name also searches for the others in its group. Every name
+# also becomes a jieba user word, so it is never cut apart. After you change this file, run
+# `chat-bridge ingest <folder>` again; it rebuilds the keyword index and keeps the vectors.
+#
+# Only names that always mean the same thing belong here. Left out on purpose:
+# - a name that means different things in this data: 央行 (also inside 歐洲央行 and 日本央行),
+#   BIS, Treasury, 殖利率, 政策利率, 理事會, 財政部, Committee, S&P, Nasdaq alone (Composite
+#   or Nasdaq-100), 摩根 (Morgan Stanley or JPMorgan), 庫克 and Cook, 超微 (inside 美超微), 南亞;
+# - a stock code that also reads as a price or a word: 2330, 2308 and the other four-digit
+#   codes, TSM (inside TSMC, and a different listing), MU, Delta, Apple;
+# - names that are related but not equal: 台股, 大盤 and 集中市場 against 加權指數;
+#   半導體 and chip stocks against the Philadelphia Semiconductor Index; Microsoft Cloud and
+#   Azure; Alphabet and Google; KPMG and 安侯建業; 外資賣超 and 外資;
+# - job titles, which point at different people over time;
+# - numbers, which need a conversion table, not synonyms.
+# A name may not appear inside a name of another group; the file is refused if one does.
+
+# Indexes, funds and futures
+費城半導體指數, 費城半導體, 費半指數, 費半, 美國費半, SOX, Philadelphia Semiconductor Index, PHLX Semiconductor Sector Index
+加權指數, 加權股價指數, 台灣加權指數, 台灣加權, 集中市場指數, TAIEX
+S&P 500, 標普500, 標普500指數, S&P 500 Index, 標準普爾500, SPX
+Nasdaq Composite, 那斯達克, 那斯達克指數, 美國那斯達克, 那斯達克綜合指數
+道瓊, 道瓊工業指數, Dow Jones Industrial Average, Dow, DJIA
+元大台灣50, 元大台灣卓越50, 0050
+富邦台50, 富邦台灣采吉50, 006208
+台指期, 臺股期貨, 台股期貨
+
+# Companies in Taiwan
+台積電, 臺積電, 台積, TSMC
+台達電, 台達, 台達電子, Delta Electronics
+聯發科, MediaTek
+鴻海, Foxconn, Hon Hai
+SK海力士, 海力士, SK hynix
+
+# Companies abroad
+輝達, NVIDIA, NVDA
+微軟, Microsoft, MSFT
+Alphabet, GOOGL
+Google, 谷歌
+亞馬遜, Amazon, AMZN
+Meta, 臉書, Facebook
+甲骨文, Oracle, ORCL
+博通, Broadcom, AVGO
+美光, Micron
+英特爾, Intel, INTC
+摩根士丹利, Morgan Stanley, 大摩
+摩根大通, JPMorgan, 小摩
+高盛, Goldman Sachs, Goldman
+貝萊德, BlackRock
+黑石, Blackstone
+富國銀行, Wells Fargo
+瑞銀, UBS
+
+# Central banks and agencies
+聯準會, Fed, Federal Reserve, Federal Reserve System, 美國聯邦準備體系
+聯邦公開市場委員會, FOMC
+中央銀行, Central Bank of the Republic of China
+歐洲央行, ECB, European Central Bank
+日本央行, BoJ, Bank of Japan
+英格蘭銀行, 英國央行, Bank of England, BoE
+金管會, 金融監督管理委員會, FSC
+證期局, 證券期貨局
+證交所, 臺灣證券交易所, 台灣證券交易所, TWSE
+國安基金, 國家金融安定基金
+經濟部, Ministry of Economic Affairs, MOEA
+美國勞工統計局, BLS, Bureau of Labor Statistics
+國際貨幣基金, 國際貨幣基金組織, IMF, International Monetary Fund
+美國商務部, Department of Commerce
+工業安全局, Bureau of Industry and Security
+傑克森洞, 全球央行年會, Jackson Hole
+
+# People
+華許, Warsh, Kevin Warsh
+沃勒, Waller, Christopher Waller
+鮑曼, Bowman, Michelle Bowman
+穆薩萊姆, Musalem, Alberto Musalem
+川普, Trump, Donald Trump
+習近平, Xi Jinping
+貝森特, Bessent, Scott Bessent
+黃仁勳, Jensen Huang
+克瑞斯, Kress, Colette Kress
+
+# Terms
+法說會, 法人說明會
+財報, earnings, quarterly results, 季報
+財測, guidance
+資本支出, 資本開支, capex, capital expenditures, capital expenditure
+自由現金流, free cash flow, FCF
+每股盈餘, EPS
+毛利率, gross margin
+本益比, P/E
+消費者物價指數, CPI, Consumer Price Index
+個人消費支出物價指數, PCE
+通膨, 通貨膨脹, inflation
+升息, rate hike, rate hikes
+降息, rate cut, rate cuts
+聯邦基金利率, federal funds rate
+公債殖利率, 美債殖利率, Treasury yield
+外資, 外資及陸資, foreign investors
+整戶擔保維持率, 信用整戶擔保維持率, 信用交易整戶擔保維持率
+資料中心, data center, data centers, data centre
+人工智慧, AI
+出口管制, export controls, export restrictions
+關稅, tariff, tariffs
+稀土, rare earths
+期中選舉, 美國期中選舉, midterm elections, midterms
+布蘭特原油, Brent, Brent crude
+荷莫茲海峽, Strait of Hormuz, Hormuz
+美股, US stocks, U.S. stocks
+新台幣, 台幣, NT dollars
+熔斷, circuit breaker
+sell-off, selloff

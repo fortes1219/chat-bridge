@@ -8,10 +8,15 @@ exposure: [semiconductors, ai_infrastructure, tw_equity_broad]
 significance: supporting
 keyword_groups:
   - [台積電, TSMC, "2330"]
-  - [月營收, 10月營收, 創新高]
+  - [月營收]
+  - [10月營收]
+  - [創新高]
   - [2奈米, 2-nanometer]
-  - [資本預算, 資本支出, capex]
-  - [台股, 集中市場, 反彈]
+  - [資本預算]
+  - [資本支出, capex]
+  - [台股]
+  - [集中市場]
+  - [反彈]
 sources:
   - id: s1
     url: https://www.cna.com.tw/news/afe/202611100129.aspx
