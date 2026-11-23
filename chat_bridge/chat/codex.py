@@ -257,6 +257,60 @@ def _failure(
     return None
 
 
+def shaped_command_line(executable: str, folder: str, schema_file: str) -> list[str]:
+    """How Codex is started for a reply in the shape the schema file gives, working in `folder`."""
+    return [
+        executable,
+        *GLOBAL_ARGS,
+        *EXEC_ARGS,
+        "--output-schema",
+        schema_file,
+        "--cd",
+        folder,
+        STDIN_PROMPT,
+    ]
+
+
+async def split_reply(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    *,
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """Run Codex once for a reply in the given JSON shape, and return it.
+
+    The schema goes in a file of its own folder, so the working folder stays empty and the
+    command line holds only the file's path. Raises CodexError when the run fails or its final
+    message is not a JSON object.
+    """
+    with (
+        tempfile.TemporaryDirectory(prefix="chat-bridge-codex-") as folder,
+        tempfile.TemporaryDirectory(prefix="chat-bridge-schema-") as schema_folder,
+    ):
+        schema_file = Path(schema_folder) / "schema.json"
+        schema_file.write_text(json.dumps(schema), encoding="utf-8")
+        args = shaped_command_line(find_executable(), folder, str(schema_file))
+        on_start(args)
+        process = await _start(args, with_input=True)
+        try:
+            message = await _read_answer(process, f"{system_prompt}\n\n{input_text}")
+        finally:
+            await _stop(process)
+    return shaped_reply(message)
+
+
+def shaped_reply(message: str) -> dict[str, Any]:
+    """The final message as the JSON object `--output-schema` asked for."""
+    try:
+        reply = json.loads(message)
+    except ValueError:
+        raise CodexError("Codex's reply is not JSON") from None
+    if not isinstance(reply, dict):
+        raise CodexError("Codex's reply is not a JSON object")
+    return reply
+
+
 async def stream_answer(
     system_prompt: str,
     input_text: str,

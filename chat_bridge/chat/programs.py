@@ -1,13 +1,14 @@
 """What the two answering programs share: their names, their login states and their errors.
 
-Each program is a module with the same two functions, `login_status()` and `stream_answer()`,
-so the service picks one from a table and nothing else changes with the program.
+Each program is a module with the same three functions, `login_status()`, `split_reply()` and
+`stream_answer()`, so the service picks one from a table and nothing else changes with the
+program.
 """
 
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class Program(StrEnum):
@@ -39,6 +40,15 @@ class AnsweringProgram(Protocol):
     """What the service needs from a program's module."""
 
     async def login_status(self) -> LoginStatus: ...
+
+    async def split_reply(
+        self,
+        system_prompt: str,
+        input_text: str,
+        schema: dict[str, Any],
+        *,
+        on_start: Callable[[list[str]], None],
+    ) -> dict[str, Any]: ...
 
     def stream_answer(
         self,

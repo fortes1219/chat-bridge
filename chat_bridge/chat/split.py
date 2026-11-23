@@ -1,0 +1,143 @@
+"""Lists the separate things a question asks about, so each can be searched on its own.
+
+One search ranks a question's parts against each other, and a part that ranks low is crowded out
+of the sections the model is given. So the program that will answer is first asked, once and with
+all tools off, for the question's parts as JSON; each part is then searched on its own.
+
+What comes back is a model's writing from outside text. It is checked here and used only as search
+text. A split that fails is reported, never passed off as a working one: the answer then goes on
+with the question's own sections and says so.
+"""
+
+import asyncio
+import functools
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+
+from chat_bridge.chat.programs import AnsweringProgram, ProgramError
+
+# A safety bound, not a value tuned on test questions: it keeps a question, or text pasted into
+# one, from making one answer run dozens of searches. Long questions are split into about eight
+# parts. A model may list more than it is asked for, so parts past the bound are left out.
+PARTS_LIMIT = 8
+# Longer than any part of a real question measured (55 characters; a whole sentence 129), and far
+# shorter than a pasted document.
+PART_MAX_CHARS = 200
+# Well past the 8 to 19 seconds a program takes to start and write, and well short of the answer's
+# own limit, so a stuck split costs the person a fraction of the answer's wait.
+SPLIT_TIMEOUT_SECONDS = 120
+PROMPT_FILE = Path(__file__).with_name("split_prompt.md")
+# The shape both programs are asked for: one field, nothing else. The count and the lengths are
+# checked below, on whatever comes back, so they do not depend on how either program reads a
+# schema.
+SPLIT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"parts": {"type": "array", "items": {"type": "string"}}},
+    "required": ["parts"],
+    "additionalProperties": False,
+}
+
+Part = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=PART_MAX_CHARS),
+]
+
+
+class SplitReply(BaseModel):
+    """What a split must return: one field, the parts."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    parts: list[Part]
+
+
+@dataclass(frozen=True)
+class SplitOutcome:
+    """What the split gave: the parts kept, or why it failed."""
+
+    parts: list[str] = field(default_factory=list)
+    # Distinct parts past PARTS_LIMIT, left out.
+    left_out: int = 0
+    # Why the split failed; None when it worked, including when the question had one part.
+    error: str | None = None
+    seconds: float = 0.0
+    command_line: list[str] = field(default_factory=list)
+
+    @property
+    def failed(self) -> bool:
+        return self.error is not None
+
+
+@functools.cache
+def split_prompt() -> str:
+    return PROMPT_FILE.read_text(encoding="utf-8")
+
+
+def split_input(question: str) -> str:
+    """The question between tags, so it reads as data, not as part of the rules."""
+    return f"<question>\n{question}\n</question>\n"
+
+
+def kept_parts(question: str, reply: dict[str, Any]) -> tuple[list[str], int]:
+    """The distinct parts to search, at most PARTS_LIMIT, and how many were left out.
+
+    A part that is the question itself, or repeats an earlier one, would search the same text
+    twice. Raises ValidationError when the reply is not one list of parts of allowed length.
+    """
+    parts = SplitReply.model_validate(reply).parts
+    seen = {question.strip()}
+    distinct: list[str] = []
+    for part in parts:
+        if part in seen:
+            continue
+        seen.add(part)
+        distinct.append(part)
+    return distinct[:PARTS_LIMIT], max(len(distinct) - PARTS_LIMIT, 0)
+
+
+async def split_question(program: AnsweringProgram, question: str) -> SplitOutcome:
+    """Ask the program for the question's parts. Never raises for a split that fails: the
+    outcome says why, and the caller goes on with the question's own sections."""
+    command: list[str] = []
+    started = time.perf_counter()
+
+    def outcome(**fields: Any) -> SplitOutcome:
+        return SplitOutcome(
+            seconds=round(time.perf_counter() - started, 3),
+            command_line=command,
+            **fields,
+        )
+
+    try:
+        reply = await asyncio.wait_for(
+            program.split_reply(
+                split_prompt(),
+                split_input(question),
+                SPLIT_SCHEMA,
+                on_start=command.extend,
+            ),
+            SPLIT_TIMEOUT_SECONDS,
+        )
+        parts, left_out = kept_parts(question, reply)
+    except TimeoutError:
+        return outcome(
+            error=f"the split did not finish within {SPLIT_TIMEOUT_SECONDS} seconds"
+        )
+    except ValidationError as error:
+        return outcome(
+            error=f"the split's reply is not a list of parts: {_first_problem(error)}"
+        )
+    except (ProgramError, OSError) as error:
+        return outcome(error=str(error) or type(error).__name__)
+    return outcome(parts=parts, left_out=left_out)
+
+
+def _first_problem(error: ValidationError) -> str:
+    """The first problem pydantic found, without the input: the input is the model's text."""
+    problem = error.errors(include_input=False, include_url=False)[0]
+    where = ".".join(str(part) for part in problem["loc"])
+    return f"{where}: {problem['msg']}"

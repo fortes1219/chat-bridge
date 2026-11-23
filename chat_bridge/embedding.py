@@ -176,8 +176,14 @@ def embed_documents(
 
 
 def embed_query(model: "SentenceTransformer", text: str) -> list[float]:
-    vector: Any = model.encode_query(
-        text, normalize_embeddings=True, convert_to_numpy=True
+    return embed_queries(model, [text])[0]
+
+
+def embed_queries(
+    model: "SentenceTransformer", texts: Sequence[str]
+) -> list[list[float]]:
+    """Embed several queries in one batched call, as documents are embedded."""
+    vectors: Any = model.encode_query(
+        list(texts), normalize_embeddings=True, convert_to_numpy=True
     )
-    result: list[float] = vector.tolist()
-    return result
+    return [vector.tolist() for vector in vectors]

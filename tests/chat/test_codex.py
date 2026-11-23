@@ -295,3 +295,55 @@ def test_codex_starts_without_tools_that_reach_the_machine_and_reads_input_from_
     assert "--ignore-user-config" in args
     assert args[-1] == codex.STDIN_PROMPT
     assert QUESTION.encode() in started["process"].stdin.data
+
+
+# --- The split run ---------------------------------------------------------------------------
+
+
+def test_the_split_gives_codex_its_shape_in_a_file_outside_its_empty_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: dict[str, Any] = {}
+    schema = {"type": "object", "properties": {"parts": {"type": "array"}}}
+    reply = {
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": '{"parts": ["台積電"]}'},
+    }
+
+    async def fake_start(args: list[str], *, with_input: bool) -> Any:
+        started["args"] = args
+        schema_file = Path(args[args.index("--output-schema") + 1])
+        work = Path(args[args.index("--cd") + 1])
+        started["schema"] = json.loads(schema_file.read_text(encoding="utf-8"))
+        started["work_is_empty"] = not any(work.iterdir())
+        started["schema_outside_work"] = work not in schema_file.parents
+        started["process"] = _FakeProcess(_lines(reply))
+        return started["process"]
+
+    monkeypatch.setattr(codex, "find_executable", lambda: "codex")
+    monkeypatch.setattr(codex, "_start", fake_start)
+    told: list[str] = []
+    question = "<question>\n台積電與 0050 的變化？\n</question>\n"
+
+    result = asyncio.run(
+        codex.split_reply("rules", question, schema, on_start=told.extend)
+    )
+
+    assert result == {"parts": ["台積電"]}
+    args: list[str] = started["args"]
+    assert told == args
+    assert started["schema"] == schema
+    assert started["work_is_empty"] is True
+    assert started["schema_outside_work"] is True
+    assert "台積電" not in " ".join(args)
+    for feature in codex.DISABLED_FEATURES:
+        assert args[args.index(feature) - 1] == "--disable"
+    assert args[args.index("--sandbox") + 1] == "read-only"
+    assert args[-1] == codex.STDIN_PROMPT
+    assert question.encode() in started["process"].stdin.data
+
+
+@pytest.mark.parametrize("message", ["not json", '["台積電"]', '"台積電"'])
+def test_a_codex_split_whose_reply_is_not_a_json_object_fails(message: str) -> None:
+    with pytest.raises(codex.CodexError):
+        codex.shaped_reply(message)

@@ -103,9 +103,12 @@ describe('hostile content in an answer and its sources', () => {
   it('runs nothing, opens no dialog and loads nothing', async () => {
     const page = await askHostile();
 
+    await page.find('[data-test="all-sources-toggle"]').trigger('click');
+    await flushPromises();
+
     expect(alertSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    for (const part of ['answer-text', 'sources', 'notice']) {
+    for (const part of ['answer-text', 'all-sources-list', 'sources', 'notice']) {
       const area = page.find(`[data-test="${part}"]`);
       expect(area.exists()).toBe(true);
       expect(area.findAll(EXECUTABLE_OR_LOADING)).toHaveLength(0);

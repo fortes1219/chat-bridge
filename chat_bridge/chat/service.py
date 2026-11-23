@@ -1,8 +1,10 @@
 """Answers a chat question from the knowledge base.
 
-The question is searched as it was asked, and the model answers from the sections found. The
-search runs before the answer streams, so a search that cannot run is an error the client sees
-before anything else, and the stream only waits on the model.
+The question is searched as it was asked. That search runs before the answer streams, so a
+search that cannot run is an error the client sees before anything else. The program that will
+answer then lists the question's parts, each part is searched on its own, and the model answers
+from the question's sections and each part's together: one search ranks a question's parts
+against each other, and a part that ranks low would otherwise be crowded out.
 
 Two things come from the code, not the model, so a model that has been led astray cannot drop
 them: the sources, sent before the answer, and the disclaimer. A question the search finds
@@ -40,14 +42,19 @@ from chat_bridge.chat.schemas import (
     ProgramState,
     Source,
 )
+from chat_bridge.chat.split import SplitOutcome, split_question
 from chat_bridge.database import create_tables, open_engine
-from chat_bridge.search.service import search
+from chat_bridge.search.service import SearchHit, latest_event_date, search, search_many
 from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
 
-# A question that spans several events, such as what moved the market over half a year, finds
-# its relevant sections spread over the top eight. With fewer, the answer calls the events it
-# was not given missing from the data.
-SOURCE_LIMIT = 8
+# Measured on 20 questions about the sample news, with each part keeping its own 8 sections:
+# the question keeping 30 found the most and lost none of what 8 found. Ranking 30 well takes
+# more candidates than the 20 each method ranks by default.
+QUESTION_SECTIONS = 30
+QUESTION_CANDIDATES = 50
+# One part is one topic, which one search of 8 already answers well.
+PART_SECTIONS = 8
+PART_CANDIDATES = 20
 # Sent in both languages, each on its own, so a page shows the one it is in and a reader of the
 # API still gets it whatever language the question was in.
 DISCLAIMER: Localized = {
@@ -174,25 +181,56 @@ class FoundSection:
     score: float
 
 
+def _found_section(hit: SearchHit, number: int) -> FoundSection:
+    return FoundSection(
+        section_id=hit.section_id,
+        source=Source(
+            number=number,
+            file=hit.source_path,
+            title=hit.title,
+            heading=hit.heading,
+            heading_localizations=SECTION_NAMES.get(hit.heading),
+            event_date=hit.event_date,
+        ),
+        text=hit.content,
+        score=hit.score,
+    )
+
+
 async def find_sections(question: str) -> list[FoundSection]:
-    """The sections the search finds for the question, numbered from 1."""
-    result = await search(question, SOURCE_LIMIT)
+    """The sections the search finds for the question as asked, numbered from 1."""
+    result = await search(question, QUESTION_SECTIONS, candidates=QUESTION_CANDIDATES)
     return [
-        FoundSection(
-            section_id=hit.section_id,
-            source=Source(
-                number=number,
-                file=hit.source_path,
-                title=hit.title,
-                heading=hit.heading,
-                heading_localizations=SECTION_NAMES.get(hit.heading),
-                event_date=hit.event_date,
-            ),
-            text=hit.content,
-            score=hit.score,
-        )
-        for number, hit in enumerate(result.hits, start=1)
+        _found_section(hit, number) for number, hit in enumerate(result.hits, start=1)
     ]
+
+
+async def gather_sections(
+    question: str, sections: list[FoundSection], parts: list[str]
+) -> tuple[list[FoundSection], list[dict[str, Any]]]:
+    """The question's sections, then each part's in the order listed, and every search made.
+
+    Each part keeps the sections its own search found, and none of the question's is dropped:
+    nothing is cut to fit a total, because ranking the lists against each other and cutting would
+    crowd a low-ranking part out again. A section found again keeps the number it got first.
+    """
+    numbers = {section.section_id: section.source.number for section in sections}
+    gathered = list(sections)
+    searches: list[dict[str, Any]] = [
+        {"query": question, "numbers": [s.source.number for s in sections]}
+    ]
+    if not parts:
+        return gathered, searches
+    results = await search_many(parts, PART_SECTIONS, candidates=PART_CANDIDATES)
+    for part, result in zip(parts, results, strict=True):
+        for hit in result.hits:
+            if hit.section_id not in numbers:
+                numbers[hit.section_id] = len(gathered) + 1
+                gathered.append(_found_section(hit, numbers[hit.section_id]))
+        searches.append(
+            {"query": part, "numbers": [numbers[hit.section_id] for hit in result.hits]}
+        )
+    return gathered, searches
 
 
 def question_language(question: str) -> Language:
@@ -224,11 +262,6 @@ def model_input(question: str, sections: list[FoundSection]) -> str:
     return f"<sources>\n{sources}\n</sources>\n\n<question>\n{question}\n</question>\n"
 
 
-def _latest_event_date(sections: list[FoundSection]) -> date | None:
-    dates = [s.source.event_date for s in sections if s.source.event_date is not None]
-    return max(dates, default=None)
-
-
 def _section_details(sections: list[FoundSection]) -> list[dict[str, Any]]:
     return [
         {
@@ -254,6 +287,8 @@ async def _record(
     command_line: list[str] | None,
     error: str | None,
     program: Program | None = None,
+    split: SplitOutcome | None = None,
+    searches: list[dict[str, Any]] | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
@@ -262,6 +297,18 @@ async def _record(
         # line held no text from the user or the documents and that its tools were off.
         "program": program,
         "command_line": command_line,
+        # The parts the program listed and how that run was started, or why it failed; and each
+        # search made, with the numbers of the sections it returned.
+        "split": None
+        if split is None
+        else {
+            "parts": split.parts,
+            "left_out": split.left_out,
+            "error": split.error,
+            "seconds": split.seconds,
+            "command_line": split.command_line,
+        },
+        "searches": searches,
         "error": error,
     }
     async with open_engine() as engine:
@@ -277,16 +324,19 @@ async def answer_stream(
     """The context first, then the answer in pieces.
 
     The program is chosen before the context, so the context can name it; a refusal is still
-    raised after the context, so the sources go out either way. Every question is recorded
-    however the answer ends: answered, refused before the model, failed, or cut off because the
-    client stopped reading. Raises NoLoginError or a ProgramError after the context when no
-    answer can be had.
+    raised after the context, so the sources go out either way. Before the context, the chosen
+    program lists the question's parts and each is searched, so the context carries every
+    source. Every question is recorded however the answer ends: answered, refused before the
+    model, failed, or cut off because the client stopped reading. Raises NoLoginError or a
+    ProgramError after the context when no answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
     command: list[str] = []
     program: Program | None = None
     refusal: NoLoginError | None = None
+    split: SplitOutcome | None = None
+    searches: list[dict[str, Any]] | None = None
     # A question the data has nothing on is answered without a model, so no login is read.
     if sections:
         try:
@@ -303,16 +353,23 @@ async def answer_stream(
             command_line=command or None,
             error=error,
             program=program,
+            split=split,
+            searches=searches,
         )
 
     try:
+        if sections and program is not None:
+            split = await split_question(PROGRAMS[program], question)
+            # A failed split has no parts, so the question's own sections go on alone.
+            sections, searches = await gather_sections(question, sections, split.parts)
         yield ChatDelta(
             type="response.context",
             context=ChatContext(
                 sources=[section.source for section in sections],
-                data_latest_date=_latest_event_date(sections),
+                data_latest_date=await latest_event_date(),
                 disclaimer=DISCLAIMER,
                 program=program,
+                split_failed=split is not None and split.failed,
             ),
         )
         if not sections:

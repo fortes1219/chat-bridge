@@ -107,10 +107,17 @@ uv run chat-bridge
 - `uv run chat-bridge` 會在 http://127.0.0.1:8000 起聊天服務，按 Ctrl+C 停止。想直接試，開 http://127.0.0.1:8000/docs。
 - `GET /chat/programs` 回報 Claude Code 與 Codex 各自有沒有安裝、有沒有登入：`logged in`、`not logged in`、`not installed`，讀不到程式自己回報的狀態時是 `unknown`。不會啟動模型，也不會顯示程式自己的狀態文字，那裡面可能有你的帳號。
 - 用 `POST /chat/stream` 送問題，本文是 JSON，`Content-Type: application/json`：`{"question": "..."}`。要指定由誰回答，加上 `"program": "claude-code"` 或 `"program": "codex"`。沒指定時，Claude Code 有登入就由它回答，否則由 Codex。指定的程式沒登入就拒絕，不會偷偷換成另一個。回應是 Server-Sent Events 串流（`text/event-stream`），每個事件的 data 是一個 JSON：
-  - 第一個事件 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與其中最新的事件日期，寫明由哪個程式回答，並帶著揭露文字，格式是 `{"zh-TW": "...", "en": "..."}`，兩種語言各一份。來源的標題如果是範例新聞固定的段落名，另外有 `heading_localizations`，是這個名字的兩種語言；其他標題這一欄是 `null`，標題就是文件自己的字。
+  - 第一個事件 `response.context` 列出來源（檔名、標題、標題路徑、事件日期）與整個知識庫最新的事件日期，寫明由哪個程式回答，用 `split_failed` 說明問題是不是沒能拆成幾個部分，並帶著揭露文字，格式是 `{"zh-TW": "...", "en": "..."}`，兩種語言各一份。來源的標題如果是範例新聞固定的段落名，另外有 `heading_localizations`，是這個名字的兩種語言；其他標題這一欄是 `null`，標題就是文件自己的字。
   - 接下來的 `response.output_text.delta` 事件是答案。Claude Code 寫出一段就送一段；Codex 要等整段寫完才一次送出，因為 Codex 自己就是這樣回報的。
   - 第一個事件之後才失敗的話，最後一個事件名為 `error`，data 是 `{"code": "...", "message": "..."}`：程式已經登出是 `not_logged_in`，其他是 `answer_failed`。檢索跑不起來時，串流開始之前就拒絕，回 HTTP 503 與 `{"detail": {"code": "...", "message": "..."}}`：`knowledge_base_empty`、`knowledge_base_outdated`（別的版本建的）或 `setup_failed`。頁面依 code 用自己的語言說明；message 是英文，給記錄用。
-- 問題照原樣拿去檢索，最符合的八段連同問題一起交給你自己的 Claude Code 或 Codex；用的是你自己的 Claude Code 或 Codex 裡存的登入：你的方案額度，或是你自己存進那個程式的 API key，這時費用就算在那個 key 上。金鑰變數會從它的環境裡拿掉（Claude Code 是 `ANTHROPIC_API_KEY` 等，Codex 是 `CODEX_API_KEY`、`CODEX_ACCESS_TOKEN`、`OPENAI_API_KEY`），所以你的 shell 裡就算設了金鑰也不會被用到。
+- 問題怎麼查：
+  - 先照原樣拿問題去檢索，取最符合的 30 段。
+  - 接著把要回答的程式啟動一次（工具全部關掉），請它用 JSON 列出問題問了哪幾件事。每一件（最多 8 件）各自檢索，取最符合的 8 段。這些部分只當搜尋文字用：先檢查格式與長度，以查詢參數交給檢索，絕不當成指令交給模型。
+  - 交給模型的是問題自己的段落在前，再來是每一件的段落，同一段只出現一次。不為了湊總數而砍掉任何一段，所以整句查時排在後面的那件事照樣送得到模型，整句查到的也一段都不會少。
+  - 拆題失敗時（出錯、沒有照格式回、或超過 120 秒），就只用問題自己的段落，回應與頁面都會講明。
+  - 頁面上，答案上方一行寫找到幾個出處，點開是完整清單；答案下方只列答案引用的出處，從答案裡方括號的編號讀出來。
+  - 沒叫模型、在範例新聞的 20 題上量過（每題照字面切開當作拆出來的部分）：63 個應該找到的檔找到 59 個，以前只取八段時是 45 個；以前找到的一個也沒少。問利率政策、AI 支出、台積電、0050、美股科技指數與機構看法的那一題，每一件都找到了。還有 4 個檔沒找到，其中一個是問台股行情那一題的 2026 年 11 月 5 日行情表。兩個程式自己會拆成哪幾件、回答會多等多久，要實際跑過才知道；量測寫在 [specs/007-search-each-part/research.md](specs/007-search-each-part/research.md)。
+- 模型用的是你自己的 Claude Code 或 Codex 裡存的登入：你的方案額度，或是你自己存進那個程式的 API key，這時費用就算在那個 key 上。金鑰變數會從它的環境裡拿掉（Claude Code 是 `ANTHROPIC_API_KEY` 等，Codex 是 `CODEX_API_KEY`、`CODEX_ACCESS_TOKEN`、`OPENAI_API_KEY`），所以你的 shell 裡就算設了金鑰也不會被用到。
 - 兩個程式各自怎麼跑：
   - Claude Code 的工具全部關掉，只能寫文字。
   - Codex 會執行指令、讀寫檔案、上網的工具全部關掉：shell、終端機、看圖片、產生圖片、操作電腦、瀏覽器、apps、外掛、網頁搜尋。它在一個為這次回答建立的空資料夾裡跑，不讀你的 `config.toml`（登入照樣有效），也不留對話紀錄。它的改檔工具關不掉，靠唯讀沙箱擋住寫入。每個參數與它在 Codex 原始碼裡的出處，寫在 [specs/004-answer-with-codex/research.md](specs/004-answer-with-codex/research.md)。

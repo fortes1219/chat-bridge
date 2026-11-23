@@ -43,7 +43,8 @@ export const CONTEXT_EVENT: Extract<ChatEvent, { type: 'response.context' }> = {
     ],
     data_latest_date: '2026-09-17',
     disclaimer: { 'zh-TW': '聲明', en: 'notice' },
-    program: 'codex'
+    program: 'codex',
+    split_failed: false
   }
 };
 

@@ -69,12 +69,16 @@ class ChatContext(BaseModel):
     """What the program, not the model, says about an answer: its sources and the disclaimer."""
 
     sources: list[Source]
-    # The newest event date among the sources: how recent the answer's data is.
+    # The latest event date in the whole knowledge base: how recent the data is, whatever the
+    # search found.
     data_latest_date: date | None
     disclaimer: Localized
     # The program that answers; none when no program is asked, as for a question the data has
     # nothing on, or when none can answer.
     program: Program | None = None
+    # The program could not list the question's parts, so only the question as asked was
+    # searched. Said, so a failed split never looks like one that worked.
+    split_failed: bool = False
 
 
 class ChatDelta(BaseModel):

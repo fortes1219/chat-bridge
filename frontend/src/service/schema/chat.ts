@@ -31,14 +31,17 @@ export const SourceSchema = z
 
 /**
  * What the service, not the model, says about an answer. `program` is null when no program is
- * asked, as for a question the data has nothing on.
+ * asked, as for a question the data has nothing on. `data_latest_date` is the knowledge base's
+ * latest event date. `split_failed` says the question could not be split into parts, so only the
+ * question as asked was searched.
  */
 export const ChatContextSchema = z
   .object({
     sources: SourceSchema.array(),
     data_latest_date: z.iso.date().nullable(),
     disclaimer: LocalizedSchema,
-    program: ProgramSchema.nullable()
+    program: ProgramSchema.nullable(),
+    split_failed: z.boolean()
   })
   .strict();
 
