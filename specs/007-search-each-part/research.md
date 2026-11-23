@@ -408,7 +408,7 @@ split's format and is a later feature.
 
 ### 16. Time to the sources: what the code spent, and the two fixes
 
-The real runs' sources arrived 8 to 26 seconds after the question. Timed piece by piece in the
+In the second round of real runs the sources arrived 8 to 26 seconds after the question. Timed piece by piece in the
 container, without a model, on the six-part question and the parts listed for it (six rounds, the
 first cold; the median of the other five):
 
@@ -438,10 +438,16 @@ first cold; the median of the other five):
 - Starting the split while the question is searched: the search now takes about half a second,
   and a question the search finds nothing for must not start a program (FR-007).
 
-**What is left is the programs' own time**: the split run, 4.5 to 11.3 s in the real runs; the
-time before the first word once the sources are in, 3 s for a question about one number and 20 to
-34 s for the six-part question; and writing the answer, 20 to 60 s. Using a smaller model for the
-split was not looked into.
+**What is left is the programs' own time**, from the real runs' records:
+- The split run: 4.5 to 11.3 s in the second round; 4.3 to 18.4 s over all 38 splits of the first
+  round (its 18 answers and the 20 measurement questions).
+- Claude Code's wait for its first word once the sources are in, second round: 3 s for a question
+  about one number, 20 s (Chinese) and 34 s (English) for the six-part question. The first round's
+  Chinese six-part run waited 42 s.
+- Claude Code writing the answer, second round: 8 s to 61 s. Longer answers take longer, but not
+  in proportion across languages: 4,748 Chinese characters took 61 s, 8,340 English ones 48 s.
+- Codex returns its answer in one piece, so its first word is its whole answer.
+Using a smaller model for the split was not looked into.
 
 ## Real runs (each needs the maintainer's consent)
 

@@ -52,7 +52,7 @@ description: "Task list for searching each part of a question before answering"
 
 - [x] T025 Real run, second round (consent, 2026-11-23): the six-part question in both languages, one topic, 0050 around 2026-11-06, the Taiwan market records, and 「006208 在 9 月 17 日的漲跌」, each with both programs (research.md "Results, second round").
 
-- [x] T026 Time to the sources (research.md decision 16): the tokenizer is built once per dictionary and word set; `serve()` loads the embedding model before taking requests. Fast test: the start order is page, knowledge base, model, then the server. Timed again in the container: 4.1 s to 0.9 s a question.
+- [x] T026 Time to the sources (research.md decision 16): the tokenizer is built once per dictionary and word set; `serve()` loads the embedding model before taking requests. Fast test: the start order is page, knowledge base, model, then the server. Timed again in the container: 4.10 s to 0.96 s a question.
 
 ## Phase 6: Checks and real runs
 
