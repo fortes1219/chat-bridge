@@ -50,6 +50,8 @@ description: "Task list for searching each part of a question before answering"
 
 - [x] T024 The question's search as before this feature, 8 sections from 20 candidates with every section ranking, kept whole and first (FR-003, FR-004). Fast test: both searches and the order. Slow test: today's 8 come first, whole, in order, for every replayed set of parts. Replayed the 26 cases and the market-number questions (research.md decision 14).
 
+- [x] T025 Real run, second round (consent, 2026-11-23): the six-part question in both languages, one topic, 0050 around 2026-11-06, the Taiwan market records, and 「006208 在 9 月 17 日的漲跌」, each with both programs (research.md "Results, second round").
+
 ## Phase 6: Checks and real runs
 
 - [ ] T016 Run the fast suite, `ruff`, `mypy`, the page tests and type check, and the slow suite in the container; check `git ls-files --eol` shows no `w/crlf`.

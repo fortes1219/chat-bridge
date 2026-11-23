@@ -475,3 +475,38 @@ The 20 measurement questions, split by Claude Code and searched as the chat sear
 - 59 of 63 gold files found, against 45 today; 0 lost; the same totals as the measurement;
 - still missed: three files of the six-part question, whose six parts were each covered, and one
   file of the question that lists three days of market events.
+
+### Results, second round (2026-11-23)
+
+Run with the maintainer's consent on the code with FR-014 and today's search kept first, the same
+way as the first round, on the sample news. 12 answers, 24 program starts. Every split worked;
+the sources and the notice came first; today's eight sections were all there, first; no command
+line held the question, a passage or a part; the date the data reaches was 2026-11-17.
+
+| Run | Parts | Sources | Sources at s | First text at s | Done at s | Result |
+|---|---|---|---|---|---|---|
+| Six-part question, Chinese, Claude Code | 6 | 80 | 26.3 | 45.9 | 107.0 | Every part has core files; 10 market sections of the 0050 part's files, all 10 cited; two of the four Fed decisions (the open gap) |
+| Six-part question, Chinese, Codex | 6 | 79 | 14.9 | 69.1 (whole) | 69.4 | Every part has core files; 9 such market sections, all cited; two Fed decisions |
+| Six-part question, English, Claude Code | 6 | 77 | 14.4 | 48.7 | 96.5 | Every part has core files; 12 such market sections, 9 cited; the answer gives 0050's moves after each Fed decision; all four Fed decisions |
+| Six-part question, English, Codex | 6 | 73 | 12.5 | 51.7 (whole) | 51.9 | Every part has core files; 12 such market sections, 8 cited; all four Fed decisions |
+| One topic (the Fed over half a year), Claude Code | 2 | 52 | 17.0 | 45.6 | 97.8 | All four Fed decisions among the sources |
+| The same, Codex | 2 | 52 | 10.6 | 32.5 (whole) | 32.7 | All four Fed decisions among the sources |
+| 0050 around 2026-11-06, Claude Code | 0 | 59 | 11.8 | 15.3 | 30.3 | 0050's closes and changes on 11-05, 11-06 and 11-09 from the market tables, with the note that the tables do not show the events caused the moves |
+| The same, Codex | 0 | 59 | 8.3 | 16.6 (whole) | 16.7 | 0050 on 11-06: −4.79% to 92.50, from the market table |
+| Taiwan market records around 5, 6 and 9 November, Claude Code | 3 | 61 | 15.0 | 39.6 | 77.3 | The 5 November market section among the sources |
+| The same, Codex | 4 | 61 | 15.7 | 31.5 (whole) | 31.7 | The 5 November market section among the sources: the gap of the first round closed |
+| 「006208 在 9 月 17 日的漲跌」, Claude Code | 0 | 47 | 10.0 | 13.2 | 21.3 | 247.40, +1.14% from 244.60, from both tables that hold the row; says the tables do not show cause |
+| The same, Codex | 0 | 47 | 8.3 | 14.0 (whole) | 14.2 | 247.40, +1.14% |
+
+- The English 0050 failure of the first round is gone: both English answers give 0050's moves,
+  from market sections of the files their parts found. The regression test, replaying the parts
+  each program listed in the first round, passes for all four.
+- The Chinese interest-rate part still brings two of the four Fed decisions (decision 15).
+- Against the first round, with 53 to 80 sections instead of 39 to 53: Claude Code's first word on
+  the Chinese six-part question came sooner (45.9 s against 61.0 s) and the English one later
+  (48.7 s against 28.5 s); Codex took 52 to 69 s for the six-part question against 36 to 60 s.
+  One run each, so these show what happened that time.
+- The numbers quoted were checked against the market tables: 0050 closed 97.15 on 11-05, 92.50 on
+  11-06 (−4.79%) and 97.45 on 11-09; 006208 closed 247.40 on 9-17.
+- The attacks were not run again: this round changed only which sections are searched and their
+  order, not the isolation, the command lines or the instructions.
