@@ -118,7 +118,9 @@ its time misleads.
 - No price at all can be had: the screen shows the holdings and the strategy with prices missing, and says so; it does not show zero values.
 - The user asks for a revision while a proposal is still open: the new proposal replaces the open one, which is closed as not accepted.
 - The program hands back a proposal and an answer that disagree: the proposal is checked on its own; the answer text is shown as written.
+- The program hands back a proposal whose targets are all the current ones: there is nothing to accept or reject, so it is treated as no proposal. It is not kept, no difference is shown, an open proposal stays open, and the chat shows the answer with the line that no change was proposed.
 - The window is narrow: the strategy screen is in the drawer of the chat page (feature 003), and a proposal card in the chat opens it.
+- A proposal card stays in the chat after its proposal is accepted, rejected or replaced: from then on it says the proposal no longer waits for the user and has no button, since the strategy screen no longer shows that proposal. Only the open proposal's card opens the strategy screen.
 - Every text of the screen exists in Traditional Chinese and English, as for the chat page.
 
 ## Requirements *(mandatory)*

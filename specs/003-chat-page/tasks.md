@@ -50,7 +50,7 @@ description: "Task list for A chat page in the browser"
 - [x] T017d From sending until the first words, a shimmering line says it is searching, then waiting for the named program (FR-018); the language switch lists the languages by name only
 - [x] T017c The answer is typed at a steady pace with a caret, faster the more is waiting; stop, failure and reduced motion show what arrived at once (FR-017)
 - [x] T017a Layout and colors: a three-row grid with the program choice and the question box fixed and the conversation scrolling between them; the scroll-to-bottom button inside the conversation; VS Code's Dark Modern colors; answer lists and paragraphs drawn with Nuxt UI's typography components (FR-015, FR-016)
-- [ ] T018 Layout: chat as the main panel, a resizable `StrategyPlace` saying it comes later, a drawer in a narrow window (FR-013)
+- [x] T018 Layout: chat as the main panel, the strategy panel beside it, a drawer in a narrow window (FR-013). Done in feature 006 (task T010), with the strategy screen itself in the place, so no placeholder was built.
 - [ ] T019 [P] View tests for the messages of US3, the language switch and the layout's drawer
 
 ## Phase 6: Polish and real runs

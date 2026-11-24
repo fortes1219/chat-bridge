@@ -68,8 +68,12 @@ missing, never zero, when they cannot be had.
   rule's result on the targets. Also the change column of a proposal and its rule results
   (decisions 4, 9). Decimal throughout; lookup tables for the rule kinds.
 - `proposal.py`: the given JSON shape of the answer and proposal (`PROPOSAL_SCHEMA`), the strict
-  pydantic model that checks it, the refusal reasons as codes (decision 7); storing a proposal,
-  replacing the open one, accepting and rejecting (decision 8).
+  pydantic model that checks it, and the checks with their refusal codes (decision 7). It reads no
+  database, so every check is tested without one.
+- `store.py`: reading the profile and the strategy; storing a proposal, replacing the open one,
+  accepting and rejecting, with the proposal row locked for the decision (decision 8).
+- `revision.py`, `revision_prompt.md`: the revision answer's rules, the profile as data for the
+  program, one run for the answer and the proposal, and the proposal event.
 - `state.py`: the holdings, targets and rules read from the database once and kept in memory,
   read again only after something writes them (seeding, an accepted proposal, saved rules). A
   price change updates the price book and recomputes the view in memory; it reads nothing from the
@@ -87,10 +91,16 @@ missing, never zero, when they cannot be had.
 - `split.py`, `split_prompt.md`: the split's shape gains `revise_strategy`; `SplitOutcome.revise`.
 - `service.py`: when the split says revise, the answer run gets `revision_prompt.md`, the sources,
   and the profile, targets, rules and prices as data, and asks for `PROPOSAL_SCHEMA` through the
-  program's `shaped_reply`; the answer text is sent as one piece; then `response.proposal`. The
+  program's `reply_in_shape`; the answer text is sent as one piece; then `response.proposal`. The
   record keeps the proposal or the refusal. The context event says whether a proposal is
   expected.
+- `programs.py`, `claude_code.py`, `codex.py`: the run that returns a reply in a given shape was
+  named for the split, `split_reply`; it now serves the revision answer too, so it is named
+  `reply_in_shape`.
 - `schemas.py`: the new event type and the context's `proposal_expected`.
+- `sources.py`: the languages and the `Source` model, moved out of `schemas.py` so the strategy's
+  schemas can use them without importing the chat's request and event shapes, which use the
+  strategy's.
 
 ### Page
 
