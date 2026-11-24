@@ -59,9 +59,11 @@ missing, never zero, when they cannot be had.
 - `sample.py`: loads `data/profile/sample.json` into the tables when they are empty
   (research.md decision 5); `serve()` calls it after preparing the knowledge base.
 - `prices.py`: a `PriceBook` (symbol to price, time, source) and the feed that fills it: recent
-  closes with `Ticker.history`, then `AsyncWebSocket` for every symbol at once (decisions 1, 2).
-  The feed runs as one task in the app's lifespan and is replaced by a stand-in in tests. It calls
-  back when a price changes.
+  daily values with `Ticker.history`, one symbol at a time and before the service takes requests,
+  then yfinance's synchronous `WebSocket` on a worker thread for every symbol at once, opened again
+  when it ends and its subscription renewed every 15 seconds (decisions 1, 2). The stream runs as
+  one task in the app's lifespan and is replaced by a stand-in in tests. It calls back when a price
+  changes.
 - `compute.py`: from holdings, targets, rules and the price book, the strategy view: each holding's
   price and time, value in Taiwan dollars, weight, profit or loss; cash; totals; the change since
   the previous close; the donut's shares; how many holdings are left out for a missing price; each
@@ -74,8 +76,9 @@ missing, never zero, when they cannot be had.
   accepting and rejecting, with the proposal row locked for the decision (decision 8).
 - `revision.py`, `revision_prompt.md`: the revision answer's rules, the profile as data for the
   program, one run for the answer and the proposal, and the proposal event.
-- `state.py`: the holdings, targets and rules read from the database once and kept in memory,
-  read again only after something writes them (seeding, an accepted proposal, saved rules). A
+- `state.py`: the holdings, targets, rules and open proposal read from the database once and kept
+  in memory, read again only after something writes them (seeding, a kept or decided proposal,
+  saved rules). A
   price change updates the price book and recomputes the view in memory; it reads nothing from the
   database, so its cost follows the number of holdings, not the number of quotes.
 - `realtime.py`: the Socket.IO `AsyncServer`, mounted inside the app at `/socket.io`, default

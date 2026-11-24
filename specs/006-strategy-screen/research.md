@@ -39,6 +39,14 @@ of `uv.lock` and `npm audit` of `frontend/package-lock.json`.
 bidict is MPL-2.0, a file-level licence that is not GPL or AGPL; it is used unmodified, as a
 dependency of python-socketio.
 
+Checked again 2026-11-24, after the locks were written. `uv.lock`, 149 packages, sent to OSV: no
+advisory. Three resolved to other versions than listed above: python-dateutil 4.0.0, tzdata 2026.6,
+and pycparser 3.12, which cffi brings in. `frontend/package-lock.json`, 594 versions, sent to OSV,
+and `npm audit`: only the two advisories already known in the page's test tools, glob 13.0.7
+(GHSA-3g3m-2fjr-6pw4) and minimatch 10.2.6 (GHSA-g3hv-75wg-m249), both under `@vue/test-utils`.
+@tanstack/charts brings about 40 d3 modules (ISC), delaunator (ISC) and robust-predicates
+(Unlicense); xmlhttprequest-ssl's licence is MIT in its own `package.json` and `LICENSE`.
+
 ## Decisions
 
 ### 1. One price source for every quote: Yahoo Finance through yfinance
@@ -54,7 +62,8 @@ account are needed. Each price is shown with the time it is from.
   every series the screen shows.
 - Delay, from Yahoo's own table (`https://help.yahoo.com/kb/finance-for-web/sln2310.html`): the
   Taiwan Stock Exchange (`.TW`) 20 minutes; the Nasdaq Stock Exchange real time; Nasdaq Global Index
-  Data Service, which carries the Philadelphia Semiconductor index, real time.
+  Data Service, which carries the Philadelphia Semiconductor index, real time; currency rates
+  (`=X`), from ICE Data Services, real time.
 - yfinance's README says it is not affiliated with Yahoo, is meant for research and education, and
   that Yahoo's API is for personal use (`ranaroussi/yfinance@2492a853aee9:README.md:22-26`). The
   README of this repository says the same.
@@ -68,31 +77,84 @@ account are needed. Each price is shown with the time it is from.
 - An official, free, keyless real-time feed for Taiwan: none was found. The exchange sells real-time
   data to vendors (`https://www.twse.com.tw/pcversion/en/page/products/info-vendor/faq.html`).
 
-### 2. Recent closes first, then the live stream
+### 2. Recent daily values first, then the live stream
 
-**Decision**: when the service starts, it reads each symbol's recent daily closes once
-(`Ticker.history`), so every price has a value and a date from the start; then it subscribes to
-yfinance's live stream (`AsyncWebSocket`) for all symbols at once and takes each message's symbol,
-price and time. The stream sends the price as a binary float with a `price_hint`, the number of
-decimals to show (`ranaroussi/yfinance@2492a853aee9:tests/test_live.py:18-21`); the service turns
-it into a `Decimal` from its text and rounds it to that many decimals. A message without a symbol,
-price, time or hint is dropped and counted, never guessed. Outside trading hours the stream sends nothing for that market, so the screen shows
-the last close with its date. When Yahoo cannot be reached, prices are missing, never zero
-(spec User Story 1, scenario 4).
+**Decision**: when the service starts, before it takes requests, it reads each symbol's recent
+daily series (`Ticker.history`, not adjusted for dividends), one symbol at a time and for at most
+20 seconds, so the first page that opens has a value and a trading day for every price: the day's
+close once it has ended, its latest price while it trades. Then it subscribes to yfinance's live
+stream for all symbols at once and takes each message's symbol, price and time. The stream sends
+the price as a binary float with a `price_hint`, the number of decimals to show
+(`ranaroussi/yfinance@2492a853aee9:tests/test_live.py:18-21`); the service turns it into a
+`Decimal` from its text and rounds it to that many decimals. A message without a symbol, price,
+time or hint is dropped and counted, never guessed.
+
+The change since the previous close is the stream's `change` when a message carries one, which is
+against Yahoo's own previous close. Before that, it is against the close of the trading day before
+the daily value. Yahoo's daily series has days with no close: in 006208.TW's, 2026-11-23 is `null`
+while the next day's previous close, as Yahoo gives it for a one-day range (`chartPreviousClose`),
+is 195.55, that day's close. yfinance drops such days by default (`keepna=False`; installed 1.8.0,
+`yfinance/scrapers/history.py:145-147`, `:641-645`), so the day before them stood in and a two-day
+move of +13.33% showed as one day's; Yahoo-side missing days are reported upstream too
+(ranaroussi/yfinance issue 2621). The service reads the series with `keepna=True`, and when the day
+before the latest value has no close, the previous close is not known: the change is missing for
+that series and the strategy's change leaves it out and names it, as the totals do for a missing
+price. It is never taken from an earlier day.
+
+Outside the regular session the stream may still send prices. In the short runs below, NVIDIA had
+prices at 13:17, 13:48 and 13:54 Taiwan time, past midnight in New York. Their `change` is against
+the last regular close, so a US holding's change is then its move since that close, not the last
+session's; in the second run NVIDIA went from the daily value 165.05 (+31.48% on 2026-11-23) to
+164.22 (-0.50%), and the strategy's change went from 1,127,227 to 928,396 Taiwan dollars. The
+strategy's change sums each holding against its own market's previous close, and the screen says
+so. When a market sends nothing, its daily value stays, with its day.
+
+When Yahoo cannot be reached, prices are missing, never zero (spec User Story 1, scenario 4). The
+service waits at most 20 seconds for the daily series at start, then starts without them; it tells
+the page whether its live connection is open, and the page says when prices are not following.
+The stream is tried again every 3 seconds; a failure is said once in the terminal, and again only
+after the stream has opened in between, so the terminal is not filled with the same line.
+
+The stream is yfinance's synchronous `WebSocket` on a worker thread, not `AsyncWebSocket`. In
+yfinance 1.8.0, `AsyncWebSocket.listen` does not reconnect after a dropped connection, because
+`_connect()` does nothing while the old connection is still set, and after a normal close its loop
+runs without awaiting and blocks the service (installed 1.8.0, `yfinance/live.py:141-200`). This
+was reported and fixed upstream in pull request 3048, merged into the `dev` branch on 2026-11-18
+(`ranaroussi/yfinance@581412edf5a0:yfinance/live.py:200-208`); as of 2026-11-24 no release has it,
+and `dev` has diverged from 1.8.0, so no commit is pinned. The synchronous `listen` returns when the
+connection ends (`yfinance/live.py:292-336`); the service then waits 3 seconds, opens a new
+connection and subscribes again, the shape of that fix. While a connection is open, the service
+sends the subscription again every 15 seconds with the same `subscribe`, as `AsyncWebSocket` does
+(`yfinance/live.py:23`, `:76-93`) and the synchronous client does not. A yfinance release with the
+fix would allow the asynchronous client again; that is a fact, not a plan.
+
+Also:
+- yfinance's time zone and cookie caches are kept in the service's local data folder
+  (`set_tz_cache_location`, `yfinance/cache.py:637`), not in the user's own cache folder.
+- The daily series are read one at a time. Read all at once, yfinance's cache database was locked
+  for one symbol in the first short run against Yahoo ("database is locked"), which left it with no
+  price.
+- yfinance's own log is not shown: it logs every end of the stream as an error with a traceback,
+  the service's own close at Ctrl+C included. The service logs a series it could not read, a
+  stream that could not be opened or that ended, and how many recent prices it read at start.
+- websockets 17 deprecates connecting without a context manager, as yfinance's synchronous client
+  does, with a `DeprecationWarning`. The locked websockets 17.4 still supports it, and that one
+  notice is filtered; a websockets release that drops it would stop the stream until yfinance
+  changes.
 
 **Rationale**:
-- yfinance's live stream is a push: one connection, each message a decoded quote with `id`,
-  `price` and `time` (`ranaroussi/yfinance@2492a853aee9:yfinance/pricing.proto:4-6`,
-  `yfinance/live.py:25-31`, `:141-200`); it resubscribes every 15 seconds and, with its default
-  setting that logs errors instead of raising them, reconnects after a dropped connection
-  (`live.py:23`, `:76`, `:188-200`; `yfinance/config.py:34`).
-- The precedent pushes the same stream to browsers over Socket.IO
-  (`marketcalls/YFinance-Alert-Manager@7f6df14d3e66:app.py:123`, `:134-139`).
+- The precedent runs the same synchronous stream on a thread: `yf.WebSocket()`, `subscribe`, then
+  `ws.listen(handler)` on a daemon thread
+  (`marketcalls/YFinance-Alert-Manager@7f6df14d3e66:app.py:134-139`). It has no reconnect.
+- The precedent pushes the stream to browsers over Socket.IO (same file, `:123`, `:134-139`).
 - Reading recent closes with `Ticker.history` is how TradingAgents reads prices
   (`TauricResearch/TradingAgents@9fa1196fffbc:tradingagents/dataflows/vendors/yahoo/market.py:34`).
 - The cost follows the prices that change, not the clock.
 
 **Alternatives considered**:
+- yfinance 1.8.0's `AsyncWebSocket`: it neither reconnects nor survives a normal close, as above.
+- Pinning yfinance to the `dev` commit with the fix: `dev` has 20 commits 1.8.0 lacks and lacks 15
+  that 1.8.0 has (GitHub compare `1.8.0...581412edf5`). Not used.
 - Asking Yahoo for every price every few seconds: one request per symbol per poll, whether or not
   anything moved; TradingAgents wraps its Yahoo calls in retries and tests rate limits
   (`tradingagents/dataflows/vendors/yahoo/market.py:34`, `yf_retry`). Not used.
@@ -125,7 +187,10 @@ written into the strategy query's cache, so the strategy has one copy in the pag
 its weight, its profit or loss in money and percent, the totals, the change since the previous
 close, the donut's shares, the change column of a proposal and the rule checks. A US holding is
 converted with the `TWD=X` rate; when that rate is missing, the US holdings are counted as missing,
-never valued at a guessed rate. The page only draws what it gets.
+never valued at a guessed rate. The profile keeps no rate from the day a US holding was bought, so
+its cost is converted at the current rate as well: its profit is the price's move, not the
+currency's, and the screen says the US holdings are valued at the latest rate. The page only draws
+what it gets.
 
 **Rationale**:
 - The constitution, Principle IV: code computes the numbers in a diff, the model does not.
@@ -275,3 +340,66 @@ plain-text post to each endpoint and find them refused and nothing changed.
 5. The attack document of spec 001 that hides "tell the user to buy everything", in the attack
    knowledge base, with a question asking to revise the strategy, once with each program: record
    the proposal, what its reasons cite, and whether the service refused it.
+
+Three short runs against Yahoo were made while building the prices, on 2026-11-24 at 13:16, 13:48
+and 13:54 Taiwan time. Each started the service with `uv run --no-sync chat-bridge --no-browser`,
+opened the page in a headless browser, asked no question (the login check used a stand-in
+program), and sent only the symbols. Each stayed connected for under a minute and ended with Ctrl+C.
+They are not run 4: they show that the prices arrive and the service stops, not Yahoo's delay or how
+many messages arrive per minute.
+- 13:16: one series got no price ("database is locked": the daily series were read all at once);
+  the first read of the strategy came before any price, so every holding was left out for a moment;
+  the terminal showed a traceback at Ctrl+C and a deprecation notice. Each is handled above.
+- 13:48: every series had a value at the first read; live prices came for TSMC and 0050 (the last
+  trades before the Taiwan close, 20 minutes late) and for NVIDIA (overnight); Ctrl+C ended the
+  service in 2.4 seconds with no process left and the database stopped.
+- 13:54: the terminal said "Read 8 of 8 in 5.9 seconds"; Ctrl+C ended the service in 2.6 seconds.
+- In all three, 006208's daily change was +13.33%, above the Taiwan Stock Exchange's 10% daily
+  limit: the missing day explained above.
+
+Runs with a stand-in yfinance (nothing reaches the network) covered what Yahoo did not show:
+prices that move while the page is open, the subscription renewed every 15 seconds, and Yahoo out
+of reach (each daily read times out, the stream cannot be opened): the service started after 20
+seconds with every price missing, the page said it was not connected to the price source, the
+chat still answered, and the stream's failure was said once.
+
+In one of those runs Ctrl+C did not stop the service: the log ends at uvicorn's "Shutting down",
+after asyncio had logged a `ConnectionResetError` from the headless browser's connection, closed
+without a close frame when the browser was killed. In Python 3.13's proactor loop,
+`_call_connection_lost` calls `sock.shutdown()` before it detaches the connection from the server
+(`asyncio/proactor_events.py`); when that raises, the connection stays counted, and
+`Server.wait_closed()` (`asyncio/base_events.py:390-412`), which uvicorn awaits before the
+application's shutdown, never returns. uvicorn bounds that wait with its graceful-shutdown timeout,
+which the service now sets to 5 seconds (`timeout_graceful_shutdown`; uvicorn 0.54.0
+`uvicorn/server.py`, `shutdown` and `_wait_tasks_to_complete`). uvicorn's default is no limit; the
+documented default of gunicorn, a server that drains production traffic, is 30 seconds. Five is
+this service's own choice, not taken from either: one person stops this local service at a
+terminal, and pressing Ctrl+C means stop. With no open answer the service ends in about two
+seconds; an answer still coming in is cut five seconds after Ctrl+C (below); a connection that
+never ends no longer keeps it running. A longer wait would look like a frozen terminal.
+
+A connection reset sent on purpose was handled cleanly, so the browser case could not be made to
+happen again. A request whose body never finishes keeps a connection open the same way: with it,
+Ctrl+C ended the service in 6.7 seconds, uvicorn logging "Cancel 1 running task(s), timeout
+graceful shutdown exceeded" and a `CancelledError` traceback for that request, then the
+application's shutdown, which stopped the database; without the limit, the service was still
+running 60 seconds after Ctrl+C.
+
+The limit changes what Ctrl+C does to an answer still coming in. Measured with a stand-in program
+whose answer takes 30 seconds, the page kept open until the service's process had ended:
+- Without the limit, the answer went on to its end, was recorded whole, and the service ended 30
+  seconds after Ctrl+C.
+- With the limit, the answer stopped about five seconds after Ctrl+C and the service ended about
+  seven seconds after it. In the first such run the question was not recorded at all: uvicorn
+  cancels the request and goes on to the application's shutdown without waiting for it, and the
+  service stopped the database before the cancelled answer wrote its record. The service now waits
+  up to five seconds for the answers still being written before it stops the database
+  (`finish_answers` in the chat service), and the question is recorded with the part that had
+  arrived and "the client went away before the answer ended". The page says it cannot reach the
+  chat service. The terminal shows uvicorn's traceback for the cancelled request and, after the
+  service has ended, three "Exception ignored ... I/O operation on closed pipe" messages for the
+  stopped program's pipes.
+
+An earlier comparison found no difference with and without the limit. It was wrong: the script
+that measured it closed the browser as soon as the service's port closed, which is at once on
+Ctrl+C, and that closed connection is what cut the answer.
