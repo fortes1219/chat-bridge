@@ -17,6 +17,8 @@ was at that commit. Pages that carry no commit are cited by URL as read that day
 | Check a proposal and the rules: known fields only, whole percents, every holding once | pydantic | 2.14.3 | MIT | none added: already a dependency | `fastapi/full-stack-fastapi-template@77e550a:backend/pyproject.toml:10` | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/fastapi_app/api_models.py:5`, `:93-97` |
 | Keep the profile, the targets, the rules and the proposals in the local database | SQLAlchemy | 2.0 | MIT | none added: already a dependency | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/pyproject.toml:13` | `Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/fastapi_app/postgres_models.py:4`, `:54` |
 | Cards, tables, the side panel and the drawer | @nuxt/ui | 4.13.0 | MIT | none added: already a dependency | `nuxt-ui-templates/dashboard-vue@abfe4e74024a:package.json:14` | `nuxt-ui-templates/dashboard-vue@abfe4e74024a:src/components/home/HomeChart.vue:59` |
+| End an answer's stream as soon as Ctrl+C is pressed, so the service stops at once and cleanly (decision 13) | sse-starlette | 3.7.1 | BSD-3-Clause | wheel 19 KB; needs starlette and anyio, both already locked | `modelcontextprotocol/python-sdk@77001c96f950:pyproject.toml:142` | `modelcontextprotocol/python-sdk@77001c96f950:src/mcp/server/sse.py:48`, `:202` |
+| Stop Claude Code and every process it started, as Codex is stopped (decision 13) | psutil | 7.2.2 | BSD-3-Clause | none added: already a dependency (spec 004) | `apache/airflow@7da6645:airflow-core/pyproject.toml:131` | `apache/airflow@7da6645:airflow-core/src/airflow/utils/process_utils.py:122-124`, `:150` |
 
 Sizes are PyPI's wheel sizes and npm's unpacked sizes of each version (2026-11-23), not what each
 adds to the install or the built page. pandas is the largest addition; yfinance requires it.
@@ -46,6 +48,10 @@ and `npm audit`: only the two advisories already known in the page's test tools,
 (GHSA-3g3m-2fjr-6pw4) and minimatch 10.2.6 (GHSA-g3hv-75wg-m249), both under `@vue/test-utils`.
 @tanstack/charts brings about 40 d3 modules (ISC), delaunator (ISC) and robust-predicates
 (Unlicense); xmlhttprequest-ssl's licence is MIT in its own `package.json` and `LICENSE`.
+
+sse-starlette 3.7.1 (decision 13), checked 2026-11-24 against OSV before it was added: no known
+advisory. It adds no other package. Once `uv.lock` was written, its 150 packages were sent to OSV:
+no advisory.
 
 ## Decisions
 
@@ -326,6 +332,77 @@ plain-text post to each endpoint and find them refused and nothing changed.
   `:146-148`): a second check in code of our own; the JSON body already makes such a request need a
   preflight that is never granted. Not added.
 - A token in a cookie and a header: the page has no login or session to bind it to.
+
+### 13. Ctrl+C while an answer is coming in ends the stream at once
+
+**Decision**: `POST /chat/stream` answers through sse-starlette's `EventSourceResponse` instead of
+FastAPI's. The events are the same as before (spec 003 research decision 1): each item an unnamed
+event whose data is its JSON, an error after the start an event named `error`, separated by a bare
+newline, which sse-starlette writes only when the response and each event are given it. When
+Ctrl+C is pressed, sse-starlette sets each open stream's shutdown event within half a second. The
+stream then cancels its wait for the answer's next piece, in the task writing the answer, so the
+answer is cut off and recorded as when the person stops it, and it ends with an `error` event
+whose code is `answer_failed` (spec 001 FR-019: an answer that fails after it started). The
+service stops without waiting for uvicorn's shutdown limit. The stream has 2 seconds for this
+(`shutdown_grace_period`), below uvicorn's 5.
+
+Stopping Claude Code now ends it and every process it started, as stopping Codex has since spec
+004: both call one function, `programs.end_process_tree`, with psutil (spec 004 research,
+`## Packages`). It lists the processes below the program, then sends every kill before it first
+waits, so a stop that the stream's cancellation interrupts has still ended them all.
+
+**Rationale**:
+- With FastAPI's response nothing ended an open stream on shutdown: uvicorn waited for the
+  connection until its 5-second limit (decision 2's runs), then cancelled the request, which printed
+  a traceback of about 60 lines.
+- The three "Exception ignored ... I/O operation on closed pipe" messages printed after the service
+  had ended came from Claude Code's stop, which killed only the process it started. npm installs
+  Claude Code on Windows as a `.cmd` launcher: cmd.exe starts node, which starts Claude Code. The
+  stop ended cmd.exe; the program below it went on writing the answer, and held the output pipes,
+  so they never reached their end and were left to the garbage collector. In a run with a
+  stand-in Claude Code behind a `.cmd` launcher, the stand-in wrote a piece of its answer one
+  second after the answer was recorded as cut off. A test that starts such a launcher fails with
+  the old stop, printing the same three messages, and passes with the tree stop. Codex's runs,
+  whose stop already ended the tree, printed none.
+- sse-starlette wraps uvicorn's `Server.handle_exit` when it is imported, and each stream watches
+  that flag and uvicorn's own `should_exit` (installed 3.7.1, `sse_starlette/sse.py:117-150`,
+  `:192-234`); its notes say that without this the streams do not close and the server hangs until
+  the graceful shutdown timeout (`:204-207`). The MCP Python SDK serves its streams with it
+  (`modelcontextprotocol/python-sdk@77001c96f950:src/mcp/server/sse.py:48`, `:202`).
+- A ready-made event is encoded with its own separator (`sse_starlette/event.py:91-92`), and the
+  default is `\r\n`, so the stream's separator is given to each event as well as to the response.
+- Ending the stream without a last event made a cut-off answer look whole: in the first run with
+  sse-starlette, the page showed the three pieces that had arrived followed by the sources and the
+  notice, as for a finished answer. Before, the connection broke and the page said it could not
+  reach the service. sse-starlette's way to let a stream say goodbye is the shutdown event with a
+  grace period: the library sets the event, the generator yields a farewell event and returns,
+  and only a generator that has not ended when the grace period is over is cancelled
+  (`sysid/sse-starlette@9b51d3240272:examples/07_cooperative_shutdown.py:43-58`; README `:214-239`;
+  the grace period must stay below the server's shutdown limit, README `:248-250`). The example
+  waits on the event between ticks; this stream waits on the answer, so the wait for each piece
+  is an anyio cancel scope that a small task cancels when the event is set. The cancellation
+  reaches the answer in the task that started it, so the service still finds the answer among
+  those it lets finish before the database stops, and the record's write stays shielded.
+
+**Alternatives considered**:
+- Wrapping uvicorn's `Server.handle_exit` in the service's own code: it is what sse-starlette
+  does; not written by hand.
+- Shielding the stop from the stream's cancellation, with anyio, so the program is waited for:
+  tried, and the three messages stayed, because the stop still ended only cmd.exe. With the tree
+  stop no shield is needed.
+- A new code for "the service stopped", so the page could say that instead of "the answer
+  stopped with an error, ask again": it adds to the codes spec 001 FR-019 lists. Not done here.
+- Reading each piece in a task of its own, raced against the event with `asyncio.wait`: the
+  answer would then be cut off in another task than the one that started it, and the service
+  registers an answer by that task, to let it finish before the database stops.
+- Leaving it: Ctrl+C would keep printing about 90 lines while an answer is coming in, and a
+  stopped Claude Code would go on answering on the user's plan.
+
+**What it changes elsewhere**: importing sse-starlette replaces uvicorn's `Server.handle_exit` for
+the whole process. It sends a comment line every 15 seconds while a stream is open, which the
+page's parser skips, as SSE readers do. Every stop of Claude Code (an answer, a split, a login
+check that did not reply) now waits up to 10 seconds for the processes it started, and fails,
+naming them, when one is left.
 
 ## Real runs (each needs the maintainer's consent)
 

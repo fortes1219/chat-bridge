@@ -43,6 +43,16 @@ Each phase ends with its checks and one commit the maintainer makes; the next ph
 - [x] T020 [P] Page tests: the five parts from a fixed view; a missing price drawn as missing, not zero; an event updates the cards and the donut; an invalid event is not drawn; the socket is closed when the panel goes away. The panel's old targets table is replaced by the holdings table, which shows each target beside its actual weight (spec User Story 1, scenario 6).
 - [x] T021 Checks as T013; the file list and one commit message.
 
+## Phase 2 follow-up: Ctrl+C while an answer is coming in
+
+The shutdown limit of Phase 2 left Ctrl+C during an answer cut at five seconds, with about 90 lines
+in the terminal (research.md decision 13).
+
+- [x] T030 Dependency: sse-starlette at the research.md version (asks for approval); OSV check (research.md `## Packages`, `## Advisories`).
+- [x] T031 `chat_bridge/chat/router.py`: `/chat/stream` through sse-starlette's `EventSourceResponse`, the same events separated by a bare newline; on shutdown the answer is cut off and the stream ends with an `error` event; `chat_bridge/chat/programs.py`: one stop that ends a program and every process it started, which `claude_code.py` and `codex.py` both call (decision 13).
+- [x] T032 [P] Tests: a shutdown cuts the answer off and the stream ends with the `error` event; the grace period stays below uvicorn's limit; for each program, a stop ends everything a `.cmd` launcher started (fails with the old stop); the stream's events unchanged.
+- [x] T033 Checks as T013; Ctrl+C as a person (an answer coming in, no answer, a connection that never ends), with the record, the processes, the database and what the page says; the file list and one commit message.
+
 ## Phase 3: Rules (US4; P2)
 
 - [ ] T022 `chat_bridge/strategy/compute.py` (rules part) and `router.py` `PUT /strategy/rules`: the three kinds as a table, checked on target weights; unknown kinds and limits outside 0 to 100 refused with a code; a proposal's rule results before and after (FR-007; decision 9).

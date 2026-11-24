@@ -20,8 +20,8 @@ then rules, follow. Each part is one commit.
 
 **Language/Version**: Python 3.13 (`requires-python = ">=3.11"`); TypeScript 6 on Vue 3.5.
 
-**Primary Dependencies**: added: yfinance, python-socketio (service); socket.io-client, pinia,
-@tanstack/charts (page). research.md `## Packages`.
+**Primary Dependencies**: added: yfinance, python-socketio, and, after Phase 2, sse-starlette
+(service); socket.io-client, pinia, @tanstack/charts (page). research.md `## Packages`.
 
 **Storage**: the local PostgreSQL of the knowledge base, four new tables: `profile_holdings`
 (symbol, name, market, currency, quantity, average cost; cash is the row `CASH`), `strategy_targets`
@@ -49,6 +49,7 @@ missing, never zero, when they cannot be had.
 | 001 / 004 answers | Claude Code's answer streams; Codex's arrives whole. | For a revision question both answers arrive whole, with the proposal (research.md decision 7). Other questions are unchanged. |
 | 003 T018 | A resizable `StrategyPlace` that says the screen comes later. | Done here, with the strategy panel in that place (research.md decision 10). |
 | 003 stream | Events `response.context` and `response.output_text.delta`. | One more, `response.proposal`, with the checked proposal or the reason it was refused. |
+| 003 stream (research decision 1) | Sent through `fastapi.sse.EventSourceResponse`. | Sent through sse-starlette's `EventSourceResponse`, the same events, so Ctrl+C ends an open stream at once; an answer cut off that way ends with an `error` event, `answer_failed` (research.md decision 13). |
 
 ## Design
 
