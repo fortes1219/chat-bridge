@@ -107,6 +107,18 @@ const zhTW: typeof en = {
     proposal_not_open: {
       title: '這份修正已經接受、否決，或被新的取代了。',
       description: '畫面上的是目前的策略。'
+    },
+    rule_unknown_kind: {
+      title: '其中一條規則的種類，服務不認得。',
+      description: '重新整理頁面，再編輯一次規則。'
+    },
+    rule_limit_out_of_range: {
+      title: '規則的上下限要在 0 到 100% 之間。',
+      description: '改好之後再儲存一次。'
+    },
+    rule_market: {
+      title: '市場上限的規則要選台股或美股；其他種類不選市場。',
+      description: '改好之後再儲存一次。'
     }
   },
   refusals: {
@@ -178,6 +190,43 @@ const zhTW: typeof en = {
     TW: '台股',
     US: '美股',
     cash: '現金'
+  },
+  rules: {
+    title: '你的規則',
+    summary: '符合 {met} / {enabled} 條規則',
+    noneOn: '沒有開啟的規則。',
+    note: '規則檢查的是策略的目標比例，不是今天的市值，所以價格變動不會改變結果。現金不算一個標的。',
+    met: '符合',
+    broken: '不符合',
+    off: '關閉',
+    breaking: '不符合的：{names}',
+    edit: '編輯規則',
+    add: '新增規則',
+    remove: '刪除這條規則',
+    save: '儲存',
+    cancel: '取消',
+    kind: '種類',
+    limit: '上下限（%）',
+    market: '市場',
+    enabled: '開啟',
+    proposalTitle: '你的規則：修正前後',
+    before: '目前',
+    after: '修正後',
+    max_holding_weight: {
+      name: '單一標的上限',
+      rule: '任一標的最多 {limit}%',
+      measured: '最高 {value}%'
+    },
+    min_holding_weight: {
+      name: '持有標的下限',
+      rule: '有持有的標的最少 {limit}%',
+      measured: '最低 {value}%'
+    },
+    max_market_weight: {
+      name: '單一市場上限',
+      rule: '{market}合計最多 {limit}%',
+      measured: '合計 {value}%'
+    }
   },
   samples: {
     fed: '聯準會在這近半年的動向哪些行為導致股市動盪？',

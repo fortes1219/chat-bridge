@@ -1,5 +1,6 @@
 """The numbers of the strategy screen, computed by the service and never taken from a model."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -10,9 +11,14 @@ from chat_bridge.strategy.schemas import (
     DiffRow,
     HoldingValue,
     HoldingView,
+    Market,
     PriceSourceView,
     PriceTime,
     QuoteView,
+    RuleCheck,
+    RuleChecks,
+    RuleKind,
+    RuleView,
     TargetRow,
     Valuation,
 )
@@ -57,6 +63,86 @@ def diff_rows(
         )
         for symbol in symbols
     ]
+
+
+# The market of each holding; none for cash.
+Markets = dict[str, Market | None]
+
+
+@dataclass(frozen=True)
+class _Measure:
+    """What a rule looks at on a set of targets, and the holdings that break it."""
+
+    measured: int | None
+    breaking: list[str]
+
+
+def _max_holding(rule: RuleView, weights: dict[str, int], markets: Markets) -> _Measure:
+    if not weights:
+        return _Measure(None, [])
+    over = [symbol for symbol, weight in weights.items() if weight > rule.limit_percent]
+    return _Measure(max(weights.values()), over)
+
+
+def _min_holding(rule: RuleView, weights: dict[str, int], markets: Markets) -> _Measure:
+    # A target of 0 means the strategy holds none of it, so the rule does not apply to it.
+    held = {symbol: weight for symbol, weight in weights.items() if weight > 0}
+    if not held:
+        return _Measure(None, [])
+    under = [symbol for symbol, weight in held.items() if weight < rule.limit_percent]
+    return _Measure(min(held.values()), under)
+
+
+def _max_market(rule: RuleView, weights: dict[str, int], markets: Markets) -> _Measure:
+    members = [symbol for symbol in weights if markets[symbol] == rule.market]
+    total = sum(weights[symbol] for symbol in members)
+    return _Measure(total, members if total > rule.limit_percent else [])
+
+
+# What each kind of rule looks at. A target exactly at the limit meets it.
+RULE_MEASURES: dict[
+    RuleKind, Callable[[RuleView, dict[str, int], Markets], _Measure]
+] = {
+    "max_holding_weight": _max_holding,
+    "min_holding_weight": _min_holding,
+    "max_market_weight": _max_market,
+}
+
+
+def _rule_check(rule: RuleView, weights: dict[str, int], markets: Markets) -> RuleCheck:
+    if not rule.enabled:
+        return RuleCheck(**rule.model_dump(), met=None, measured=None, breaking=[])
+    measure = RULE_MEASURES[rule.kind](rule, weights, markets)
+    return RuleCheck(
+        **rule.model_dump(),
+        met=not measure.breaking,
+        measured=measure.measured,
+        breaking=measure.breaking,
+    )
+
+
+def rule_checks(
+    rules: list[RuleView], holdings: list[HoldingView], targets: dict[str, int]
+) -> RuleChecks:
+    """Each rule's result on the given target weights, and how many of the rules that are on
+    are met.
+
+    The rules limit what the strategy puts in each holding and in each market, so cash, which is
+    neither, is not a holding they look at.
+    """
+    weights = {
+        holding.symbol: targets[holding.symbol]
+        for holding in holdings
+        if holding.symbol != CASH
+    }
+    markets = {holding.symbol: holding.market for holding in holdings}
+    checks = [_rule_check(rule, weights, markets) for rule in rules]
+    enabled = [check for check in checks if check.enabled]
+    return RuleChecks(
+        met=sum(check.met is True for check in enabled),
+        enabled=len(enabled),
+        rules=checks,
+    )
 
 
 def priced_symbols(holdings: list[HoldingView]) -> list[str]:

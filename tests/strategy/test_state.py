@@ -14,7 +14,12 @@ import pytest
 from chat_bridge.strategy import state as state_module
 from chat_bridge.strategy import store
 from chat_bridge.strategy.prices import Quote
-from chat_bridge.strategy.schemas import StoredStrategy, StrategyView, TargetRow
+from chat_bridge.strategy.schemas import (
+    RuleChecks,
+    StoredStrategy,
+    StrategyView,
+    TargetRow,
+)
 from chat_bridge.strategy.state import StrategyState
 from tests.strategy.test_valuation import HOLDINGS
 
@@ -24,6 +29,7 @@ STORED = StoredStrategy(
         TargetRow(symbol=h.symbol, current=c)
         for h, c in zip(HOLDINGS, (60, 30, 10), strict=True)
     ],
+    rule_checks=RuleChecks(met=0, enabled=0, rules=[]),
     proposal=None,
     notice=store.SAMPLE_NOTICE,
 )

@@ -12,15 +12,40 @@ from fastapi.testclient import TestClient
 
 from chat_bridge.chat.server import create_app
 from chat_bridge.strategy import store
-from chat_bridge.strategy.schemas import StoredStrategy
+from chat_bridge.strategy.schemas import RuleChecks, StoredStrategy
 
 STORED = StoredStrategy(
     holdings=[],
     targets=[],
+    rule_checks=RuleChecks(met=0, enabled=0, rules=[]),
     proposal=None,
     notice=store.SAMPLE_NOTICE,
 )
 DECISION = "/strategy/proposals/1/decision"
+RULES = "/strategy/rules"
+RULE = {
+    "kind": "max_holding_weight",
+    "limit_percent": 30,
+    "market": None,
+    "enabled": True,
+}
+
+
+@pytest.fixture
+def saved_rules(monkeypatch: pytest.MonkeyPatch) -> list[list[Any]]:
+    """Each list of rules the endpoint saved, checked as the store checks them."""
+    saved: list[list[Any]] = []
+
+    async def save(rules: list[Any]) -> StoredStrategy:
+        saved.append(store.check_rules(rules))
+        return STORED
+
+    async def read() -> StoredStrategy:
+        return STORED
+
+    monkeypatch.setattr(store, "save_rules", save)
+    monkeypatch.setattr(store, "read_strategy", read)
+    return saved
 
 
 @pytest.fixture
@@ -122,6 +147,57 @@ def test_a_decision_on_a_proposal_that_is_gone_or_closed_is_refused_with_its_cod
 
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code
+
+
+def test_json_rules_are_saved(client: TestClient, saved_rules: list[Any]) -> None:
+    response = client.put(RULES, json={"rules": [RULE]})
+
+    assert response.status_code == 200
+    assert [rule.kind for rule in saved_rules[0]] == ["max_holding_weight"]
+
+
+@pytest.mark.parametrize(
+    "send",
+    [
+        {"data": {"rules": "[]"}},
+        {
+            "content": '{"rules": []}',
+            "headers": {"Content-Type": "text/plain"},
+        },
+        {
+            "content": '{"rules": []}',
+            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+        },
+        {"content": "", "headers": {"Content-Type": "multipart/form-data; boundary=x"}},
+        {},
+    ],
+)
+def test_rules_another_page_can_send_without_asking_are_refused_and_change_nothing(
+    client: TestClient, saved_rules: list[Any], send: dict[str, Any]
+) -> None:
+    response = client.put(RULES, **send)
+
+    assert response.status_code == 422
+    assert saved_rules == []
+
+
+def test_a_rule_with_any_other_field_is_refused(
+    client: TestClient, saved_rules: list[Any]
+) -> None:
+    response = client.put(RULES, json={"rules": [RULE | {"symbol": "NVDA"}]})
+
+    assert response.status_code == 422
+    assert saved_rules == []
+
+
+def test_a_rule_the_service_cannot_check_is_refused_with_its_code(
+    client: TestClient, saved_rules: list[Any]
+) -> None:
+    response = client.put(RULES, json={"rules": [RULE | {"limit_percent": 101}]})
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "rule_limit_out_of_range"
+    assert saved_rules == []
 
 
 def test_a_missing_profile_is_said_with_its_code(

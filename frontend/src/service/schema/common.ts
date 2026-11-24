@@ -25,7 +25,10 @@ export const ServiceErrorCodeSchema = z.enum([
   'answer_failed',
   'profile_missing',
   'proposal_not_found',
-  'proposal_not_open'
+  'proposal_not_open',
+  'rule_unknown_kind',
+  'rule_limit_out_of_range',
+  'rule_market'
 ]);
 export type ServiceErrorCode = z.infer<typeof ServiceErrorCodeSchema>;
 

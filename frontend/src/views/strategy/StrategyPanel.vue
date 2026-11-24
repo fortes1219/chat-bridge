@@ -5,11 +5,14 @@ import type { Locale, MessageSchema } from '@/i18n';
 import type { AppError } from '@/service/error';
 import { useStrategy } from './composables/useStrategy';
 import { useStrategySocket } from './composables/useStrategySocket';
+import { useRuleEditor } from './composables/useRuleEditor';
 import SummaryCards from './components/SummaryCards.vue';
 import AllocationDonut from './components/AllocationDonut.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
 import QuotesColumn from './components/QuotesColumn.vue';
 import ProposalDiff from './components/ProposalDiff.vue';
+import RuleChecks from './components/RuleChecks.vue';
+import RuleEditor from './components/RuleEditor.vue';
 
 /** `headless` leaves the title to a slide-over that already shows it. */
 defineProps<{ headless?: boolean }>();
@@ -18,6 +21,7 @@ const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
 const { strategy, holdings, loading, error, deciding, decisionError, decide } = useStrategy();
 // While the panel is shown, each new price brings the strategy the service recomputed from it.
 const { connectionState, invalidUpdates } = useStrategySocket();
+const ruleEditor = useRuleEditor(() => strategy.value?.rule_checks ?? null);
 
 /** The page's own words for an error: the service's reason when it gave one, else the page's code. */
 function errorKey(appError: AppError): keyof MessageSchema['errors'] {
@@ -51,12 +55,29 @@ const shownError = computed(() => decisionError.value ?? error.value);
       <ProposalDiff
         v-if="strategy.proposal"
         :proposal="strategy.proposal"
+        :before="strategy.rule_checks"
         :holdings="holdings"
         :deciding="deciding"
         @decide="decide"
       />
       <AllocationDonut :valuation="strategy.valuation" :holdings="holdings" />
       <HoldingsTable :strategy="strategy" :holdings="holdings" />
+      <RuleEditor
+        v-if="ruleEditor.editing.value"
+        :rules="ruleEditor.draft.value"
+        :changed="ruleEditor.changed.value"
+        :saving="ruleEditor.saving.value"
+        :error="ruleEditor.saveError.value"
+        @kind="ruleEditor.setKind"
+        @limit="ruleEditor.setLimit"
+        @market="ruleEditor.setMarket"
+        @enabled="ruleEditor.setEnabled"
+        @remove="ruleEditor.remove"
+        @add="ruleEditor.add"
+        @save="ruleEditor.save"
+        @cancel="ruleEditor.cancel"
+      />
+      <RuleChecks v-else :checks="strategy.rule_checks" :holdings="holdings" @edit="ruleEditor.start" />
       <QuotesColumn :valuation="strategy.valuation" :connection="connectionState" :invalid-updates="invalidUpdates" />
     </template>
   </div>

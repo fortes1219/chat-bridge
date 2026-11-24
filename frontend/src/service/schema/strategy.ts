@@ -45,6 +45,41 @@ export const DiffRowSchema = z
   })
   .strict();
 
+/**
+ * The weight limits a person can set: the most any one holding may weigh, the least any held holding
+ * may weigh, the most one market may weigh.
+ */
+export const RuleKindSchema = z.enum(['max_holding_weight', 'min_holding_weight', 'max_market_weight']);
+
+/** A rule as the person sets it; a market rule names its market, the others none. */
+export const RuleSchema = z
+  .object({
+    kind: RuleKindSchema,
+    limit_percent: PercentSchema,
+    market: MarketSchema.nullable(),
+    enabled: z.boolean()
+  })
+  .strict();
+
+/** A rule and its result on one set of target weights, computed by the service. */
+export const RuleCheckSchema = RuleSchema.extend({
+  /** Null when the rule is off. */
+  met: z.boolean().nullable(),
+  /** The weight the rule looks at; null when it is off or there is nothing to measure. */
+  measured: PercentSchema.nullable(),
+  /** The holdings that break it. */
+  breaking: z.string().array()
+}).strict();
+
+/** Every rule checked on one set of target weights, and how many of those that are on are met. */
+export const RuleChecksSchema = z
+  .object({
+    met: z.number().int().min(0),
+    enabled: z.number().int().min(0),
+    rules: RuleCheckSchema.array()
+  })
+  .strict();
+
 /** A reason for a proposal, with the numbers of the sources it rests on. */
 export const ReasonSchema = z
   .object({
@@ -64,6 +99,8 @@ export const ProposalSchema = z
     program: ProgramSchema,
     status: ProposalStatusSchema,
     rows: DiffRowSchema.array(),
+    /** The rules checked on the proposed targets. */
+    rule_checks: RuleChecksSchema,
     reasons: ReasonSchema.array(),
     sources: SourceSchema.array()
   })
@@ -146,6 +183,8 @@ export const StrategySchema = z
   .object({
     holdings: HoldingSchema.array(),
     targets: TargetRowSchema.array(),
+    /** The rules checked on the current targets; prices do not move them. */
+    rule_checks: RuleChecksSchema,
     proposal: ProposalSchema.nullable(),
     notice: LocalizedSchema,
     valuation: ValuationSchema
@@ -161,6 +200,16 @@ export const DecisionSchema = z.enum(['accept', 'reject']);
 export const DecisionRequestSchema = z
   .object({
     decision: DecisionSchema
+  })
+  .strict();
+
+/**
+ * `PUT /strategy/rules` body: every rule, in the order the screen lists them, replacing the saved
+ * ones. A JSON body, so another web page cannot send it without the browser asking the service first.
+ */
+export const RulesRequestSchema = z
+  .object({
+    rules: RuleSchema.array()
   })
   .strict();
 

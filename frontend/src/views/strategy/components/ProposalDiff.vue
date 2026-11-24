@@ -3,13 +3,37 @@ import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { TableColumn } from '@nuxt/ui';
 import type { Locale, MessageSchema } from '@/i18n';
-import type { Decision, Holding, Proposal } from '@/service/api/strategy';
+import type { Decision, Holding, Proposal, RuleCheck, RuleChecks } from '@/service/api/strategy';
 import { PROGRAM_NAMES } from '../constants';
+import { RULE_STATUS_COLORS, ruleStatus, useRuleText } from '../composables/useRuleText';
 
-const props = defineProps<{ proposal: Proposal; holdings: ReadonlyMap<string, Holding>; deciding: boolean }>();
+/** `before` is the rules checked on the current targets; the proposal carries them on its own. */
+const props = defineProps<{
+  proposal: Proposal;
+  before: RuleChecks;
+  holdings: ReadonlyMap<string, Holding>;
+  deciding: boolean;
+}>();
 const emit = defineEmits<{ decide: [decision: Decision] }>();
 
 const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
+const ruleText = useRuleText();
+
+interface RuleRow {
+  rule: string;
+  before: RuleCheck;
+  after: RuleCheck;
+}
+/** The two result columns, current then proposed. */
+const RULE_SIDES = ['before', 'after'] as const;
+
+// Both lists check the same rules in the same order; the results are the service's.
+const ruleRows = computed<RuleRow[]>(() =>
+  props.proposal.rule_checks.rules.flatMap((after, index) => {
+    const before = props.before.rules[index];
+    return before ? [{ rule: ruleText.describe(after), before, after }] : [];
+  })
+);
 
 interface Row {
   symbol: string;
@@ -51,6 +75,11 @@ const columns = computed<TableColumn<Row>[]>(() => [
   { accessorKey: 'proposed', header: t('strategy.proposed'), meta: END },
   { accessorKey: 'change', header: t('strategy.change'), meta: END }
 ]);
+const ruleColumns = computed<TableColumn<RuleRow>[]>(() => [
+  { accessorKey: 'rule', header: t('rules.title') },
+  { id: 'before', header: t('rules.before'), meta: END },
+  { id: 'after', header: t('rules.after'), meta: END }
+]);
 
 const sourceOf = computed(() => new Map(props.proposal.sources.map(source => [source.number, source] as const)));
 
@@ -76,6 +105,26 @@ const DECISIONS: { decision: Decision; color: 'primary' | 'neutral'; variant: 's
         </span>
       </template>
     </UTable>
+    <div v-if="ruleRows.length" class="flex flex-col gap-1" data-test="rule-diff">
+      <p class="text-sm font-medium">{{ t('rules.proposalTitle') }}</p>
+      <p class="text-muted text-xs" data-test="rule-diff-summary">
+        {{ t('rules.before') }} {{ t('rules.summary', { met: before.met, enabled: before.enabled }) }}・{{
+          t('rules.after')
+        }}
+        {{ t('rules.summary', { met: proposal.rule_checks.met, enabled: proposal.rule_checks.enabled }) }}
+      </p>
+      <UTable :data="ruleRows" :columns="ruleColumns" data-test="rule-diff-table">
+        <template v-for="side in RULE_SIDES" :key="side" #[`${side}-cell`]="{ row }">
+          <UBadge
+            :color="RULE_STATUS_COLORS[ruleStatus(row.original[side])]"
+            variant="subtle"
+            :data-test="`rule-${side}-${row.index}`"
+          >
+            {{ ruleText.status(row.original[side]) }}
+          </UBadge>
+        </template>
+      </UTable>
+    </div>
     <div class="text-sm">
       <p class="font-medium">{{ t('strategy.reasons') }}</p>
       <ul class="list-disc ps-5" data-test="reasons">

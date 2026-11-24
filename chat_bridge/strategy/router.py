@@ -1,6 +1,6 @@
 """The strategy endpoints.
 
-The one that changes something takes a JSON body, so FastAPI's strict Content-Type check refuses a
+The ones that change something take a JSON body, so FastAPI's strict Content-Type check refuses a
 form or a plain-text post, which another web page could send without the browser first asking the
 service; and the service adds no CORS rule, so that permission is never given.
 """
@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from chat_bridge.strategy import store
 from chat_bridge.strategy.schemas import (
     DecisionRequest,
+    RulesRequest,
     StrategyErrorDetail,
     StrategyView,
 )
@@ -24,6 +25,7 @@ STATUS_OF: dict[type[store.StrategyError], int] = {
     store.ProfileMissingError: 503,
     store.ProposalNotFoundError: 404,
     store.ProposalNotOpenError: 409,
+    store.RuleRefusedError: 422,
 }
 
 
@@ -49,6 +51,17 @@ async def decide_proposal(proposal_id: int, request: DecisionRequest) -> Strateg
     """Accept or reject the open proposal. Only accepting changes the targets."""
     try:
         STATE.written(await store.decide(proposal_id, request.decision))
+        return await STATE.view()
+    except store.StrategyError as error:
+        _refuse(error)
+
+
+@router.put("/rules")
+async def save_rules(request: RulesRequest) -> StrategyView:
+    """Replace the person's rules; the checks come back recomputed on the current targets and on
+    the open proposal's."""
+    try:
+        STATE.written(await store.save_rules(request.rules))
         return await STATE.view()
     except store.StrategyError as error:
         _refuse(error)

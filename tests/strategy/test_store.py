@@ -18,7 +18,7 @@ from chat_bridge.strategy import store
 from chat_bridge.strategy.prices import Quote
 from chat_bridge.strategy.proposal import CheckedProposal
 from chat_bridge.strategy.sample import load_sample_if_empty, read_sample
-from chat_bridge.strategy.schemas import Reason, StrategyView
+from chat_bridge.strategy.schemas import Reason, RuleInput, StrategyView
 from chat_bridge.strategy.state import StrategyState
 from tests.utils import prepare_local_data, using_local_data
 
@@ -138,6 +138,58 @@ def test_a_decided_proposal_cannot_be_decided_again() -> None:
 def test_a_decision_on_a_proposal_that_does_not_exist_is_refused() -> None:
     with pytest.raises(store.ProposalNotFoundError):
         asyncio.run(store.decide(999, "accept"))
+
+
+def test_the_sample_rules_are_checked_on_the_current_targets() -> None:
+    view = asyncio.run(store.read_strategy())
+
+    checks = view.rule_checks
+    assert [rule.kind for rule in checks.rules] == [rule.kind for rule in SAMPLE.rules]
+    assert (checks.met, checks.enabled) == (3, 3)
+
+
+def _rule(kind: str, limit: int, market: str | None = None) -> RuleInput:
+    return RuleInput(kind=kind, limit_percent=limit, market=market, enabled=True)
+
+
+def test_saved_rules_replace_the_old_ones_and_are_checked_at_once() -> None:
+    # The sample's largest target is TSMC's 25 and its US holdings add up to 20.
+    rules = [_rule("max_holding_weight", 20), _rule("max_market_weight", 20, "US")]
+
+    view = asyncio.run(store.save_rules(rules))
+
+    checks = view.rule_checks
+    assert [(rule.kind, rule.met) for rule in checks.rules] == [
+        ("max_holding_weight", False),
+        ("max_market_weight", True),
+    ]
+    assert checks.rules[0].breaking == ["2330.TW"]
+    assert (checks.met, checks.enabled) == (1, 2)
+    profile = asyncio.run(store.read_profile())
+    assert [rule.limit_percent for rule in profile.rules] == [20, 20]
+
+
+def test_refused_rules_leave_the_saved_ones_as_they_were() -> None:
+    with pytest.raises(store.RuleRefusedError):
+        asyncio.run(store.save_rules([_rule("max_holding_weight", 101)]))
+
+    profile = asyncio.run(store.read_profile())
+    assert [rule.limit_percent for rule in profile.rules] == [
+        rule.limit_percent for rule in SAMPLE.rules
+    ]
+
+
+def test_a_proposal_shows_each_rule_on_the_current_and_the_proposed_targets() -> None:
+    asyncio.run(store.save_rules([_rule("max_holding_weight", 20)]))
+    # Cash from 10 to 30, TSMC from 25 to 5.
+    _save(cash=30)
+
+    view = asyncio.run(store.read_strategy())
+
+    assert view.proposal is not None
+    assert view.rule_checks.rules[0].met is False
+    assert view.proposal.rule_checks.rules[0].met is True
+    assert view.proposal.rule_checks.rules[0].measured == 20
 
 
 def test_the_view_values_the_sample_read_from_the_database_at_given_prices() -> None:

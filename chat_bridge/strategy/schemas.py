@@ -36,9 +36,16 @@ RefusalCode = Literal[
     "unknown_source",
 ]
 
-# Why a strategy request was refused.
+# Why a strategy request was refused. The rule codes say what is wrong with a rule the person
+# saved: a kind the service does not know, a limit outside 0 to 100, or a market that does not
+# fit the kind (a market rule names TW or US; the others name none).
 StrategyErrorCode = Literal[
-    "profile_missing", "proposal_not_found", "proposal_not_open"
+    "profile_missing",
+    "proposal_not_found",
+    "proposal_not_open",
+    "rule_unknown_kind",
+    "rule_limit_out_of_range",
+    "rule_market",
 ]
 
 
@@ -79,6 +86,39 @@ class Reason(BaseModel):
     sources: list[int]
 
 
+class RuleView(BaseModel):
+    """A limit the person set on the target weights, as the service keeps it."""
+
+    kind: RuleKind
+    limit_percent: int
+    # The market a market rule is about; none for the other kinds.
+    market: Market | None
+    enabled: bool
+
+
+class RuleCheck(RuleView):
+    """A rule and its result on one set of target weights, computed by the service."""
+
+    # None when the rule is off.
+    met: bool | None
+    # The weight the rule looks at, in whole percents: the largest holding's target, the
+    # smallest held holding's, or the market's total. None when the rule is off or there is
+    # nothing to measure, such as no holding held.
+    measured: int | None
+    # The holdings that break it: those over or under the limit, or every holding of a market
+    # over its limit.
+    breaking: list[str]
+
+
+class RuleChecks(BaseModel):
+    """Every rule checked on one set of target weights, and how many of those that are on are
+    met."""
+
+    met: int
+    enabled: int
+    rules: list[RuleCheck]
+
+
 class ProposalView(BaseModel):
     id: int
     created_at: datetime
@@ -86,6 +126,9 @@ class ProposalView(BaseModel):
     program: Program
     status: ProposalStatus
     rows: list[DiffRow]
+    # The rules checked on the proposed targets, beside the strategy's own checks of the current
+    # ones.
+    rule_checks: RuleChecks
     reasons: list[Reason]
     # The sources the reasons cite, so they can be named after the answer is gone.
     sources: list[Source]
@@ -96,6 +139,8 @@ class StoredStrategy(BaseModel):
 
     holdings: list[HoldingView]
     targets: list[TargetRow]
+    # The rules checked on the current targets. Prices do not move them.
+    rule_checks: RuleChecks
     # The proposal waiting for the person; none when there is none.
     proposal: ProposalView | None
     # Says the profile is a simulated sample and nothing on the screen is investment advice.
@@ -180,6 +225,27 @@ class DecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision: Decision
+
+
+class RuleInput(BaseModel):
+    """One rule as the page sends it. The kind and the market are plain text here, so one the
+    service does not know is refused with its own code, not as a malformed request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    limit_percent: int
+    market: str | None
+    enabled: bool
+
+
+class RulesRequest(BaseModel):
+    """Every rule, in the order the screen lists them; they replace the saved ones. A JSON body,
+    so a form or another web page cannot send it without the browser asking the service first."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rules: list[RuleInput]
 
 
 class ProposalRefusal(BaseModel):

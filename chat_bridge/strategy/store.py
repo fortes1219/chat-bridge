@@ -9,15 +9,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import get_args
 
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chat_bridge.chat.programs import Program
 from chat_bridge.chat.sources import Localized, Source
 from chat_bridge.database import create_tables, open_engine
-from chat_bridge.strategy.compute import diff_rows, target_rows
+from chat_bridge.strategy.compute import diff_rows, rule_checks, target_rows
 from chat_bridge.strategy.models import (
     OPEN,
     OPEN_CONDITION,
@@ -30,7 +30,10 @@ from chat_bridge.strategy.proposal import CheckedProposal
 from chat_bridge.strategy.schemas import (
     Decision,
     HoldingView,
+    Market,
     ProposalView,
+    RuleInput,
+    RuleView,
     StoredStrategy,
     StrategyErrorCode,
 )
@@ -42,6 +45,16 @@ SAMPLE_NOTICE: Localized = {
 }
 # What each decision makes of the open proposal.
 STATUS_AFTER: dict[Decision, str] = {"accept": "accepted", "reject": "rejected"}
+# The kinds a saved rule may be, each with whether it is about a market and so must name one;
+# the others must name none. A test keeps its keys the same as RuleKind's.
+NAMES_A_MARKET: dict[str, bool] = {
+    "max_holding_weight": False,
+    "min_holding_weight": False,
+    "max_market_weight": True,
+}
+# The markets a market rule may name, and the limits a rule may set, in whole percents.
+MARKETS: frozenset[str] = frozenset(get_args(Market))
+LIMIT_RANGE = range(0, 101)
 
 
 class StrategyError(Exception):
@@ -71,13 +84,21 @@ class ProposalNotOpenError(StrategyError):
         super().__init__(f"proposal {proposal_id} is {status}, not open")
 
 
+class RuleRefusedError(StrategyError):
+    """A saved rule the service cannot check; the code says what is wrong with it."""
+
+    def __init__(self, code: StrategyErrorCode, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 @dataclass(frozen=True)
 class Profile:
     """The profile as the service reads it: holdings in order, current targets, and rules."""
 
     holdings: list[HoldingView]
     targets: dict[str, int]
-    rules: list[dict[str, Any]]
+    rules: list[RuleView]
 
     @property
     def symbols(self) -> list[str]:
@@ -105,23 +126,27 @@ async def _read_profile(session: AsyncSession) -> Profile:
         await session.scalars(select(StrategyRule).order_by(StrategyRule.position))
     ).all()
     return Profile(
-        # Validated, so a market or a name language the code does not know is refused here.
+        # Validated, so a market, a rule kind or a name language the code does not know is
+        # refused here.
         holdings=[HoldingView.model_validate(holding) for holding in holdings],
         targets={target.symbol: target.percent for target in targets},
         rules=[
-            {
-                "kind": rule.kind,
-                "limit_percent": rule.limit_percent,
-                "market": rule.market,
-                "enabled": rule.enabled,
-            }
+            RuleView.model_validate(
+                {
+                    "kind": rule.kind,
+                    "limit_percent": rule.limit_percent,
+                    "market": rule.market,
+                    "enabled": rule.enabled,
+                }
+            )
             for rule in rules
         ],
     )
 
 
 def _proposal_view(row: StrategyProposal, profile: Profile) -> ProposalView:
-    # Validated, so a stored status or program the code does not know is refused here.
+    # Validated, so a stored status or program the code does not know is refused here. The rules
+    # are checked when the proposal is read, so they are the person's current rules.
     return ProposalView.model_validate(
         {
             "id": row.id,
@@ -130,6 +155,7 @@ def _proposal_view(row: StrategyProposal, profile: Profile) -> ProposalView:
             "program": row.program,
             "status": row.status,
             "rows": diff_rows(profile.symbols, profile.targets, row.targets),
+            "rule_checks": rule_checks(profile.rules, profile.holdings, row.targets),
             "reasons": row.reasons,
             "sources": row.sources,
         }
@@ -154,6 +180,7 @@ async def _stored_strategy(session: AsyncSession) -> StoredStrategy:
     return StoredStrategy(
         holdings=profile.holdings,
         targets=target_rows(profile.symbols, profile.targets),
+        rule_checks=rule_checks(profile.rules, profile.holdings, profile.targets),
         proposal=None if open_row is None else _proposal_view(open_row, profile),
         notice=SAMPLE_NOTICE,
     )
@@ -223,5 +250,54 @@ async def decide(proposal_id: int, decision: Decision) -> StoredStrategy:
                 )
         row.status = STATUS_AFTER[decision]
         row.decided_at = datetime.now(UTC)
+        await session.flush()
+        return await _stored_strategy(session)
+
+
+def _rule_problem(rule: RuleInput) -> tuple[StrategyErrorCode, str] | None:
+    """What is wrong with one rule, or None. The first thing wrong is the one named."""
+    needs_market = NAMES_A_MARKET.get(rule.kind)
+    if needs_market is None:
+        return "rule_unknown_kind", f"{rule.kind} is not a kind of rule"
+    if rule.limit_percent not in LIMIT_RANGE:
+        return "rule_limit_out_of_range", f"{rule.limit_percent}% is outside 0 to 100"
+    if needs_market and rule.market not in MARKETS:
+        return "rule_market", f"a {rule.kind} rule names TW or US, not {rule.market}"
+    if not needs_market and rule.market is not None:
+        return "rule_market", f"a {rule.kind} rule names no market"
+    return None
+
+
+def check_rules(rules: list[RuleInput]) -> list[RuleView]:
+    """The rules as the service keeps them. Raises RuleRefusedError, naming the rule by its
+    place in the list, for the first one that is not a known kind with a limit from 0 to 100 and
+    the market its kind needs."""
+    for number, rule in enumerate(rules, start=1):
+        problem = _rule_problem(rule)
+        if problem is not None:
+            code, message = problem
+            raise RuleRefusedError(code, f"rule {number}: {message}")
+    return [RuleView.model_validate(rule.model_dump()) for rule in rules]
+
+
+async def save_rules(rules: list[RuleInput]) -> StoredStrategy:
+    """Replace the saved rules with these, in this order, and return the strategy after it.
+
+    Raises RuleRefusedError, or ProfileMissingError, and changes nothing then.
+    """
+    checked = check_rules(rules)
+    async with transaction() as session:
+        await _read_profile(session)
+        await session.execute(delete(StrategyRule))
+        session.add_all(
+            StrategyRule(
+                kind=rule.kind,
+                limit_percent=rule.limit_percent,
+                market=rule.market,
+                enabled=rule.enabled,
+                position=position,
+            )
+            for position, rule in enumerate(checked)
+        )
         await session.flush()
         return await _stored_strategy(session)

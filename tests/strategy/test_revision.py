@@ -19,7 +19,12 @@ from chat_bridge.strategy import store
 from chat_bridge.strategy.prices import PriceBook, Quote
 from chat_bridge.strategy.proposal import PROPOSAL_SCHEMA, CheckedProposal
 from chat_bridge.strategy.revision import RevisionReplyError
-from chat_bridge.strategy.schemas import HoldingView, ProposalView
+from chat_bridge.strategy.schemas import (
+    HoldingView,
+    ProposalView,
+    RuleChecks,
+    RuleView,
+)
 from chat_bridge.strategy.state import STATE
 from tests.strategy.test_valuation import NOW, US_DAY
 
@@ -50,12 +55,7 @@ PROFILE = store.Profile(
     ],
     targets={"2330.TW": 50, "NVDA": 30, "CASH": 20},
     rules=[
-        {
-            "kind": "max_holding_weight",
-            "limit_percent": 60,
-            "market": None,
-            "enabled": True,
-        }
+        RuleView(kind="max_holding_weight", limit_percent=60, market=None, enabled=True)
     ],
 )
 ANSWER = "聯準會在 2026-09-16 升息 [1]，建議提高現金。"
@@ -110,6 +110,7 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
             program=program,
             status="open",
             rows=[],
+            rule_checks=RuleChecks(met=0, enabled=0, rules=[]),
             reasons=checked.reasons,
             sources=sources,
         )

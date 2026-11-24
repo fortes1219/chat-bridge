@@ -1,4 +1,4 @@
-import type { Proposal, Strategy, Valuation } from '@/service/api/strategy';
+import type { Proposal, RuleChecks, Strategy, Valuation } from '@/service/api/strategy';
 
 const LIVE = { basis: 'live', time: '2026-11-24T01:30:00Z', day: null } as const;
 
@@ -66,6 +66,53 @@ export const VALUATION: Valuation = {
   source: { name: 'Yahoo Finance', terms_url: 'https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html' }
 };
 
+/**
+ * Three rules on the current targets below (TSMC 50, NVIDIA 30, cash 20), as the service checks
+ * them: TSMC breaks the most per holding; the least per held holding and the US limit are met.
+ */
+export const RULE_CHECKS: RuleChecks = {
+  met: 2,
+  enabled: 3,
+  rules: [
+    {
+      kind: 'max_holding_weight',
+      limit_percent: 40,
+      market: null,
+      enabled: true,
+      met: false,
+      measured: 50,
+      breaking: ['2330.TW']
+    },
+    {
+      kind: 'min_holding_weight',
+      limit_percent: 10,
+      market: null,
+      enabled: true,
+      met: true,
+      measured: 30,
+      breaking: []
+    },
+    {
+      kind: 'max_market_weight',
+      limit_percent: 30,
+      market: 'US',
+      enabled: true,
+      met: true,
+      measured: 30,
+      breaking: []
+    }
+  ]
+};
+
+/** The same rules on the proposal's targets (TSMC 40, NVIDIA 30, cash 30): all three are met. */
+export const PROPOSED_RULE_CHECKS: RuleChecks = {
+  met: 3,
+  enabled: 3,
+  rules: RULE_CHECKS.rules.map((check, index) =>
+    index === 0 ? { ...check, met: true, measured: 40, breaking: [] } : check
+  )
+};
+
 /** A strategy as the service sends it: two holdings and cash, no proposal. */
 export const STRATEGY: Strategy = {
   holdings: [
@@ -99,6 +146,7 @@ export const STRATEGY: Strategy = {
     { symbol: 'NVDA', current: 30 },
     { symbol: 'CASH', current: 20 }
   ],
+  rule_checks: RULE_CHECKS,
   proposal: null,
   notice: { 'zh-TW': '模擬範例', en: 'simulated sample' },
   valuation: VALUATION
@@ -116,6 +164,7 @@ export const PROPOSAL: Proposal = {
     { symbol: 'NVDA', current: 30, proposed: 30, change: 0 },
     { symbol: 'CASH', current: 20, proposed: 30, change: 10 }
   ],
+  rule_checks: PROPOSED_RULE_CHECKS,
   reasons: [{ text: 'The Fed raised rates.', sources: [1] }],
   sources: [
     {

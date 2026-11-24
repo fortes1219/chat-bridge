@@ -90,7 +90,7 @@ def strategy_input(profile: store.Profile, book: PriceBook) -> str:
         ],
         # One unit of each currency in Taiwan dollars.
         "exchange_rates_to_TWD": rates,
-        "rules": profile.rules,
+        "rules": [rule.model_dump() for rule in profile.rules],
     }
     return (
         f"<strategy>\n{json.dumps(data, ensure_ascii=False, indent=2)}\n</strategy>\n"

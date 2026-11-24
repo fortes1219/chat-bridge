@@ -107,6 +107,18 @@ export default {
     proposal_not_open: {
       title: 'This proposal has already been decided or replaced.',
       description: 'The strategy shown is the current one.'
+    },
+    rule_unknown_kind: {
+      title: 'The service does not know one of these kinds of rule.',
+      description: 'Reload the page and edit the rules again.'
+    },
+    rule_limit_out_of_range: {
+      title: 'A rule’s limit must be from 0 to 100%.',
+      description: 'Change it, then save again.'
+    },
+    rule_market: {
+      title: 'A market rule needs Taiwan or US; the other kinds name no market.',
+      description: 'Change it, then save again.'
     }
   },
   refusals: {
@@ -179,6 +191,43 @@ export default {
     TW: 'Taiwan',
     US: 'US',
     cash: 'Cash'
+  },
+  rules: {
+    title: 'Your rules',
+    summary: '{met} of {enabled} rules met',
+    noneOn: 'No rule is on.',
+    note: 'The rules are checked against the strategy’s target weights, not today’s values, so prices do not change the results. Cash is not counted as a holding.',
+    met: 'Met',
+    broken: 'Not met',
+    off: 'Off',
+    breaking: 'Breaking it: {names}',
+    edit: 'Edit rules',
+    add: 'Add a rule',
+    remove: 'Remove this rule',
+    save: 'Save',
+    cancel: 'Cancel',
+    kind: 'Kind',
+    limit: 'Limit (%)',
+    market: 'Market',
+    enabled: 'On',
+    proposalTitle: 'Your rules, before and after',
+    before: 'Current',
+    after: 'Proposed',
+    max_holding_weight: {
+      name: 'Most per holding',
+      rule: 'Any one holding at most {limit}%',
+      measured: 'Largest: {value}%'
+    },
+    min_holding_weight: {
+      name: 'Least per held holding',
+      rule: 'Any held holding at least {limit}%',
+      measured: 'Smallest held: {value}%'
+    },
+    max_market_weight: {
+      name: 'Most per market',
+      rule: '{market} holdings at most {limit}% in all',
+      measured: 'In all: {value}%'
+    }
   },
   samples: {
     fed: 'Which of the Fed’s moves over the past half year shook the stock market?',

@@ -7,7 +7,7 @@ vi.mock('@/service/request', () => ({
 }));
 
 import { contract } from '@/service/contract';
-import { decideProposal, getStrategy } from '@/service/api/strategy';
+import { decideProposal, getStrategy, saveRules } from '@/service/api/strategy';
 import { StrategySchema } from '@/service/schema/strategy';
 import { ChatEventSchema } from '@/service/schema/chat';
 
@@ -95,5 +95,41 @@ describe('decideProposal', () => {
       decideProposal({ params: { id: 5 }, body: { decision: 'approve' as 'accept' } })
     ).rejects.toMatchObject({ code: 'invalid_input' });
     expect(requestMock).not.toHaveBeenCalled();
+  });
+});
+
+const RULE = { kind: 'max_holding_weight', limit_percent: 30, market: null, enabled: true } as const;
+
+describe('saveRules', () => {
+  it('puts the rules as a JSON body to the contract’s path and returns the checked strategy', async () => {
+    requestMock.mockResolvedValue(STRATEGY);
+
+    expect(await saveRules({ rules: [RULE] })).toEqual(STRATEGY);
+    expect(contract.strategy.saveRules['~orpc'].route.path).toBe('/strategy/rules');
+    expect(requestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ url: '/strategy/rules', method: 'PUT', data: { rules: [RULE] } })
+    );
+  });
+
+  it('checks the rules before anything is sent', async () => {
+    const unknown = { ...RULE, kind: 'max_cash_weight' as 'max_holding_weight' };
+    await expect(saveRules({ rules: [unknown] })).rejects.toMatchObject({ code: 'invalid_input' });
+    await expect(saveRules({ rules: [{ ...RULE, limit_percent: 101 }] })).rejects.toMatchObject({
+      code: 'invalid_input'
+    });
+    expect(requestMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the rule checks the service sends', () => {
+  it('refuse a kind or a result the page does not know, and any extra field', () => {
+    const [first, ...rest] = STRATEGY.rule_checks.rules;
+    const withRule = (rule: object) => ({
+      ...STRATEGY,
+      rule_checks: { ...STRATEGY.rule_checks, rules: [rule, ...rest] }
+    });
+    expect(() => StrategySchema.parse(withRule({ ...first, kind: 'max_cash_weight' }))).toThrow();
+    expect(() => StrategySchema.parse(withRule({ ...first, measured: 101 }))).toThrow();
+    expect(() => StrategySchema.parse(withRule({ ...first, score: 1 }))).toThrow();
   });
 });
