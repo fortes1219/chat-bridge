@@ -271,7 +271,7 @@ def shaped_command_line(executable: str, folder: str, schema_file: str) -> list[
     ]
 
 
-async def split_reply(
+async def reply_in_shape(
     system_prompt: str,
     input_text: str,
     schema: dict[str, Any],

@@ -31,13 +31,16 @@ PART_MAX_CHARS = 200
 # own limit, so a stuck split costs the person a fraction of the answer's wait.
 SPLIT_TIMEOUT_SECONDS = 120
 PROMPT_FILE = Path(__file__).with_name("split_prompt.md")
-# The shape both programs are asked for: one field, nothing else. The count and the lengths are
-# checked below, on whatever comes back, so they do not depend on how either program reads a
-# schema.
+# The shape both programs are asked for: the parts, and whether the question asks to change the
+# person's strategy, nothing else. The count and the lengths are checked below, on whatever comes
+# back, so they do not depend on how either program reads a schema.
 SPLIT_SCHEMA: dict[str, Any] = {
     "type": "object",
-    "properties": {"parts": {"type": "array", "items": {"type": "string"}}},
-    "required": ["parts"],
+    "properties": {
+        "parts": {"type": "array", "items": {"type": "string"}},
+        "revise_strategy": {"type": "boolean"},
+    },
+    "required": ["parts", "revise_strategy"],
     "additionalProperties": False,
 }
 
@@ -48,11 +51,12 @@ Part = Annotated[
 
 
 class SplitReply(BaseModel):
-    """What a split must return: one field, the parts."""
+    """What a split must return: the parts, and whether the question asks for a revision."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
     parts: list[Part]
+    revise_strategy: bool
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,9 @@ class SplitOutcome:
     left_out: int = 0
     # Why the split failed; None when it worked, including when the question had one part.
     error: str | None = None
+    # The question asks to change the person's strategy, so the answer comes with a proposal.
+    # False when the split failed: no proposal is asked for then.
+    revise: bool = False
     seconds: float = 0.0
     command_line: list[str] = field(default_factory=list)
 
@@ -82,13 +89,18 @@ def split_input(question: str) -> str:
     return f"<question>\n{question}\n</question>\n"
 
 
-def kept_parts(question: str, reply: dict[str, Any]) -> tuple[list[str], int]:
+def read_split(reply: dict[str, Any]) -> SplitReply:
+    """Raises ValidationError when the reply is not a list of parts of allowed length and the
+    revision flag."""
+    return SplitReply.model_validate(reply)
+
+
+def kept_parts(question: str, parts: list[str]) -> tuple[list[str], int]:
     """The distinct parts to search, at most PARTS_LIMIT, and how many were left out.
 
     A part that is the question itself, or repeats an earlier one, would search the same text
-    twice. Raises ValidationError when the reply is not one list of parts of allowed length.
+    twice.
     """
-    parts = SplitReply.model_validate(reply).parts
     seen = {question.strip()}
     distinct: list[str] = []
     for part in parts:
@@ -114,7 +126,7 @@ async def split_question(program: AnsweringProgram, question: str) -> SplitOutco
 
     try:
         reply = await asyncio.wait_for(
-            program.split_reply(
+            program.reply_in_shape(
                 split_prompt(),
                 split_input(question),
                 SPLIT_SCHEMA,
@@ -122,18 +134,19 @@ async def split_question(program: AnsweringProgram, question: str) -> SplitOutco
             ),
             SPLIT_TIMEOUT_SECONDS,
         )
-        parts, left_out = kept_parts(question, reply)
+        split = read_split(reply)
+        parts, left_out = kept_parts(question, split.parts)
     except TimeoutError:
         return outcome(
             error=f"the split did not finish within {SPLIT_TIMEOUT_SECONDS} seconds"
         )
     except ValidationError as error:
         return outcome(
-            error=f"the split's reply is not a list of parts: {_first_problem(error)}"
+            error=f"the split's reply is not the asked-for shape: {_first_problem(error)}"
         )
     except (ProgramError, OSError) as error:
         return outcome(error=str(error) or type(error).__name__)
-    return outcome(parts=parts, left_out=left_out)
+    return outcome(parts=parts, left_out=left_out, revise=split.revise_strategy)
 
 
 def _first_problem(error: ValidationError) -> str:

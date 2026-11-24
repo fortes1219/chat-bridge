@@ -1,7 +1,8 @@
 import { computed, markRaw, onScopeDispose, reactive, ref, type ComputedRef, type Ref } from 'vue';
 import { useAskMutation } from '@/queries/use-ask-mutation';
 import { isAppError, isCancellation, type AppError } from '@/service/error';
-import type { ChatContext, ChatEvent } from '@/service/api/chat';
+import type { ChatContext, ChatEvent, ProposalOutcome } from '@/service/api/chat';
+import type { Proposal } from '@/service/api/strategy';
 import type { Program } from '@/service/api/programs';
 
 /** One question and its answer. Exchanges are independent: none is sent with another. */
@@ -10,6 +11,8 @@ export interface Exchange {
   question: string;
   answer: string;
   context: ChatContext | null;
+  /** What came of a revision question's proposal; null until its event arrives, or for any other question. */
+  proposal: ProposalOutcome | null;
   error: AppError | null;
   stopped: boolean;
 }
@@ -33,6 +36,9 @@ const APPLY_EVENT: { [T in ChatEvent['type']]: (exchange: Exchange, event: Event
   },
   'response.output_text.delta': (exchange, event) => {
     exchange.answer += event.delta;
+  },
+  'response.proposal': (exchange, event) => {
+    exchange.proposal = event.proposal;
   }
 };
 
@@ -45,13 +51,15 @@ const UNKNOWN_ERROR: AppError = { source: 'unknown', code: 'unknown_error', mess
 export interface UseAskOptions {
   /** Called when the answering program turned out to be logged out, so the page reads the states again. */
   onLoggedOut(): void;
+  /** Called with a revision question's proposal once the service has checked and kept it. */
+  onProposal(proposal: Proposal): void;
 }
 
 /**
  * Asking and stopping. Each question is one exchange kept for the visit; the answer grows as its
  * pieces arrive. Leaving the page stops an answer that is still being written.
  */
-export function useAsk(program: Ref<Program | null>, { onLoggedOut }: UseAskOptions): UseAsk {
+export function useAsk(program: Ref<Program | null>, { onLoggedOut, onProposal }: UseAskOptions): UseAsk {
   const mutation = useAskMutation();
   const exchanges = ref<Exchange[]>([]);
   let controller: AbortController | null = null;
@@ -69,6 +77,7 @@ export function useAsk(program: Ref<Program | null>, { onLoggedOut }: UseAskOpti
       question,
       answer: '',
       context: null,
+      proposal: null,
       error: null,
       stopped: false
     });
@@ -78,7 +87,10 @@ export function useAsk(program: Ref<Program | null>, { onLoggedOut }: UseAskOpti
       await mutation.mutateAsync({
         input: { question, program: program.value ?? undefined },
         signal: controller.signal,
-        onEvent: event => applyEvent(exchange, event)
+        onEvent: event => {
+          applyEvent(exchange, event);
+          if (event.type === 'response.proposal' && event.proposal.proposal) onProposal(event.proposal.proposal);
+        }
       });
     } catch (error) {
       if (isCancellation(error)) {

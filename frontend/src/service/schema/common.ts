@@ -13,13 +13,19 @@ export const LocalizedSchema = z
   .strict();
 export type Localized = z.infer<typeof LocalizedSchema>;
 
-/** Why the service refused a question or its answer failed, for the page to say in its language. */
+/**
+ * Why the service refused a request or an answer failed, for the page to say in its language: the
+ * chat's reasons, then the strategy's.
+ */
 export const ServiceErrorCodeSchema = z.enum([
   'knowledge_base_empty',
   'knowledge_base_outdated',
   'setup_failed',
   'not_logged_in',
-  'answer_failed'
+  'answer_failed',
+  'profile_missing',
+  'proposal_not_found',
+  'proposal_not_open'
 ]);
 export type ServiceErrorCode = z.infer<typeof ServiceErrorCodeSchema>;
 

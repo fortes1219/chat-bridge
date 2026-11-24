@@ -8,7 +8,7 @@ import AnswerContent from './AnswerContent.vue';
 import SampleQuestions from './SampleQuestions.vue';
 
 const props = defineProps<{ exchanges: Exchange[]; status: AskStatus }>();
-const emit = defineEmits<{ ask: [question: string]; stop: [] }>();
+const emit = defineEmits<{ ask: [question: string]; stop: []; openStrategy: [] }>();
 
 const { t } = useI18n<{ message: MessageSchema }>();
 const input = ref('');
@@ -93,6 +93,7 @@ function onSubmit(): void {
               v-if="exchangeOf.get(message.id)"
               :exchange="exchangeOf.get(message.id)!"
               :streaming="streaming"
+              @open-strategy="emit('openStrategy')"
             />
             <p v-else class="whitespace-pre-wrap">{{ message.parts[0]?.text }}</p>
           </template>

@@ -326,7 +326,7 @@ def test_the_split_gives_codex_its_shape_in_a_file_outside_its_empty_folder(
     question = "<question>\n台積電與 0050 的變化？\n</question>\n"
 
     result = asyncio.run(
-        codex.split_reply("rules", question, schema, on_start=told.extend)
+        codex.reply_in_shape("rules", question, schema, on_start=told.extend)
     )
 
     assert result == {"parts": ["台積電"]}

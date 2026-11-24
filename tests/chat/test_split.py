@@ -38,7 +38,7 @@ class _Program:
         self.reply = reply
         self.split_inputs: list[str] = []
 
-    async def split_reply(
+    async def reply_in_shape(
         self,
         system_prompt: str,
         input_text: str,
@@ -63,23 +63,38 @@ def _split(reply: Any) -> split.SplitOutcome:
 
 
 def test_a_reply_of_parts_is_kept_in_order() -> None:
-    outcome = _split({"parts": ["聯準會利率政策", "AI 資本支出", "台積電股價"]})
+    outcome = _split(
+        {
+            "parts": ["聯準會利率政策", "AI 資本支出", "台積電股價"],
+            "revise_strategy": False,
+        }
+    )
 
     assert not outcome.failed
     assert outcome.parts == ["聯準會利率政策", "AI 資本支出", "台積電股價"]
     assert outcome.left_out == 0
+    assert not outcome.revise
     assert outcome.command_line == ["program", "split"]
 
 
+def test_a_question_that_asks_for_a_revision_says_so() -> None:
+    outcome = _split({"parts": [], "revise_strategy": True})
+
+    assert not outcome.failed
+    assert outcome.revise
+
+
 def test_a_question_about_one_thing_lists_no_parts_and_that_is_not_a_failure() -> None:
-    outcome = _split({"parts": []})
+    outcome = _split({"parts": [], "revise_strategy": False})
 
     assert not outcome.failed
     assert outcome.parts == []
 
 
 def test_repeats_and_the_question_itself_are_searched_once() -> None:
-    outcome = _split({"parts": ["台積電", " 台積電 ", QUESTION, "0050"]})
+    outcome = _split(
+        {"parts": ["台積電", " 台積電 ", QUESTION, "0050"], "revise_strategy": False}
+    )
 
     assert outcome.parts == ["台積電", "0050"]
 
@@ -87,7 +102,7 @@ def test_repeats_and_the_question_itself_are_searched_once() -> None:
 def test_parts_past_the_limit_are_left_out_and_counted() -> None:
     parts = [f"part {n}" for n in range(split.PARTS_LIMIT + 3)]
 
-    outcome = _split({"parts": parts})
+    outcome = _split({"parts": parts, "revise_strategy": False})
 
     assert not outcome.failed
     assert outcome.parts == parts[: split.PARTS_LIMIT]
@@ -98,21 +113,26 @@ def test_parts_past_the_limit_are_left_out_and_counted() -> None:
     "reply",
     [
         {},
-        {"parts": "台積電"},
-        {"parts": [1, 2]},
-        {"parts": [""]},
-        {"parts": ["   "]},
-        {"parts": ["x" * (split.PART_MAX_CHARS + 1)]},
-        {"parts": ["台積電"], "note": "extra field"},
+        {"parts": "台積電", "revise_strategy": False},
+        {"parts": [1, 2], "revise_strategy": False},
+        {"parts": [""], "revise_strategy": False},
+        {"parts": ["   "], "revise_strategy": False},
+        {"parts": ["x" * (split.PART_MAX_CHARS + 1)], "revise_strategy": False},
+        {"parts": ["台積電"], "revise_strategy": False, "note": "extra field"},
+        {"parts": ["台積電"]},
+        {"parts": ["台積電"], "revise_strategy": "yes"},
     ],
 )
-def test_a_reply_that_is_not_one_list_of_parts_is_a_failed_split(reply: Any) -> None:
+def test_a_reply_that_is_not_the_asked_for_shape_is_a_failed_split(
+    reply: Any,
+) -> None:
     outcome = _split(reply)
 
     assert outcome.failed
     assert outcome.parts == []
+    assert not outcome.revise
     assert outcome.error is not None
-    assert "not a list of parts" in outcome.error
+    assert "not the asked-for shape" in outcome.error
 
 
 def test_a_program_error_is_a_failed_split_with_its_reason() -> None:
@@ -137,7 +157,7 @@ def test_a_split_past_its_time_limit_is_a_failed_split(
 
     async def stuck() -> dict[str, Any]:
         await asyncio.sleep(10)
-        return {"parts": []}
+        return {"parts": [], "revise_strategy": False}
 
     outcome = _split(stuck)
 
@@ -149,7 +169,7 @@ def test_a_split_past_its_time_limit_is_a_failed_split(
 def test_the_question_reaches_the_split_between_tags_and_the_rules_hold_the_limits() -> (
     None
 ):
-    program = _Program({"parts": []})
+    program = _Program({"parts": [], "revise_strategy": False})
 
     asyncio.run(split.split_question(program, QUESTION))
 
@@ -160,8 +180,8 @@ def test_the_question_reaches_the_split_between_tags_and_the_rules_hold_the_limi
     assert f"at most {split.PARTS_LIMIT} texts" in prompt
 
 
-def test_the_schema_asks_for_one_field_and_nothing_else() -> None:
-    assert split.SPLIT_SCHEMA["required"] == ["parts"]
+def test_the_schema_asks_for_the_parts_and_the_revision_flag_and_nothing_else() -> None:
+    assert split.SPLIT_SCHEMA["required"] == ["parts", "revise_strategy"]
     assert split.SPLIT_SCHEMA["additionalProperties"] is False
 
 

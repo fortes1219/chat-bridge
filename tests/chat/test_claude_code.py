@@ -156,7 +156,9 @@ def test_the_split_asks_for_its_shape_with_tools_off_and_the_question_on_stdin(
     schema = {"type": "object", "properties": {"parts": {"type": "array"}}}
 
     reply = asyncio.run(
-        claude_code.split_reply("rules", SPLIT_QUESTION, schema, on_start=told.extend)
+        claude_code.reply_in_shape(
+            "rules", SPLIT_QUESTION, schema, on_start=told.extend
+        )
     )
 
     assert reply == {"parts": ["台積電"]}

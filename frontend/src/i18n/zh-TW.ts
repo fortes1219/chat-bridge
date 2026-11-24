@@ -42,6 +42,12 @@ const zhTW: typeof en = {
     stopped: '已停止。',
     searching: '正在查新聞資料……',
     waiting: '正在等 {program} 回答……',
+    waitingProposal: '{program} 正在寫答案與修正後的策略，答案會一次出現……',
+    proposalReady: '修正後的策略已列在聊天旁邊。',
+    viewProposal: '看前後差異',
+    proposalRefused: '修正後的策略沒有顯示：{reason}。',
+    noProposal: '這次沒有提出策略修正。',
+    proposalClosed: '這份修正已經接受、否決，或被新的取代，不再等你決定。',
     emptyQuestion: '請先輸入問題。',
     longQuestion: '問題最多 {limit} 個字。'
   },
@@ -89,7 +95,52 @@ const zhTW: typeof en = {
     unknown_error: {
       title: '發生了未預期的錯誤。',
       description: '請再問一次；一直發生的話，重新整理頁面。'
+    },
+    profile_missing: {
+      title: '範例投資組合還沒載入。',
+      description: '在終端機按 Ctrl+C 停掉服務，再啟動一次；它會載入範例投資組合。'
+    },
+    proposal_not_found: {
+      title: '這份修正已經不在了。',
+      description: '重新整理頁面，看目前的策略。'
+    },
+    proposal_not_open: {
+      title: '這份修正已經接受、否決，或被新的取代了。',
+      description: '畫面上的是目前的策略。'
     }
+  },
+  refusals: {
+    not_the_shape: '格式不符',
+    unknown_holding: '列了投資組合裡沒有的標的',
+    repeated_holding: '同一個標的列了兩次',
+    missing_holding: '有標的沒有給目標比例',
+    percent_out_of_range: '有目標比例超出 0 到 100%',
+    not_100: '目標比例加總不是 100%',
+    unknown_source: '理由引用了答案沒有的出處'
+  },
+  strategy: {
+    title: '投資策略',
+    open: '投資策略',
+    loading: '正在讀取投資策略……',
+    targetsTitle: '目標比例',
+    holding: '標的',
+    market: '市場',
+    target: '目標',
+    current: '目前',
+    proposed: '修正後',
+    change: '變化',
+    proposalTitle: '修正後的策略',
+    proposedBy: '由 {program} 依這個問題提出：{question}',
+    reasons: '理由',
+    sources: '出處',
+    accept: '接受',
+    reject: '否決',
+    noTrade: '接受只會改目標比例，不會買賣任何標的。'
+  },
+  markets: {
+    TW: '台股',
+    US: '美股',
+    cash: '現金'
   },
   samples: {
     fed: '聯準會在這近半年的動向哪些行為導致股市動盪？',

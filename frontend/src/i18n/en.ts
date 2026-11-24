@@ -41,6 +41,12 @@ export default {
     stopped: 'Stopped.',
     searching: 'Searching the news…',
     waiting: 'Waiting for {program} to answer…',
+    waitingProposal: '{program} is writing the answer and a revised strategy; the answer arrives all at once…',
+    proposalReady: 'A revised strategy is ready beside the chat.',
+    viewProposal: 'See the difference',
+    proposalRefused: 'The revised strategy was not shown: {reason}.',
+    noProposal: 'No change to the strategy was proposed.',
+    proposalClosed: 'This revision was accepted, rejected or replaced; it is no longer waiting for you.',
     emptyQuestion: 'Type a question first.',
     longQuestion: 'A question can be at most {limit} characters.'
   },
@@ -89,7 +95,52 @@ export default {
     unknown_error: {
       title: 'Something went wrong.',
       description: 'Ask again. If it keeps happening, reload the page.'
+    },
+    profile_missing: {
+      title: 'The sample profile has not been loaded.',
+      description: 'Stop the service with Ctrl+C and start it again; it loads the sample profile.'
+    },
+    proposal_not_found: {
+      title: 'This proposal no longer exists.',
+      description: 'Reload the page to see the current strategy.'
+    },
+    proposal_not_open: {
+      title: 'This proposal has already been decided or replaced.',
+      description: 'The strategy shown is the current one.'
     }
+  },
+  refusals: {
+    not_the_shape: 'it is not in the asked-for shape',
+    unknown_holding: 'it names a holding that is not in the profile',
+    repeated_holding: 'it lists a holding twice',
+    missing_holding: 'it leaves a holding without a target',
+    percent_out_of_range: 'a target is outside 0 to 100%',
+    not_100: 'its targets do not add up to 100%',
+    unknown_source: 'a reason cites a source the answer does not have'
+  },
+  strategy: {
+    title: 'Strategy',
+    open: 'Strategy',
+    loading: 'Loading the strategy…',
+    targetsTitle: 'Target weights',
+    holding: 'Holding',
+    market: 'Market',
+    target: 'Target',
+    current: 'Current',
+    proposed: 'Proposed',
+    change: 'Change',
+    proposalTitle: 'Revised strategy',
+    proposedBy: 'Proposed by {program} for: {question}',
+    reasons: 'Why',
+    sources: 'Sources',
+    accept: 'Accept',
+    reject: 'Reject',
+    noTrade: 'Accepting changes the target weights only; nothing is bought or sold.'
+  },
+  markets: {
+    TW: 'Taiwan',
+    US: 'US',
+    cash: 'Cash'
   },
   samples: {
     fed: 'Which of the Fed’s moves over the past half year shook the stock market?',

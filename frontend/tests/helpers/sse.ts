@@ -44,10 +44,12 @@ export const CONTEXT_EVENT: Extract<ChatEvent, { type: 'response.context' }> = {
     data_latest_date: '2026-09-17',
     disclaimer: { 'zh-TW': '聲明', en: 'notice' },
     program: 'codex',
-    split_failed: false
-  }
+    split_failed: false,
+    proposal_expected: false
+  },
+  proposal: null
 };
 
 export function textEvent(delta: string): Extract<ChatEvent, { type: 'response.output_text.delta' }> {
-  return { type: 'response.output_text.delta', delta, context: null };
+  return { type: 'response.output_text.delta', delta, context: null, proposal: null };
 }

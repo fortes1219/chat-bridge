@@ -1,6 +1,6 @@
 """What the two answering programs share: their names, their login states and their errors.
 
-Each program is a module with the same three functions, `login_status()`, `split_reply()` and
+Each program is a module with the same three functions, `login_status()`, `reply_in_shape()` and
 `stream_answer()`, so the service picks one from a table and nothing else changes with the
 program.
 """
@@ -41,7 +41,7 @@ class AnsweringProgram(Protocol):
 
     async def login_status(self) -> LoginStatus: ...
 
-    async def split_reply(
+    async def reply_in_shape(
         self,
         system_prompt: str,
         input_text: str,

@@ -72,7 +72,7 @@ __all__ = [
     "Login",
     "LoginStatus",
     "login_status",
-    "split_reply",
+    "reply_in_shape",
     "stream_answer",
 ]
 
@@ -184,7 +184,7 @@ def _failure(
     return None
 
 
-async def split_reply(
+async def reply_in_shape(
     system_prompt: str,
     input_text: str,
     schema: dict[str, Any],

@@ -8,8 +8,10 @@ import { useTypedText } from '../composables/useTypedText';
 import { useCitedSources } from '../composables/useCitedSources';
 import SourceList from './SourceList.vue';
 import AnswerMarkdown from './AnswerMarkdown';
+import ProposalCard from './ProposalCard.vue';
 
 const props = defineProps<{ exchange: Exchange; streaming: boolean }>();
+const emit = defineEmits<{ openStrategy: [] }>();
 
 const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
 
@@ -37,6 +39,10 @@ const programName = computed(() => {
   const program = props.exchange.context?.program;
   return program ? PROGRAM_NAMES[program] : '';
 });
+// A revision answer arrives all at once with its proposal, after a longer wait: the line says so.
+const waitingKey = computed(() =>
+  props.exchange.context?.proposal_expected ? 'chat.waitingProposal' : 'chat.waiting'
+);
 
 /**
  * Which of the page's own error texts to show: the service's reason when it gave one, else the
@@ -67,8 +73,13 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
         <SourceList :sources="sources" class="mt-1" data-test="all-sources-list" />
       </template>
     </UCollapsible>
-    <UChatShimmer v-if="waitingFirstWords" data-test="waiting" :text="t('chat.waiting', { program: programName })" />
+    <UChatShimmer v-if="waitingFirstWords" data-test="waiting" :text="t(waitingKey, { program: programName })" />
     <AnswerMarkdown data-test="answer-text" :value="shown" :streaming="typing" :caret="typing" />
+    <ProposalCard
+      v-if="exchange.proposal && !typing"
+      :outcome="exchange.proposal"
+      @open-strategy="emit('openStrategy')"
+    />
     <p v-if="exchange.stopped" class="text-muted text-sm" data-test="answer-stopped">{{ t('chat.stopped') }}</p>
     <UAlert
       v-if="exchange.error"

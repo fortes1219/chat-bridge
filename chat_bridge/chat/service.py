@@ -51,6 +51,8 @@ from chat_bridge.search.service import (
     search_many,
     sections_headed,
 )
+from chat_bridge.strategy import revision
+from chat_bridge.strategy import store as strategy_store
 from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
 
 # The question's search as it ran before parts were searched: 8 sections, 20 candidates per
@@ -103,6 +105,7 @@ SECTION_NAMES: dict[str, Localized] = {
 CUT_OFF = "the client went away before the answer ended"
 PROMPT_FILE = Path(__file__).with_name("answer_prompt.md")
 TEXT_DELTA = "response.output_text.delta"
+PROPOSAL = "response.proposal"
 
 # The programs that can answer, each a module with the same two functions.
 PROGRAMS: dict[Program, AnsweringProgram] = {
@@ -291,8 +294,9 @@ def system_prompt(today: date) -> str:
     return _prompt_template().replace("{{CURRENT_DATE}}", today.isoformat())
 
 
-def model_input(question: str, sections: list[FoundSection]) -> str:
-    """The sources and the question, each between its own tags, so the two stay apart."""
+def model_input(question: str, sections: list[FoundSection], strategy: str = "") -> str:
+    """The sources and the question, each between its own tags, so the two stay apart; for a
+    revision question, the profile's own block between them."""
     blocks = [
         f"[{section.source.number}] file: {section.source.file}"
         f" | event date: {section.source.event_date or 'none'}"
@@ -300,7 +304,10 @@ def model_input(question: str, sections: list[FoundSection]) -> str:
         for section in sections
     ]
     sources = "\n\n".join(blocks)
-    return f"<sources>\n{sources}\n</sources>\n\n<question>\n{question}\n</question>\n"
+    return (
+        f"<sources>\n{sources}\n</sources>\n\n{strategy}"
+        f"<question>\n{question}\n</question>\n"
+    )
 
 
 def _section_details(sections: list[FoundSection]) -> list[dict[str, Any]]:
@@ -330,6 +337,7 @@ async def _record(
     program: Program | None = None,
     split: SplitOutcome | None = None,
     searches: list[dict[str, Any]] | None = None,
+    proposal: dict[str, Any] | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
@@ -350,6 +358,9 @@ async def _record(
             "command_line": split.command_line,
         },
         "searches": searches,
+        # What came of a revision question's proposal: the checked proposal, the refusal, or
+        # neither when the program proposed nothing.
+        "proposal": proposal,
         "error": error,
     }
     async with open_engine() as engine:
@@ -378,6 +389,9 @@ async def answer_stream(
     refusal: NoLoginError | None = None
     split: SplitOutcome | None = None
     searches: list[dict[str, Any]] | None = None
+    # The profile, read when the question asks to revise the strategy; none otherwise.
+    profile: strategy_store.Profile | None = None
+    proposal: dict[str, Any] | None = None
     # A question the data has nothing on is answered without a model, so no login is read.
     if sections:
         try:
@@ -396,6 +410,7 @@ async def answer_stream(
             program=program,
             split=split,
             searches=searches,
+            proposal=proposal,
         )
 
     try:
@@ -403,6 +418,8 @@ async def answer_stream(
             split = await split_question(PROGRAMS[program], question)
             # A failed split has no parts, so the question's own sections go on alone.
             sections, searches = await gather_sections(question, sections, split.parts)
+            if split.revise:
+                profile = await _profile_or_none()
         yield ChatDelta(
             type="response.context",
             context=ChatContext(
@@ -411,6 +428,7 @@ async def answer_stream(
                 disclaimer=DISCLAIMER,
                 program=program,
                 split_failed=split is not None and split.failed,
+                proposal_expected=profile is not None,
             ),
         )
         if not sections:
@@ -422,6 +440,27 @@ async def answer_stream(
         if refusal is not None or program is None:
             raise refusal or NoLoginError(LoginStatus(Login.UNKNOWN, "no program"))
 
+        if profile is not None:
+            sent = model_input(question, sections, revision.strategy_input(profile))
+            revised = await revision.revision_reply(
+                PROGRAMS[program],
+                revision.system_prompt(date.today()),
+                sent,
+                on_start=command.extend,
+            )
+            pieces.append(revised.answer)
+            yield ChatDelta(type=TEXT_DELTA, delta=revised.answer)
+            event = await revision.proposal_event(
+                revised.proposal,
+                profile,
+                [section.source for section in sections],
+                question=question,
+                program=program,
+            )
+            proposal = event.model_dump(mode="json")
+            yield ChatDelta(type=PROPOSAL, proposal=event)
+            await record(None)
+            return
         sent = model_input(question, sections)
         async for piece in PROGRAMS[program].stream_answer(
             system_prompt(date.today()), sent, on_start=command.extend
@@ -442,6 +481,15 @@ async def answer_stream(
         await record(f"{type(error).__name__}: {error}")
         raise
     await record(None)
+
+
+async def _profile_or_none() -> strategy_store.Profile | None:
+    """The profile for a revision question. Without one, the question is answered as any other,
+    with no proposal asked for."""
+    try:
+        return await strategy_store.read_profile()
+    except strategy_store.ProfileMissingError:
+        return None
 
 
 async def list_records(*, unanswered: bool, limit: int) -> list[ChatRecordPublic]:

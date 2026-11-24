@@ -36,6 +36,8 @@ from chat_bridge.database import stop_server
 from chat_bridge.embedding import load_model
 from chat_bridge.errors import LocalSetupError
 from chat_bridge.ingest import service as ingest_service
+from chat_bridge.strategy.router import router as strategy_router
+from chat_bridge.strategy.sample import SAMPLE_PROFILE, load_sample_if_empty
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,7 @@ def create_app(page: Path | None = None) -> FastAPI:
     app = FastAPI(title=TITLE, lifespan=lifespan)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
     app.include_router(router)
+    app.include_router(strategy_router)
     if page is not None:
         # After the service's routes, so the page's fallback never answers for them.
         web.mount_page(app, page)
@@ -123,6 +126,15 @@ def prepare_knowledge_base() -> None:
     )
 
 
+def prepare_profile() -> None:
+    """Load the simulated sample profile when there is none, so the strategy screen has one."""
+    if asyncio.run(load_sample_if_empty()):
+        logger.info(
+            "Loaded the simulated sample profile from %s.",
+            SAMPLE_PROFILE.relative_to(PROJECT_ROOT).as_posix(),
+        )
+
+
 def serve(open_browser: bool = True) -> int:
     """Build the chat page and fill an empty knowledge base if needed, run the service until
     Ctrl+C, and open the page.
@@ -143,6 +155,7 @@ def serve(open_browser: bool = True) -> int:
     try:
         page = web.prepare_page()
         prepare_knowledge_base()
+        prepare_profile()
         # Loaded before requests are taken, so the first question does not wait for it.
         logger.info("Loading the embedding model.")
         load_model()
