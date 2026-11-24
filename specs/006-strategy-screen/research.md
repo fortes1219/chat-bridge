@@ -293,6 +293,28 @@ the screen says so.
 - Market value and actual weights move with prices; checking them would be rebalancing, which the
   spec does not list.
 
+**How each kind is read** (Phase 3):
+- A target exactly at the limit meets it: the optimiser bounds above are inclusive.
+- Cash is not one of the holdings the rules look at. The rules limit what the strategy puts in each
+  holding and each market, and cash belongs to no market; raising cash is how a strategy lowers
+  risk, so a limit on the largest holding must not count it.
+- "Held" is a target above 0: a target of 0 says the strategy holds none of it, so the least weight
+  does not apply to it. That is the spec's own wording ("the least any held holding may weigh").
+- A market rule names TW or US; the holding rules name none.
+- A rule that is off is listed, not checked, and not counted in "M of N rules met".
+- A proposal's checks are computed when it is read, with the current rules, so a rule saved after
+  the proposal was made is shown on both sides.
+
+**Saving** (Phase 3): `PUT /strategy/rules` takes every rule in the order the screen lists them and
+replaces the saved ones in one transaction; the response is the strategy with the checks
+recomputed. The kind and the market come in as plain text, so a kind or market the service does not
+know, or a limit outside 0 to 100, is refused with a code of its own (`rule_unknown_kind`,
+`rule_limit_out_of_range`, `rule_market`) and the message names the rule's place in the list;
+nothing is saved then. Any other field, or a body that is not JSON, is refused before the endpoint
+runs (decision 12). The page copies the saved rules into a draft when editing starts, so a
+`strategy` event from a new price does not undo what the person is typing, and sends nothing until
+the draft differs from the saved rules.
+
 ### 10. Layout: the chat page's strategy panel
 
 **Decision**: the chat page becomes one dashboard group: the chat column as the main panel, the

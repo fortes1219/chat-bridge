@@ -55,10 +55,10 @@ in the terminal (research.md decision 13).
 
 ## Phase 3: Rules (US4; P2)
 
-- [ ] T022 `chat_bridge/strategy/compute.py` (rules part) and `router.py` `PUT /strategy/rules`: the three kinds as a table, checked on target weights; unknown kinds and limits outside 0 to 100 refused with a code; a proposal's rule results before and after (FR-007; decision 9).
-- [ ] T023 Page: `RuleChecks` with "M of N rules met", pass or fail, the note that targets are checked, the editor (add, change, turn off, save), and the before and after columns in `ProposalDiff`.
-- [ ] T024 [P] Tests: each kind passes and fails at its edge; a refused rule; checks recomputed on save; before and after on a proposal; a form post and a plain-text post to `PUT /strategy/rules` refused with the rules unchanged (SC-007); page tests for the editor.
-- [ ] T025 Checks as T013; the file list and one commit message.
+- [x] T022 `chat_bridge/strategy/compute.py` (rules part) and `router.py` `PUT /strategy/rules`: the three kinds as a table, checked on target weights; unknown kinds and limits outside 0 to 100 refused with a code; a proposal's rule results before and after (FR-007; decision 9). The refusal codes and saving the list are in `store.py`, beside the proposal's refusals.
+- [x] T023 Page: `RuleChecks` with "M of N rules met", pass or fail, the note that targets are checked; `RuleEditor` (add, change, turn off, save) with `useRuleEditor` keeping the draft; `useRuleText` wording a rule and its result; the before and after columns in `ProposalDiff`.
+- [x] T024 [P] Tests: each kind passes and fails at its edge; a refused rule; checks recomputed on save; before and after on a proposal; a form post and a plain-text post to `PUT /strategy/rules` refused with the rules unchanged (SC-007); page tests for the editor.
+- [x] T025 Checks as T013; the file list and one commit message.
 
 ## Phase 4: README and real runs
 
