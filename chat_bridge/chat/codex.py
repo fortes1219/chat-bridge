@@ -25,13 +25,15 @@ import sys
 import tempfile
 from asyncio.subprocess import Process
 from collections.abc import AsyncIterator, Callable
-from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-import psutil
-
-from chat_bridge.chat.programs import Login, LoginStatus, ProgramError
+from chat_bridge.chat.programs import (
+    Login,
+    LoginStatus,
+    ProgramError,
+    end_process_tree,
+)
 
 # The tools Codex turns on by default that would run a command, touch a file or go online. With
 # them off it still reads what it is given and writes an answer, in a given format when asked.
@@ -85,8 +87,6 @@ ERROR_TAIL_CHARS = 300
 MAX_LINE_BYTES = 1024 * 1024
 # Codex reports a dropped connection it is retrying as an error event that is not a failure.
 RETRY_PREFIX = "Reconnecting"
-# How long a stop waits for Codex and what it started to end once they are killed.
-STOP_TIMEOUT_SECONDS = 10
 
 
 class CodexError(ProgramError):
@@ -140,36 +140,10 @@ async def _start(args: list[str], *, with_input: bool) -> Process:
 
 
 async def _stop(process: Process) -> None:
-    """End Codex and every process it started.
-
-    On Windows npm installs Codex behind a `.cmd` launcher that starts node, which starts Codex.
-    Killing the launcher alone would leave Codex answering, on the user's plan, and holding the
-    output pipes, so the wait below would never return. The processes below it are listed
-    before the kill, because a killed parent no longer leads to them.
-    """
-    if process.returncode is not None:
-        return
-    try:
-        below = psutil.Process(process.pid).children(recursive=True)
-    except psutil.NoSuchProcess:
-        below = []
-    process.kill()
-    for child in below:
-        # One that cannot be killed is left for the check below, which reports it.
-        with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
-            child.kill()
-    _, alive = await asyncio.to_thread(
-        psutil.wait_procs, below, timeout=STOP_TIMEOUT_SECONDS
-    )
-    if alive:
-        pids = ", ".join(str(child.pid) for child in alive)
-        raise CodexError(f"Codex left processes running after the stop: {pids}")
-    try:
-        await asyncio.wait_for(process.wait(), STOP_TIMEOUT_SECONDS)
-    except TimeoutError:
-        raise CodexError(
-            f"Codex did not stop within {STOP_TIMEOUT_SECONDS} seconds"
-        ) from None
+    """End Codex and every process it started (programs.end_process_tree)."""
+    problem = await end_process_tree(process)
+    if problem is not None:
+        raise CodexError(f"Codex {problem}")
 
 
 async def login_status() -> LoginStatus:

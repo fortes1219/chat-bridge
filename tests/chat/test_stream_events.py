@@ -1,14 +1,17 @@
 """What `POST /chat/stream` sends, as Server-Sent Events, without searching or starting a model."""
 
+import asyncio
 import json
+import threading
 from collections.abc import AsyncIterator, Iterator
 from datetime import date
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sse_starlette.sse import AppStatus
 
-from chat_bridge.chat import service
+from chat_bridge.chat import router, server, service
 from chat_bridge.chat.programs import Login, LoginStatus, Program
 from chat_bridge.chat.schemas import ChatContext, ChatDelta, Source
 from chat_bridge.chat.server import create_app
@@ -155,3 +158,43 @@ def test_each_knowledge_base_refusal_has_its_own_code(
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == code
+
+
+def test_a_shutdown_cuts_the_answer_off_and_the_stream_ends_with_an_error_event(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An answer still coming in when Ctrl+C is pressed: uvicorn's handler sets the flag that
+    # sse-starlette watches. The stream does not wait for the answer: the answer is cut off, and
+    # the last event says it did not end, so the page does not show part of it as the whole.
+    ended: list[bool] = []
+
+    async def endless(*args: Any) -> AsyncIterator[ChatDelta]:
+        try:
+            yield CONTEXT
+            await asyncio.Event().wait()
+        finally:
+            ended.append(True)
+
+    monkeypatch.setattr(service, "answer_stream", endless)
+    monkeypatch.setattr(AppStatus, "should_exit", False)
+    ctrl_c = threading.Timer(1, lambda: setattr(AppStatus, "should_exit", True))
+    ctrl_c.start()
+    try:
+        response = client.post("/chat/stream", json={"question": "q"})
+    finally:
+        ctrl_c.cancel()
+
+    assert response.status_code == 200
+    events = _events(response.text)
+    assert events[0]["data"]["type"] == "response.context"
+    assert events[1:] == [
+        {
+            "event": "error",
+            "data": {"code": "answer_failed", "message": router.STOPPED_MESSAGE},
+        }
+    ]
+    assert ended == [True]
+
+
+def test_a_cut_off_stream_says_so_before_uvicorn_ends_it() -> None:
+    assert router.SHUTDOWN_GRACE_SECONDS < server.SHUTDOWN_WAIT_SECONDS

@@ -1,11 +1,13 @@
 """The chat endpoints."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.sse import EventSourceResponse, ServerSentEvent
+from sse_starlette import EventSourceResponse, JSONServerSentEvent
 
 from chat_bridge.chat import service
 from chat_bridge.chat.schemas import (
@@ -33,6 +35,16 @@ DEFAULT_LIMIT = 100
 
 # The event that ends a stream whose answer failed after it started.
 ERROR_EVENT = "error"
+# The line separator of the stream. sse-starlette uses \r\n unless told, and each event carries
+# its own, so the response and every event are given this one.
+SEPARATOR = "\n"
+# How long a stream has, once the service begins to shut down, to cut its answer off and say so
+# before sse-starlette ends it anyway. Cutting off takes well under a second. It must stay below
+# uvicorn's shutdown limit (server.SHUTDOWN_WAIT_SECONDS), or uvicorn ends the stream first.
+SHUTDOWN_GRACE_SECONDS = 2
+# The message of the last event when the service stops while an answer is being written. The page
+# words the code, `answer_failed`, in its own language; this is for logs.
+STOPPED_MESSAGE = "the service stopped before the answer ended"
 
 # Why a search could not run, by the error it raised. Any other local setup error, such as a
 # model or a word list that could not be loaded, is `setup_failed`.
@@ -67,20 +79,50 @@ async def found_sections(request: ChatRequest) -> list[service.FoundSection]:
 async def chat_stream(
     request: ChatRequest,
     sections: Annotated[list[service.FoundSection], Depends(found_sections)],
-) -> AsyncIterator[ServerSentEvent]:
+) -> EventSourceResponse:
     """Answer a question from the knowledge base, streamed as Server-Sent Events.
 
     The context comes first, then the answer in pieces, one event each. Once the stream has
     started, the HTTP status can no longer change, so an error becomes a last event named
     `error` that the client can still read.
+
+    When the service begins to shut down (Ctrl+C), sse-starlette sets the stream's shutdown
+    event. The answer is then cut off as when the person stops it, and the stream ends with an
+    `error` event, so the page does not show part of an answer as the whole; the service stops
+    at once. Events are separated by a bare newline, as the page and the tests read them.
     """
+    shutdown = anyio.Event()
+    return EventSourceResponse(
+        _events(request, sections, shutdown),
+        sep=SEPARATOR,
+        shutdown_event=shutdown,
+        shutdown_grace_period=SHUTDOWN_GRACE_SECONDS,
+    )
+
+
+async def _events(
+    request: ChatRequest, sections: list[service.FoundSection], shutdown: anyio.Event
+) -> AsyncIterator[JSONServerSentEvent]:
+    answer = service.answer_stream(request.question, sections, request.program)
     try:
-        async for delta in service.answer_stream(
-            request.question, sections, request.program
-        ):
+        while True:
+            # The wait for each piece is cancelled when the service begins to shut down. It is
+            # cancelled in this task, the one writing the answer, so the answer is cut off and
+            # recorded as when the person stops it. No piece is sent from inside the scope.
+            with anyio.CancelScope() as waiting:
+                watcher = asyncio.ensure_future(_cancel_when_set(shutdown, waiting))
+                try:
+                    delta = await anext(answer, None)
+                finally:
+                    watcher.cancel()
+            if waiting.cancelled_caught:
+                yield _error_event("answer_failed", STOPPED_MESSAGE)
+                return
+            if delta is None:
+                return
             # Nulls stay in, so a source without an event date says so instead of losing
             # the field.
-            yield ServerSentEvent(data=delta.model_dump(mode="json"))
+            yield JSONServerSentEvent(data=delta.model_dump(mode="json"), sep=SEPARATOR)
     except Exception as error:
         logger.exception("The answer stream stopped")
         # A program that logged out since the page read its state is the one failure a page
@@ -90,8 +132,19 @@ async def chat_stream(
             if isinstance(error, service.NoLoginError)
             else "answer_failed"
         )
-        detail = ErrorDetail(code=code, message=str(error))
-        yield ServerSentEvent(event=ERROR_EVENT, data=detail.model_dump())
+        yield _error_event(code, str(error))
+
+
+async def _cancel_when_set(event: anyio.Event, scope: anyio.CancelScope) -> None:
+    await event.wait()
+    scope.cancel()
+
+
+def _error_event(code: ErrorCode, message: str) -> JSONServerSentEvent:
+    detail = ErrorDetail(code=code, message=message)
+    return JSONServerSentEvent(
+        event=ERROR_EVENT, data=detail.model_dump(), sep=SEPARATOR
+    )
 
 
 @router.get("/programs")

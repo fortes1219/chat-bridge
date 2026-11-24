@@ -8,14 +8,29 @@ data reaches or for the market sections of the documents found, unless it says o
 split lists no parts, the date is fixed, and no document has a market section.
 """
 
+import asyncio
+import sys
+from asyncio.subprocess import Process
+from collections.abc import Awaitable, Callable
 from datetime import date
+from pathlib import Path
 
+import psutil
 import pytest
 
 from chat_bridge.chat import codex, service
 from chat_bridge.chat.split import SplitOutcome
 
 LATEST_EVENT_DATE = date(2026, 11, 17)
+# The program below the launcher says it is running, so a test lists the processes only once
+# all of them exist. It then waits long enough that only a kill ends it.
+WAITING_PROGRAM = "import time; print('ready', flush=True); time.sleep(60)"
+READY_TIMEOUT_SECONDS = 10
+
+StartProgram = Callable[..., Awaitable[Process]]
+StartLauncher = Callable[
+    [StartProgram], Awaitable[tuple[Process, list[psutil.Process]]]
+]
 
 
 @pytest.fixture(autouse=True)
@@ -40,3 +55,28 @@ def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service, "split_question", no_parts)
     monkeypatch.setattr(service, "latest_event_date", latest)
     monkeypatch.setattr(service, "sections_headed", no_market_sections)
+
+
+@pytest.fixture
+def start_launcher(tmp_path: Path) -> StartLauncher:
+    """Starts, with a program's own start function, a stand-in for what npm installs on Windows.
+
+    npm installs Claude Code and Codex as a `.cmd` launcher: cmd.exe starts node, which starts
+    the program, and the program holds the output pipes. Here cmd.exe starts Python, which
+    starts the interpreter that waits. Killing cmd.exe alone leaves both running. Returns the
+    started process and every process below it.
+    """
+    launcher = tmp_path / "program.cmd"
+    launcher.write_text(
+        f'@"{sys.executable}" -c "{WAITING_PROGRAM}"\r\n', encoding="utf-8"
+    )
+
+    async def start(
+        start_program: StartProgram,
+    ) -> tuple[Process, list[psutil.Process]]:
+        process = await start_program([str(launcher)], with_input=True)
+        assert process.stdout is not None
+        await asyncio.wait_for(process.stdout.readline(), READY_TIMEOUT_SECONDS)
+        return process, psutil.Process(process.pid).children(recursive=True)
+
+    return start

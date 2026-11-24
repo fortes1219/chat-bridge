@@ -24,7 +24,12 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
-from chat_bridge.chat.programs import Login, LoginStatus, ProgramError
+from chat_bridge.chat.programs import (
+    Login,
+    LoginStatus,
+    ProgramError,
+    end_process_tree,
+)
 
 # Nothing from the user's own Claude Code setup (settings, hooks, MCP servers), no built-in
 # tools, and no session saved to disk. With no tools the model can only write text, and the
@@ -111,9 +116,14 @@ async def _start(args: list[str], *, with_input: bool) -> Process:
 
 
 async def _stop(process: Process) -> None:
-    if process.returncode is None:
-        process.kill()
-        await process.wait()
+    """End Claude Code and every process it started (programs.end_process_tree).
+
+    An npm install is a `.cmd` launcher in front of node; ending only the launcher left Claude
+    Code writing the answer after the person stopped it.
+    """
+    problem = await end_process_tree(process)
+    if problem is not None:
+        raise ClaudeCodeError(f"Claude Code {problem}")
 
 
 async def login_status() -> LoginStatus:
@@ -135,8 +145,12 @@ async def login_status() -> LoginStatus:
             process.communicate(), LOGIN_STATUS_TIMEOUT_SECONDS
         )
     except TimeoutError:
-        await _stop(process)
-        return LoginStatus(Login.UNKNOWN, "`claude auth status` did not reply in time")
+        detail = "`claude auth status` did not reply in time"
+        try:
+            await _stop(process)
+        except ClaudeCodeError as error:
+            detail = f"{detail}, and {error}"
+        return LoginStatus(Login.UNKNOWN, detail)
     return login_from_status(output)
 
 

@@ -6,11 +6,13 @@ import shutil
 import sys
 from pathlib import Path
 
+import psutil
 import pytest
 
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.claude_code import Login, LoginStatus
 from chat_bridge.chat.service import NO_LOGIN_MESSAGES, NoLoginError
+from tests.chat.conftest import StartLauncher
 
 
 def test_the_key_variables_are_removed_from_the_child(
@@ -248,3 +250,21 @@ def test_the_schema_reaches_a_cmd_launcher_unchanged(tmp_path: Path) -> None:
     schema = json.dumps(SPLIT_SCHEMA, separators=(",", ":"))
 
     assert _arrives_unchanged([str(launcher), schema]) == schema
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="a .cmd launcher exists only on Windows"
+)
+def test_a_stop_ends_claude_code_and_everything_it_started(
+    start_launcher: StartLauncher,
+) -> None:
+    # Ending only the launcher left Claude Code writing the answer after the person stopped it,
+    # and holding the output pipes.
+    async def run() -> list[psutil.Process]:
+        process, below = await start_launcher(claude_code._start)
+        await claude_code._stop(process)
+        return below
+
+    below = asyncio.run(run())
+
+    assert not [child for child in below if child.is_running()]
