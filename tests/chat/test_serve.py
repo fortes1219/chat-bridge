@@ -76,7 +76,9 @@ def test_a_free_port_starts_the_service_and_opens_the_page_once_it_answers(
 
     assert server.serve() == cli.EXIT_OK
 
-    assert started["uvicorn"] == [{"host": "127.0.0.1", "port": 8000}]
+    assert started["uvicorn"] == [
+        {"host": "127.0.0.1", "port": 8000, "timeout_graceful_shutdown": 5}
+    ]
     assert started["waiter"] == [("127.0.0.1", 8000, "http://127.0.0.1:8000")]
     assert "The chat page is at http://127.0.0.1:8000" in caplog.text
 

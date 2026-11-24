@@ -2,6 +2,7 @@
 no database is read."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -15,9 +16,12 @@ from chat_bridge.chat.programs import Program
 from chat_bridge.chat.schemas import ChatDelta, Source
 from chat_bridge.chat.split import SplitOutcome
 from chat_bridge.strategy import store
+from chat_bridge.strategy.prices import PriceBook, Quote
 from chat_bridge.strategy.proposal import PROPOSAL_SCHEMA, CheckedProposal
 from chat_bridge.strategy.revision import RevisionReplyError
 from chat_bridge.strategy.schemas import HoldingView, ProposalView
+from chat_bridge.strategy.state import STATE
+from tests.strategy.test_valuation import NOW, US_DAY
 
 QUESTION = "依據聯準會這半年的動向，調整我的配置以降低風險"
 SECTION = service.FoundSection(
@@ -183,6 +187,33 @@ def test_the_program_gets_the_profile_as_data_between_the_sources_and_the_questi
     assert '"target_percent": 30' in sent
     assert '"kind": "max_holding_weight"' in sent
     assert run.schemas == [PROPOSAL_SCHEMA]
+
+
+def test_the_program_gets_the_latest_prices_with_their_time_and_none_for_a_missing_one(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": None})
+    book = PriceBook()
+    book.put(Quote("NVDA", Decimal("180.5"), Decimal("175"), "daily", US_DAY))
+    book.put(Quote("TWD=X", Decimal("32.1"), None, "live", NOW))
+    monkeypatch.setattr(STATE, "book", book)
+
+    _read()
+
+    [sent] = run.inputs
+    data = json.loads(sent[sent.index("<strategy>") + 10 : sent.index("</strategy>")])
+    prices = {
+        holding["symbol"]: holding["latest_price"] for holding in data["holdings"]
+    }
+    assert prices["NVDA"] == {
+        "price": "180.5",
+        "previous_close": "175",
+        "basis": "daily",
+        "time": None,
+        "day": "2026-11-21",
+    }
+    assert prices["2330.TW"] is None
+    assert data["exchange_rates_to_TWD"]["USD"]["price"] == "32.1"
 
 
 def test_the_record_keeps_the_answer_the_command_line_and_the_proposal(

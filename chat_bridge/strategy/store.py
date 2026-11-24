@@ -31,8 +31,8 @@ from chat_bridge.strategy.schemas import (
     Decision,
     HoldingView,
     ProposalView,
+    StoredStrategy,
     StrategyErrorCode,
-    StrategyView,
 )
 
 # Said on the screen and in every strategy response: the profile is made up for the demo.
@@ -148,10 +148,10 @@ async def _open_proposal(session: AsyncSession) -> StrategyProposal | None:
     ).first()
 
 
-async def _strategy_view(session: AsyncSession) -> StrategyView:
+async def _stored_strategy(session: AsyncSession) -> StoredStrategy:
     profile = await _read_profile(session)
     open_row = await _open_proposal(session)
-    return StrategyView(
+    return StoredStrategy(
         holdings=profile.holdings,
         targets=target_rows(profile.symbols, profile.targets),
         proposal=None if open_row is None else _proposal_view(open_row, profile),
@@ -165,10 +165,10 @@ async def read_profile() -> Profile:
         return await _read_profile(session)
 
 
-async def read_strategy() -> StrategyView:
+async def read_strategy() -> StoredStrategy:
     """The current strategy and the open proposal. Raises ProfileMissingError."""
     async with transaction() as session:
-        return await _strategy_view(session)
+        return await _stored_strategy(session)
 
 
 async def save_proposal(
@@ -196,7 +196,7 @@ async def save_proposal(
         return _proposal_view(row, profile)
 
 
-async def decide(proposal_id: int, decision: Decision) -> StrategyView:
+async def decide(proposal_id: int, decision: Decision) -> StoredStrategy:
     """Accept or reject the open proposal, and return the strategy after it.
 
     Accepting makes the proposal's stored targets the current ones. Raises ProposalNotFoundError
@@ -224,4 +224,4 @@ async def decide(proposal_id: int, decision: Decision) -> StrategyView:
         row.status = STATUS_AFTER[decision]
         row.decided_at = datetime.now(UTC)
         await session.flush()
-        return await _strategy_view(session)
+        return await _stored_strategy(session)

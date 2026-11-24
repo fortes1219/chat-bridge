@@ -53,6 +53,7 @@ from chat_bridge.search.service import (
 )
 from chat_bridge.strategy import revision
 from chat_bridge.strategy import store as strategy_store
+from chat_bridge.strategy.state import STATE
 from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
 
 # The question's search as it ran before parts were searched: 8 sections, 20 candidates per
@@ -103,6 +104,9 @@ SECTION_NAMES: dict[str, Localized] = {
 }
 # Kept as the error of a question whose client stopped reading before the answer ended.
 CUT_OFF = "the client went away before the answer ended"
+# The answers still being written, each by the task writing it, so the service's shutdown can let
+# them reach their records before the database stops (finish_answers).
+_ANSWERING: set[asyncio.Task[Any]] = set()
 PROMPT_FILE = Path(__file__).with_name("answer_prompt.md")
 TEXT_DELTA = "response.output_text.delta"
 PROPOSAL = "response.proposal"
@@ -413,6 +417,10 @@ async def answer_stream(
             proposal=proposal,
         )
 
+    answering = asyncio.current_task()
+    if answering is not None:
+        _ANSWERING.add(answering)
+        answering.add_done_callback(_ANSWERING.discard)
     try:
         if sections and program is not None:
             split = await split_question(PROGRAMS[program], question)
@@ -441,7 +449,9 @@ async def answer_stream(
             raise refusal or NoLoginError(LoginStatus(Login.UNKNOWN, "no program"))
 
         if profile is not None:
-            sent = model_input(question, sections, revision.strategy_input(profile))
+            sent = model_input(
+                question, sections, revision.strategy_input(profile, STATE.book)
+            )
             revised = await revision.revision_reply(
                 PROGRAMS[program],
                 revision.system_prompt(date.today()),
@@ -481,6 +491,20 @@ async def answer_stream(
         await record(f"{type(error).__name__}: {error}")
         raise
     await record(None)
+
+
+async def finish_answers(timeout: float) -> None:
+    """Let the answers still being written end and write their records, for at most `timeout`
+    seconds.
+
+    The service calls it on its way down, before it stops the database. When uvicorn's shutdown
+    limit passes, uvicorn cancels the open requests and goes on to the application's shutdown
+    without waiting for them; a cancelled answer writes its record as it ends, and that write needs
+    the database.
+    """
+    pending = [task for task in _ANSWERING if not task.done()]
+    if pending:
+        await asyncio.wait(pending, timeout=timeout)
 
 
 async def _profile_or_none() -> strategy_store.Profile | None:

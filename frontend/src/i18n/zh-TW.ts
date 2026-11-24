@@ -122,9 +122,7 @@ const zhTW: typeof en = {
     title: '投資策略',
     open: '投資策略',
     loading: '正在讀取投資策略……',
-    targetsTitle: '目標比例',
     holding: '標的',
-    market: '市場',
     target: '目標',
     current: '目前',
     proposed: '修正後',
@@ -135,7 +133,46 @@ const zhTW: typeof en = {
     sources: '出處',
     accept: '接受',
     reject: '否決',
-    noTrade: '接受只會改目標比例，不會買賣任何標的。'
+    noTrade: '接受只會改目標比例，不會買賣任何標的。',
+    cards: {
+      total: '總值',
+      change: '比各自前一個收盤',
+      profit: '損益',
+      pricesAt: '價格時間（最新）',
+      leftOut: '沒有價格或匯率、未計入總值與損益：{names}。',
+      changeLeftOut: '不知道前一個收盤、未計入漲跌：{names}。',
+      changeNote:
+        '每一檔比它自己市場的前一個收盤加總：台股與美股的交易日不同；美股盤前、盤後與夜盤的價格比的是前一個正式收盤。'
+    },
+    donut: {
+      title: '配置',
+      share: '比例'
+    },
+    holdingsTable: {
+      title: '持有標的',
+      detail: '{symbol}・{quantity} 股，均價 {cost}',
+      targetOf: '目標 {target}',
+      price: '價格',
+      value: '市值',
+      weight: '比例',
+      profit: '損益',
+      note: '金額以新台幣計。美股（含成本）以最新的美元匯率換算。'
+    },
+    quotes: {
+      title: '行情',
+      realTime: '即時',
+      delayed: '延遲 {minutes} 分鐘',
+      delayUnstated: '未標明延遲',
+      liveAt: '{time}',
+      closeOn: '{day} 日線',
+      source: '價格來自 {name}，不是交易所官方的資料。',
+      terms: '使用條款',
+      updating: '更新中',
+      sourceDown: '沒有連上行情來源，價格停在顯示的時間',
+      connecting: '連線中…',
+      disconnected: '未更新',
+      invalid: '有 {count} 次更新的資料不符格式、沒有畫上去，畫面上的數字可能不是最新的。重新整理頁面可以再讀一次。'
+    }
   },
   markets: {
     TW: '台股',

@@ -4,7 +4,11 @@ import { useI18n } from 'vue-i18n';
 import type { Locale, MessageSchema } from '@/i18n';
 import type { AppError } from '@/service/error';
 import { useStrategy } from './composables/useStrategy';
-import TargetsTable from './components/TargetsTable.vue';
+import { useStrategySocket } from './composables/useStrategySocket';
+import SummaryCards from './components/SummaryCards.vue';
+import AllocationDonut from './components/AllocationDonut.vue';
+import HoldingsTable from './components/HoldingsTable.vue';
+import QuotesColumn from './components/QuotesColumn.vue';
 import ProposalDiff from './components/ProposalDiff.vue';
 
 /** `headless` leaves the title to a slide-over that already shows it. */
@@ -12,6 +16,8 @@ defineProps<{ headless?: boolean }>();
 
 const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
 const { strategy, holdings, loading, error, deciding, decisionError, decide } = useStrategy();
+// While the panel is shown, each new price brings the strategy the service recomputed from it.
+const { connectionState, invalidUpdates } = useStrategySocket();
 
 /** The page's own words for an error: the service's reason when it gave one, else the page's code. */
 function errorKey(appError: AppError): keyof MessageSchema['errors'] {
@@ -41,6 +47,7 @@ const shownError = computed(() => decisionError.value ?? error.value);
         icon="i-lucide-info"
         :description="strategy.notice[locale]"
       />
+      <SummaryCards :valuation="strategy.valuation" :holdings="holdings" />
       <ProposalDiff
         v-if="strategy.proposal"
         :proposal="strategy.proposal"
@@ -48,10 +55,9 @@ const shownError = computed(() => decisionError.value ?? error.value);
         :deciding="deciding"
         @decide="decide"
       />
-      <section v-else class="flex flex-col gap-2">
-        <h3 class="font-semibold">{{ t('strategy.targetsTitle') }}</h3>
-        <TargetsTable :targets="strategy.targets" :holdings="holdings" />
-      </section>
+      <AllocationDonut :valuation="strategy.valuation" :holdings="holdings" />
+      <HoldingsTable :strategy="strategy" :holdings="holdings" />
+      <QuotesColumn :valuation="strategy.valuation" :connection="connectionState" :invalid-updates="invalidUpdates" />
     </template>
   </div>
 </template>

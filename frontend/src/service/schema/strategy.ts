@@ -9,6 +9,9 @@ export const MarketSchema = z.enum(['TW', 'US']);
 /** An exact amount, sent as text in plain notation so no float rounds it. */
 const AmountSchema = z.string().regex(/^\d+(\.\d+)?$/);
 
+/** The same for an amount that can fall below zero: a loss, a change. */
+const SignedAmountSchema = z.string().regex(/^-?\d+(\.\d+)?$/);
+
 /** A whole percent of a target weight. */
 const PercentSchema = z.number().int().min(0).max(100);
 
@@ -66,13 +69,86 @@ export const ProposalSchema = z
   })
   .strict();
 
-/** `GET /strategy`: the profile, its current targets, the open proposal, and the sample notice. */
+/** A live price from the stream, or the latest value of the daily series: the day's close once it has ended. */
+export const BasisSchema = z.enum(['live', 'daily']);
+
+/**
+ * When a price is from: a live price's moment, or a daily value's trading day, which the exchange's
+ * calendar names and the reader's time zone does not move.
+ */
+export const PriceTimeSchema = z
+  .object({
+    basis: BasisSchema,
+    time: z.iso.datetime({ offset: true }).nullable(),
+    day: z.iso.date().nullable()
+  })
+  .strict();
+
+/** One series of the quotes column, in its own currency; null where the price could not be had. */
+export const QuoteSchema = z
+  .object({
+    symbol: z.string(),
+    names: LocalizedSchema,
+    price: AmountSchema.nullable(),
+    change_percent: SignedAmountSchema.nullable(),
+    at: PriceTimeSchema.nullable(),
+    /** The source's stated delay for the market; null when it states none. */
+    delay_minutes: z.number().int().min(0).nullable()
+  })
+  .strict();
+
+/** One holding at its latest price, money in Taiwan dollars; all null when it is left out. */
+export const HoldingValueSchema = z
+  .object({
+    symbol: z.string(),
+    price: AmountSchema.nullable(),
+    value: AmountSchema.nullable(),
+    weight: AmountSchema.nullable(),
+    profit: SignedAmountSchema.nullable(),
+    profit_percent: SignedAmountSchema.nullable()
+  })
+  .strict();
+
+export const PriceSourceSchema = z
+  .object({
+    name: z.string(),
+    terms_url: z.url({ protocol: /^https$/ })
+  })
+  .strict();
+
+/** The numbers that follow the prices, all computed by the service. */
+export const ValuationSchema = z
+  .object({
+    currency: z.literal('TWD'),
+    /** Whether the service's live connection to the price source is open. */
+    live: z.boolean(),
+    total_value: AmountSchema,
+    change: SignedAmountSchema.nullable(),
+    change_percent: SignedAmountSchema.nullable(),
+    profit: SignedAmountSchema.nullable(),
+    profit_percent: SignedAmountSchema.nullable(),
+    /** Valued holdings whose previous close is not known, left out of the change. */
+    change_left_out: z.string().array(),
+    /** Holdings without a price or exchange rate, left out of every total. */
+    left_out: z.string().array(),
+    prices_at: PriceTimeSchema.nullable(),
+    holdings: HoldingValueSchema.array(),
+    quotes: QuoteSchema.array(),
+    source: PriceSourceSchema
+  })
+  .strict();
+
+/**
+ * `GET /strategy`, and each `strategy` event of the real-time connection: the profile, its current
+ * targets, the open proposal, the sample notice, and the numbers that follow the prices.
+ */
 export const StrategySchema = z
   .object({
     holdings: HoldingSchema.array(),
     targets: TargetRowSchema.array(),
     proposal: ProposalSchema.nullable(),
-    notice: LocalizedSchema
+    notice: LocalizedSchema,
+    valuation: ValuationSchema
   })
   .strict();
 

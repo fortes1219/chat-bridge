@@ -122,9 +122,7 @@ export default {
     title: 'Strategy',
     open: 'Strategy',
     loading: 'Loading the strategy…',
-    targetsTitle: 'Target weights',
     holding: 'Holding',
-    market: 'Market',
     target: 'Target',
     current: 'Current',
     proposed: 'Proposed',
@@ -135,7 +133,47 @@ export default {
     sources: 'Sources',
     accept: 'Accept',
     reject: 'Reject',
-    noTrade: 'Accepting changes the target weights only; nothing is bought or sold.'
+    noTrade: 'Accepting changes the target weights only; nothing is bought or sold.',
+    cards: {
+      total: 'Total value',
+      change: 'Since each one’s previous close',
+      profit: 'Profit or loss',
+      pricesAt: 'Prices as of',
+      leftOut: 'Left out of the totals for lack of a price or exchange rate: {names}.',
+      changeLeftOut: 'Left out of the change, previous close not known: {names}.',
+      changeNote:
+        'Each holding against the previous close of its own market, summed: Taiwan and the US trade on different days, and a US price from before or after the session, or overnight, is against the last regular close.'
+    },
+    donut: {
+      title: 'Allocation',
+      share: 'Share'
+    },
+    holdingsTable: {
+      title: 'Holdings',
+      detail: '{symbol} · {quantity} at {cost}',
+      targetOf: 'target {target}',
+      price: 'Price',
+      value: 'Value',
+      weight: 'Weight',
+      profit: 'Profit or loss',
+      note: 'Values are in Taiwan dollars. US holdings, their cost included, are valued at the latest US dollar rate.'
+    },
+    quotes: {
+      title: 'Quotes',
+      realTime: 'real time',
+      delayed: '{minutes} min delayed',
+      delayUnstated: 'delay not stated',
+      liveAt: '{time}',
+      closeOn: 'daily, {day}',
+      source: 'Prices from {name}, not the exchanges’ own feed.',
+      terms: 'Terms of use',
+      updating: 'Updating',
+      sourceDown: 'Not connected to the price source; prices stay as of their times',
+      connecting: 'Connecting…',
+      disconnected: 'Not updating',
+      invalid:
+        '{count} updates did not match the expected format and were not drawn; the numbers on the screen may be out of date. Reload the page to read them again.'
+    }
   },
   markets: {
     TW: 'Taiwan',

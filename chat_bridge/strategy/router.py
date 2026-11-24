@@ -15,6 +15,7 @@ from chat_bridge.strategy.schemas import (
     StrategyErrorDetail,
     StrategyView,
 )
+from chat_bridge.strategy.state import STATE
 
 router = APIRouter(prefix="/strategy", tags=["strategy"])
 
@@ -35,9 +36,10 @@ def _refuse(error: store.StrategyError) -> NoReturn:
 
 @router.get("")
 async def get_strategy() -> StrategyView:
-    """The profile, its current targets, and the proposal waiting for the person."""
+    """The profile, its current targets, the proposal waiting for the person, and the numbers
+    that follow the prices."""
     try:
-        return await store.read_strategy()
+        return await STATE.view()
     except store.StrategyError as error:
         _refuse(error)
 
@@ -46,6 +48,7 @@ async def get_strategy() -> StrategyView:
 async def decide_proposal(proposal_id: int, request: DecisionRequest) -> StrategyView:
     """Accept or reject the open proposal. Only accepting changes the targets."""
     try:
-        return await store.decide(proposal_id, request.decision)
+        STATE.written(await store.decide(proposal_id, request.decision))
+        return await STATE.view()
     except store.StrategyError as error:
         _refuse(error)

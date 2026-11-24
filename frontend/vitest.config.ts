@@ -8,6 +8,8 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'happy-dom',
+      // The real-time connection is a stand-in in every test (tests/setup.ts).
+      setupFiles: ['./tests/setup.ts'],
       // The view tests read each answer whole, as a reader who asked for reduced motion sees it;
       // the typing tests turn the motion back on for themselves.
       environmentOptions: {

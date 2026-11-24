@@ -74,9 +74,8 @@ describe('the strategy panel', () => {
 
     const page = await mountPanel();
 
-    const table = page.find('[data-test="targets-table"]');
+    const table = page.find('[data-test="holdings-table"]');
     expect(table.text()).toContain('台積電');
-    expect(table.text()).toContain('台股');
     expect(table.text()).toContain('50%');
     expect(table.text()).toContain('現金');
     expect(page.find('[data-test="sample-notice"]').text()).toContain('模擬範例');
@@ -98,7 +97,8 @@ describe('the strategy panel', () => {
     expect(page.find('[data-test="proposal-sources"]').text()).toContain('[1] Fed raises rates');
     expect(page.find('[data-test="proposed-by"]').text()).toContain('Codex');
     expect(page.find('[data-test="no-trade"]').exists()).toBe(true);
-    expect(page.find('[data-test="targets-table"]').exists()).toBe(false);
+    // The holdings stay, with the current targets the proposal would change.
+    expect(page.find('[data-test="holdings-table"]').text()).toContain('50%');
   });
 
   it('accepts once, sends the proposal’s number, and shows the strategy the service returns', async () => {
@@ -116,7 +116,7 @@ describe('the strategy panel', () => {
     expect(decideMock).toHaveBeenCalledTimes(1);
     expect(decideMock).toHaveBeenCalledWith({ params: { id: 5 }, body: { decision: 'accept' } });
     expect(page.find('[data-test="proposal-diff"]').exists()).toBe(false);
-    expect(page.find('[data-test="targets-table"]').text()).toContain('40%');
+    expect(page.find('[data-test="holdings-table"]').text()).toContain('40%');
   });
 
   it('rejects with the proposal’s number and shows the strategy unchanged', async () => {
@@ -128,7 +128,7 @@ describe('the strategy panel', () => {
     await flushPromises();
 
     expect(decideMock).toHaveBeenCalledWith({ params: { id: 5 }, body: { decision: 'reject' } });
-    expect(page.find('[data-test="targets-table"]').text()).toContain('50%');
+    expect(page.find('[data-test="holdings-table"]').text()).toContain('50%');
   });
 
   it('says so in the page’s words when the proposal was already decided', async () => {

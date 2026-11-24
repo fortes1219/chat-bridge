@@ -6,6 +6,8 @@ marked slow. No program and no embedding model is used.
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -13,9 +15,11 @@ import pytest
 from chat_bridge.chat.programs import Program
 from chat_bridge.chat.sources import Source
 from chat_bridge.strategy import store
+from chat_bridge.strategy.prices import Quote
 from chat_bridge.strategy.proposal import CheckedProposal
 from chat_bridge.strategy.sample import load_sample_if_empty, read_sample
-from chat_bridge.strategy.schemas import Reason
+from chat_bridge.strategy.schemas import Reason, StrategyView
+from chat_bridge.strategy.state import StrategyState
 from tests.utils import prepare_local_data, using_local_data
 
 pytestmark = pytest.mark.slow
@@ -134,3 +138,38 @@ def test_a_decided_proposal_cannot_be_decided_again() -> None:
 def test_a_decision_on_a_proposal_that_does_not_exist_is_refused() -> None:
     with pytest.raises(store.ProposalNotFoundError):
         asyncio.run(store.decide(999, "accept"))
+
+
+def test_the_view_values_the_sample_read_from_the_database_at_given_prices() -> None:
+    at = datetime(2026, 11, 24, 1, 30, tzinfo=UTC)
+    prices = {
+        "2330.TW": "1500",
+        "2308.TW": "1200",
+        "0050.TW": "60",
+        "006208.TW": "120",
+        "NVDA": "180",
+        "TWD=X": "32",
+    }
+
+    async def view() -> StrategyView:
+        state = StrategyState()
+        await state.start(None, [])
+        for symbol, price in prices.items():
+            state.price(Quote(symbol, Decimal(price), None, "live", at))
+        try:
+            return await state.view()
+        finally:
+            await state.stop()
+
+    result = asyncio.run(view())
+
+    valuation = result.valuation
+    assert [row.symbol for row in valuation.holdings] == [
+        h.symbol for h in SAMPLE.holdings
+    ]
+    # Microsoft has no price, so it is left out; NVIDIA is 150 x 180 x 32.
+    assert valuation.left_out == ["MSFT"]
+    assert valuation.total_value == Decimal("8064000.00")
+    assert valuation.holdings[0].weight == Decimal("37.20")
+    assert valuation.holdings[4].value == Decimal("864000.00")
+    assert {row.symbol: row.current for row in result.targets} == SAMPLE.targets

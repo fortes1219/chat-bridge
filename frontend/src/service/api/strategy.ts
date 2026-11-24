@@ -12,6 +12,10 @@ export type Strategy = Outputs['getStrategy'];
 export type Holding = Strategy['holdings'][number];
 export type Proposal = NonNullable<Strategy['proposal']>;
 export type DiffRow = Proposal['rows'][number];
+export type Valuation = Strategy['valuation'];
+export type HoldingValue = Valuation['holdings'][number];
+export type Quote = Valuation['quotes'][number];
+export type PriceTime = NonNullable<Quote['at']>;
 export type DecideInput = Inputs['decideProposal'];
 export type Decision = DecideInput['body']['decision'];
 

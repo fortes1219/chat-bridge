@@ -12,9 +12,9 @@ from fastapi.testclient import TestClient
 
 from chat_bridge.chat.server import create_app
 from chat_bridge.strategy import store
-from chat_bridge.strategy.schemas import StrategyView
+from chat_bridge.strategy.schemas import StoredStrategy
 
-VIEW = StrategyView(
+STORED = StoredStrategy(
     holdings=[],
     targets=[],
     proposal=None,
@@ -27,12 +27,12 @@ DECISION = "/strategy/proposals/1/decision"
 def decisions(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str]]:
     made: list[tuple[int, str]] = []
 
-    async def decide(proposal_id: int, decision: str) -> StrategyView:
+    async def decide(proposal_id: int, decision: str) -> StoredStrategy:
         made.append((proposal_id, decision))
-        return VIEW
+        return STORED
 
-    async def read() -> StrategyView:
-        return VIEW
+    async def read() -> StoredStrategy:
+        return STORED
 
     monkeypatch.setattr(store, "decide", decide)
     monkeypatch.setattr(store, "read_strategy", read)
@@ -113,7 +113,7 @@ def test_a_decision_on_a_proposal_that_is_gone_or_closed_is_refused_with_its_cod
     status: int,
     code: str,
 ) -> None:
-    async def refuse(proposal_id: int, decision: str) -> StrategyView:
+    async def refuse(proposal_id: int, decision: str) -> StoredStrategy:
         raise error
 
     monkeypatch.setattr(store, "decide", refuse)
@@ -127,7 +127,7 @@ def test_a_decision_on_a_proposal_that_is_gone_or_closed_is_refused_with_its_cod
 def test_a_missing_profile_is_said_with_its_code(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def missing() -> StrategyView:
+    async def missing() -> StoredStrategy:
         raise store.ProfileMissingError()
 
     monkeypatch.setattr(store, "read_strategy", missing)

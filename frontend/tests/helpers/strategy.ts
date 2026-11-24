@@ -1,4 +1,70 @@
-import type { Proposal, Strategy } from '@/service/api/strategy';
+import type { Proposal, Strategy, Valuation } from '@/service/api/strategy';
+
+const LIVE = { basis: 'live', time: '2026-11-24T01:30:00Z', day: null } as const;
+
+/**
+ * The holdings below at TSMC 1,480 (live), NVIDIA 180 (the US close of 2026-11-21) and 32 Taiwan
+ * dollars a US dollar, as the service computes them; the Philadelphia index has no price.
+ */
+export const VALUATION: Valuation = {
+  currency: 'TWD',
+  live: true,
+  total_value: '4424000.00',
+  change: '-6000.00',
+  change_percent: '-0.14',
+  profit: '-819040.00',
+  profit_percent: '-17.64',
+  change_left_out: [],
+  left_out: [],
+  prices_at: LIVE,
+  holdings: [
+    {
+      symbol: '2330.TW',
+      price: '1480',
+      value: '2960000.00',
+      weight: '66.91',
+      profit: '-1000000.00',
+      profit_percent: '-25.25'
+    },
+    { symbol: 'NVDA', price: '180', value: '864000.00', weight: '19.53', profit: '180960.00', profit_percent: '26.49' },
+    { symbol: 'CASH', price: null, value: '600000.00', weight: '13.56', profit: null, profit_percent: null }
+  ],
+  quotes: [
+    {
+      symbol: '2330.TW',
+      names: { 'zh-TW': '台積電', en: 'TSMC' },
+      price: '1480',
+      change_percent: '-1.00',
+      at: LIVE,
+      delay_minutes: 20
+    },
+    {
+      symbol: 'NVDA',
+      names: { 'zh-TW': '輝達', en: 'NVIDIA' },
+      price: '180',
+      change_percent: '2.86',
+      at: { basis: 'daily', time: null, day: '2026-11-21' },
+      delay_minutes: 0
+    },
+    {
+      symbol: '^SOX',
+      names: { 'zh-TW': '費城半導體指數', en: 'PHLX Semiconductor Index' },
+      price: null,
+      change_percent: null,
+      at: null,
+      delay_minutes: 0
+    },
+    {
+      symbol: 'TWD=X',
+      names: { 'zh-TW': '美元兌新台幣', en: 'US dollar in Taiwan dollars' },
+      price: '32',
+      change_percent: '0.31',
+      at: LIVE,
+      delay_minutes: 0
+    }
+  ],
+  source: { name: 'Yahoo Finance', terms_url: 'https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html' }
+};
 
 /** A strategy as the service sends it: two holdings and cash, no proposal. */
 export const STRATEGY: Strategy = {
@@ -34,7 +100,8 @@ export const STRATEGY: Strategy = {
     { symbol: 'CASH', current: 20 }
   ],
   proposal: null,
-  notice: { 'zh-TW': '模擬範例', en: 'simulated sample' }
+  notice: { 'zh-TW': '模擬範例', en: 'simulated sample' },
+  valuation: VALUATION
 };
 
 /** A checked proposal that moves ten points from TSMC to cash. */
