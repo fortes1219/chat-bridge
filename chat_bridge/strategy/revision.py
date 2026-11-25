@@ -161,7 +161,7 @@ async def revision_reply(
 
 
 async def proposal_event(
-    proposal: ProposalReply | None,
+    proposal: ProposalReply | ProposalRefusal | None,
     profile: store.Profile,
     sources: list[Source],
     *,
@@ -172,6 +172,8 @@ async def proposal_event(
     program proposed nothing or proposed the targets as they are."""
     if proposal is None:
         return ProposalEvent()
+    if isinstance(proposal, ProposalRefusal):
+        return ProposalEvent(refused=proposal)
     checked: CheckedProposal | ProposalRefusal = check_proposal(
         proposal, profile.symbols, {source.number for source in sources}
     )

@@ -313,6 +313,29 @@ def test_a_proposal_that_fails_a_check_is_refused_with_its_reason_and_not_kept(
     assert run.records[0]["proposal"]["refused"]["code"] == "not_100"
 
 
+def test_a_proposal_not_in_its_shape_still_shows_the_answer_and_says_why_it_was_refused(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A real run once added a reason without a source, which cost the whole answer.
+    unsourced = {
+        **GOOD_PROPOSAL,
+        "reasons": [*GOOD_PROPOSAL["reasons"], {"text": "另一個理由", "sources": []}],
+    }
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": unsourced})
+
+    _, text, proposal = _read()
+
+    assert text.delta == ANSWER
+    assert proposal.proposal is not None
+    assert proposal.proposal.proposal is None
+    assert proposal.proposal.refused is not None
+    assert proposal.proposal.refused.code == "not_the_shape"
+    assert run.saved == []
+    assert run.records[0]["answer"] == ANSWER
+    assert run.records[0]["error"] is None
+    assert run.records[0]["proposal"]["refused"]["code"] == "not_the_shape"
+
+
 def test_no_proposal_is_said_as_neither_a_proposal_nor_a_refusal(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:

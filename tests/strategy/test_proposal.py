@@ -116,42 +116,36 @@ def test_a_reason_citing_a_source_the_answer_does_not_have_is_refused() -> None:
         {"answer": "a"},
         {"answer": "a", "proposal": None, "note": "extra"},
         {"answer": 1, "proposal": None},
-        {"answer": "a", "proposal": {"targets": [], "reasons": []}},
-        {
-            "answer": "a",
-            "proposal": {
-                "targets": [{"symbol": "CASH", "percent": 100}],
-                "reasons": [{"text": "r", "sources": []}],
-            },
-        },
-        {
-            "answer": "a",
-            "proposal": {
-                "targets": [{"symbol": "CASH", "percent": 99.5}],
-                "reasons": [REASON],
-            },
-        },
-        {
-            "answer": "a",
-            "proposal": {
-                "targets": [{"symbol": "CASH", "percent": "100"}],
-                "reasons": [REASON],
-            },
-        },
-        {
-            "answer": "a",
-            "proposal": {
-                "targets": [{"symbol": "CASH", "percent": 100}],
-                "reasons": [{"text": "   ", "sources": [1]}],
-            },
-        },
     ],
 )
-def test_a_reply_that_is_not_an_answer_and_a_proposal_is_not_read(
-    reply: dict[str, Any],
-) -> None:
+def test_a_reply_with_no_answer_to_show_is_not_read(reply: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         read_reply(reply)
+
+
+CASH_ONLY = [{"symbol": "CASH", "percent": 100}]
+
+
+@pytest.mark.parametrize(
+    "proposal",
+    [
+        "move to cash",
+        {"targets": [], "reasons": []},
+        {"targets": CASH_ONLY, "reasons": [{"text": "r", "sources": []}]},
+        {"targets": [{"symbol": "CASH", "percent": 99.5}], "reasons": [REASON]},
+        {"targets": [{"symbol": "CASH", "percent": "100"}], "reasons": [REASON]},
+        {"targets": CASH_ONLY, "reasons": [{"text": "   ", "sources": [1]}]},
+        {"targets": CASH_ONLY, "reasons": [REASON], "note": "extra"},
+    ],
+)
+def test_a_proposal_not_in_its_shape_is_refused_and_the_answer_is_kept(
+    proposal: Any,
+) -> None:
+    read = read_reply({"answer": "回答。[1]", "proposal": proposal})
+
+    assert read.answer == "回答。[1]"
+    assert isinstance(read.proposal, ProposalRefusal)
+    assert read.proposal.code == "not_the_shape"
 
 
 def test_a_reply_with_no_proposal_is_read() -> None:
