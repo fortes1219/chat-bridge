@@ -17,6 +17,7 @@ from chat_bridge.strategy.schemas import RuleChecks, StoredStrategy
 STORED = StoredStrategy(
     holdings=[],
     targets=[],
+    targets_total=0,
     rule_checks=RuleChecks(met=0, enabled=0, rules=[]),
     proposal=None,
     notice=store.SAMPLE_NOTICE,

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
 import { useProposalKept } from '@/queries/use-strategy-query';
 import StrategyPanel from '@/views/strategy/StrategyPanel.vue';
+import { provideStrategyEditors } from '@/views/strategy/composables/useStrategyEditors';
 import { LOCALES, UI_LOCALES, type MessageSchema } from '@/i18n';
 import { useLoginGate } from './composables/useLoginGate';
 import { useAddressState } from './composables/useAddressState';
@@ -27,6 +28,8 @@ const open = computed(() => gate.value === 'open');
 // proposal card and the bar's button open.
 const isNarrow = useBreakpoints(breakpointsTailwind).smaller('lg');
 const strategyOpen = ref(false);
+// The holdings and rules being edited are kept here, which holds both places the panel can be.
+provideStrategyEditors();
 // The chat panel's share of a wide window, in percent; the strategy takes the rest.
 const CHAT_PANEL = { defaultSize: 62, minSize: 45, maxSize: 75 } as const;
 

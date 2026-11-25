@@ -359,7 +359,9 @@ def answering(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 def _ask_with_split(
     monkeypatch: pytest.MonkeyPatch, outcome: split.SplitOutcome
 ) -> list[ChatDelta]:
-    async def split_question(program: object, question: str) -> split.SplitOutcome:
+    async def split_question(
+        program: object, question: str, holdings: object = None
+    ) -> split.SplitOutcome:
         return outcome
 
     monkeypatch.setattr(service, "split_question", split_question)
@@ -437,7 +439,9 @@ def test_the_date_the_data_reaches_is_the_knowledge_bases_not_the_sources(
 def test_a_question_the_search_finds_nothing_for_starts_no_split(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def no_split(program: object, question: str) -> split.SplitOutcome:
+    async def no_split(
+        program: object, question: str, holdings: object = None
+    ) -> split.SplitOutcome:
         raise AssertionError("no split for a question the data has nothing on")
 
     async def no_record(*args: Any, **kwargs: Any) -> None:

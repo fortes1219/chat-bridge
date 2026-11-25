@@ -146,6 +146,7 @@ export const STRATEGY: Strategy = {
     { symbol: 'NVDA', current: 30 },
     { symbol: 'CASH', current: 20 }
   ],
+  targets_total: 100,
   rule_checks: RULE_CHECKS,
   proposal: null,
   notice: { 'zh-TW': '模擬範例', en: 'simulated sample' },

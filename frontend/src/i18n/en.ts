@@ -119,6 +119,26 @@ export default {
     rule_market: {
       title: 'A market rule needs Taiwan or US; the other kinds name no market.',
       description: 'Change it, then save again.'
+    },
+    holding_symbol: {
+      title: 'Only Taiwan symbols (ending in .TW or .TWO) and US tickers are kept.',
+      description: 'Write it as Yahoo Finance does, such as 2330.TW or AAPL, then save again.'
+    },
+    holding_repeated: {
+      title: 'A symbol can be listed only once.',
+      description: 'Remove or change the repeated one, then save again.'
+    },
+    holding_name: {
+      title: 'Every holding needs a name of at most 40 characters.',
+      description: 'Change it, then save again.'
+    },
+    holding_amount: {
+      title: 'A quantity must be above 0; a cost and the cash cannot be below 0; none above 1e15.',
+      description: 'Write numbers only, with a point for decimals, then save again.'
+    },
+    holdings_too_many: {
+      title: 'At most 30 holdings, cash aside.',
+      description: 'Remove some, then save again.'
     }
   },
   refusals: {
@@ -191,6 +211,23 @@ export default {
     TW: 'Taiwan',
     US: 'US',
     cash: 'Cash'
+  },
+  holdings: {
+    title: 'Edit holdings',
+    edit: 'Edit holdings',
+    add: 'Add a holding',
+    remove: 'Remove this holding',
+    save: 'Save',
+    cancel: 'Cancel',
+    symbol: 'Symbol',
+    name: 'Name',
+    quantity: 'Quantity',
+    cost: 'Average cost',
+    cash: 'Cash (TWD)',
+    note: 'Write symbols as Yahoo Finance does: Taiwan with .TW or .TWO, US as the ticker. A new holding’s target is 0%; a removed holding’s target goes with it. Saving closes a proposal you have not decided on.',
+    targetsTotal:
+      'The targets add up to {total}%, not 100%. Ask in the chat for a revised strategy; accepting it sets them again.',
+    which: 'Holding {item}: {title}'
   },
   rules: {
     title: 'Your rules',

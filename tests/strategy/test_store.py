@@ -18,7 +18,13 @@ from chat_bridge.strategy import store
 from chat_bridge.strategy.prices import Quote
 from chat_bridge.strategy.proposal import CheckedProposal
 from chat_bridge.strategy.sample import load_sample_if_empty, read_sample
-from chat_bridge.strategy.schemas import Reason, RuleInput, StrategyView
+from chat_bridge.strategy.schemas import (
+    HoldingInput,
+    HoldingsRequest,
+    Reason,
+    RuleInput,
+    StrategyView,
+)
 from chat_bridge.strategy.state import StrategyState
 from tests.utils import prepare_local_data, using_local_data
 
@@ -177,6 +183,63 @@ def test_refused_rules_leave_the_saved_ones_as_they_were() -> None:
     assert [rule.limit_percent for rule in profile.rules] == [
         rule.limit_percent for rule in SAMPLE.rules
     ]
+
+
+def _holdings(*symbols: str, cash: str = "600000") -> HoldingsRequest:
+    """The sample's holdings named, as the page sends them, then any others."""
+    sample = {holding.symbol: holding for holding in SAMPLE.holdings}
+    return HoldingsRequest(
+        holdings=[
+            HoldingInput(
+                symbol=symbol,
+                names=sample[symbol].names
+                if symbol in sample
+                else {"zh-TW": "蘋果", "en": "Apple"},
+                quantity=sample[symbol].quantity if symbol in sample else Decimal("5"),
+                average_cost=sample[symbol].average_cost
+                if symbol in sample
+                else Decimal("180.25"),
+            )
+            for symbol in symbols
+        ],
+        cash=Decimal(cash),
+    )
+
+
+def test_saved_holdings_replace_the_old_ones_and_their_targets_follow() -> None:
+    # MSFT (target 8) is removed and AAPL added; the others keep their order and targets.
+    _save(cash=30)
+    kept = ["2330.TW", "2308.TW", "0050.TW", "006208.TW", "NVDA"]
+
+    view = asyncio.run(store.save_holdings(_holdings(*kept, "AAPL", cash="123456.78")))
+
+    assert [holding.symbol for holding in view.holdings] == [*kept, "AAPL", "CASH"]
+    aapl = view.holdings[-2]
+    assert (aapl.market, aapl.currency, aapl.average_cost) == (
+        "US",
+        "USD",
+        Decimal("180.25"),
+    )
+    assert view.holdings[-1].quantity == Decimal("123456.78")
+    targets = {row.symbol: row.current for row in view.targets}
+    assert targets == {symbol: SAMPLE.targets[symbol] for symbol in kept} | {
+        "AAPL": 0,
+        "CASH": SAMPLE.targets["CASH"],
+    }
+    assert view.targets_total == 100 - SAMPLE.targets["MSFT"]
+    # The open proposal was checked against the holdings before, so it is closed.
+    assert view.proposal is None
+    profile = asyncio.run(store.read_profile())
+    assert "MSFT" not in profile.symbols
+
+
+def test_refused_holdings_leave_the_saved_ones_as_they_were() -> None:
+    with pytest.raises(store.HoldingRefusedError):
+        asyncio.run(store.save_holdings(_holdings("2330.TW", "0700.HK")))
+
+    profile = asyncio.run(store.read_profile())
+    assert profile.symbols == [holding.symbol for holding in SAMPLE.holdings]
+    assert profile.targets == SAMPLE.targets
 
 
 def test_a_proposal_shows_each_rule_on_the_current_and_the_proposed_targets() -> None:

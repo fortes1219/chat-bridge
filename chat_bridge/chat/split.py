@@ -84,9 +84,11 @@ def split_prompt() -> str:
     return PROMPT_FILE.read_text(encoding="utf-8")
 
 
-def split_input(question: str) -> str:
-    """The question between tags, so it reads as data, not as part of the rules."""
-    return f"<question>\n{question}\n</question>\n"
+def split_input(question: str, holdings: list[str] | None = None) -> str:
+    """The question between tags, so it reads as data, not as part of the rules; before it, the
+    user's own holdings, one per line, so a question about them can be searched for each one."""
+    held = f"<holdings>\n{chr(10).join(holdings)}\n</holdings>\n\n" if holdings else ""
+    return f"{held}<question>\n{question}\n</question>\n"
 
 
 def read_split(reply: dict[str, Any]) -> SplitReply:
@@ -111,9 +113,12 @@ def kept_parts(question: str, parts: list[str]) -> tuple[list[str], int]:
     return distinct[:PARTS_LIMIT], max(len(distinct) - PARTS_LIMIT, 0)
 
 
-async def split_question(program: AnsweringProgram, question: str) -> SplitOutcome:
-    """Ask the program for the question's parts. Never raises for a split that fails: the
-    outcome says why, and the caller goes on with the question's own sections."""
+async def split_question(
+    program: AnsweringProgram, question: str, holdings: list[str] | None = None
+) -> SplitOutcome:
+    """Ask the program for the question's parts, given the user's holdings when there are any.
+    Never raises for a split that fails: the outcome says why, and the caller goes on with the
+    question's own sections."""
     command: list[str] = []
     started = time.perf_counter()
 
@@ -128,7 +133,7 @@ async def split_question(program: AnsweringProgram, question: str) -> SplitOutco
         reply = await asyncio.wait_for(
             program.reply_in_shape(
                 split_prompt(),
-                split_input(question),
+                split_input(question, holdings),
                 SPLIT_SCHEMA,
                 on_start=command.extend,
             ),

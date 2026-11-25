@@ -1,7 +1,12 @@
 import type { InferContractRouterInputs, InferContractRouterOutputs } from '@orpc/contract';
 import { request } from '@/service/request';
 import { parseContract, parseInput } from '@/service/error';
-import { DecisionRequestSchema, RulesRequestSchema, StrategySchema } from '@/service/schema/strategy';
+import {
+  DecisionRequestSchema,
+  HoldingsRequestSchema,
+  RulesRequestSchema,
+  StrategySchema
+} from '@/service/schema/strategy';
 import type { contract } from '@/service/contract';
 
 type Outputs = InferContractRouterOutputs<typeof contract>['strategy'];
@@ -24,6 +29,8 @@ export type RulesInput = Inputs['saveRules'];
 export type Rule = RulesInput['rules'][number];
 export type RuleKind = Rule['kind'];
 export type Market = NonNullable<Rule['market']>;
+export type HoldingsInput = Inputs['saveHoldings'];
+export type HoldingInput = HoldingsInput['holdings'][number];
 
 /** The profile, its current targets, and the proposal waiting for the person. */
 export async function getStrategy(signal?: AbortSignal): Promise<Strategy> {
@@ -47,5 +54,12 @@ export async function decideProposal({ params, body }: DecideInput, signal?: Abo
 export async function saveRules(input: RulesInput, signal?: AbortSignal): Promise<Strategy> {
   const body = parseInput(RulesRequestSchema, input);
   const data = await request<unknown>({ url: '/strategy/rules', method: 'PUT', data: body, signal });
+  return parseContract(StrategySchema, data);
+}
+
+/** Replace the person's holdings and cash; returns the strategy after it. */
+export async function saveHoldings(input: HoldingsInput, signal?: AbortSignal): Promise<Strategy> {
+  const body = parseInput(HoldingsRequestSchema, input);
+  const data = await request<unknown>({ url: '/strategy/holdings', method: 'PUT', data: body, signal });
   return parseContract(StrategySchema, data);
 }

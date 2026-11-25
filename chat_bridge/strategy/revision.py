@@ -12,6 +12,7 @@ import functools
 import json
 from collections.abc import Callable
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,7 @@ from pydantic import ValidationError
 from chat_bridge.chat.programs import AnsweringProgram, Program, ProgramError
 from chat_bridge.chat.sources import Source
 from chat_bridge.strategy import store
-from chat_bridge.strategy.compute import RATE_SYMBOL, price_time
+from chat_bridge.strategy.compute import RATE_SYMBOL, price_time, valuation
 from chat_bridge.strategy.prices import PriceBook
 from chat_bridge.strategy.proposal import (
     PROPOSAL_SCHEMA,
@@ -31,7 +32,11 @@ from chat_bridge.strategy.proposal import (
     first_problem,
     read_reply,
 )
-from chat_bridge.strategy.schemas import ProposalEvent, ProposalRefusal
+from chat_bridge.strategy.schemas import (
+    HoldingValue,
+    ProposalEvent,
+    ProposalRefusal,
+)
 from chat_bridge.strategy.state import STATE
 
 PROMPT_FILE = Path(__file__).with_name("revision_prompt.md")
@@ -66,14 +71,36 @@ def _latest_price(symbol: str, book: PriceBook) -> dict[str, Any] | None:
     }
 
 
+# What the service computed for each holding, as the program reads it.
+COMPUTED_FIELDS = ("value_TWD", "weight_percent", "profit_TWD", "profit_percent")
+
+
+def _text(amount: Decimal | None) -> str | None:
+    return None if amount is None else format(amount, "f")
+
+
+def _computed(held: HoldingValue | None) -> dict[str, str | None]:
+    """A holding's value, weight and profit as the service computed them, in Taiwan dollars; all
+    none for a holding left out."""
+    amounts = (
+        (None, None, None, None)
+        if held is None
+        else (held.value, held.weight, held.profit, held.profit_percent)
+    )
+    return dict(zip(COMPUTED_FIELDS, map(_text, amounts), strict=True))
+
+
 def strategy_input(profile: store.Profile, book: PriceBook) -> str:
-    """The profile and its prices as data between their own tags, so they read as data, not as
-    part of the rules."""
+    """The profile, its prices and what the service computed from them, as data between their own
+    tags, so they read as data, not as part of the rules. The program is given the values, weights
+    and profit, so it computes none of them."""
     rates = {
         currency: _latest_price(symbol, book)
         for currency, symbol in RATE_SYMBOL.items()
         if symbol is not None
     }
+    valued = valuation(profile.holdings, book)
+    value_of = {held.symbol: held for held in valued.holdings}
     data = {
         "holdings": [
             {
@@ -81,15 +108,23 @@ def strategy_input(profile: store.Profile, book: PriceBook) -> str:
                 "names": holding.names,
                 "market": holding.market,
                 "currency": holding.currency,
-                "quantity": str(holding.quantity),
-                "average_cost": str(holding.average_cost),
+                # In plain notation: the database may hand 20000 back as 2E+4.
+                "quantity": _text(holding.quantity),
+                "average_cost": _text(holding.average_cost),
                 "target_percent": profile.targets[holding.symbol],
                 "latest_price": _latest_price(holding.symbol, book),
+                **_computed(value_of.get(holding.symbol)),
             }
             for holding in profile.holdings
         ],
         # One unit of each currency in Taiwan dollars.
         "exchange_rates_to_TWD": rates,
+        "total_value_TWD": _text(valued.total_value),
+        "profit_TWD": _text(valued.profit),
+        "profit_percent": _text(valued.profit_percent),
+        # Holdings without a price or a rate, left out of the values, weights and totals.
+        "left_out": valued.left_out,
+        "targets_total_percent": sum(profile.targets.values()),
         "rules": [rule.model_dump() for rule in profile.rules],
     }
     return (

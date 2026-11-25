@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from chat_bridge.strategy import store
 from chat_bridge.strategy.schemas import (
     DecisionRequest,
+    HoldingsRequest,
     RulesRequest,
     StrategyErrorDetail,
     StrategyView,
@@ -26,11 +27,12 @@ STATUS_OF: dict[type[store.StrategyError], int] = {
     store.ProposalNotFoundError: 404,
     store.ProposalNotOpenError: 409,
     store.RuleRefusedError: 422,
+    store.HoldingRefusedError: 422,
 }
 
 
 def _refuse(error: store.StrategyError) -> NoReturn:
-    detail = StrategyErrorDetail(code=error.code, message=str(error))
+    detail = StrategyErrorDetail(code=error.code, message=str(error), item=error.item)
     raise HTTPException(
         status_code=STATUS_OF[type(error)], detail=detail.model_dump()
     ) from error
@@ -65,3 +67,16 @@ async def save_rules(request: RulesRequest) -> StrategyView:
         return await STATE.view()
     except store.StrategyError as error:
         _refuse(error)
+
+
+@router.put("/holdings")
+async def save_holdings(request: HoldingsRequest) -> StrategyView:
+    """Replace the person's holdings and cash; the prices then follow the saved holdings, and a
+    new holding's price reaches the page over the live connection when it is read."""
+    try:
+        stored = await store.save_holdings(request)
+    except store.StrategyError as error:
+        _refuse(error)
+    STATE.written(stored)
+    STATE.follow(stored.holdings)
+    return await STATE.view()

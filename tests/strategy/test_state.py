@@ -15,6 +15,7 @@ from chat_bridge.strategy import state as state_module
 from chat_bridge.strategy import store
 from chat_bridge.strategy.prices import Quote
 from chat_bridge.strategy.schemas import (
+    HoldingView,
     RuleChecks,
     StoredStrategy,
     StrategyView,
@@ -29,6 +30,7 @@ STORED = StoredStrategy(
         TargetRow(symbol=h.symbol, current=c)
         for h, c in zip(HOLDINGS, (60, 30, 10), strict=True)
     ],
+    targets_total=100,
     rule_checks=RuleChecks(met=0, enabled=0, rules=[]),
     proposal=None,
     notice=store.SAMPLE_NOTICE,
@@ -286,3 +288,99 @@ def test_a_read_that_a_write_overtook_is_not_kept(
 
     assert asyncio.run(main()) == [1]
     assert len(reads) == 1
+
+
+class _Following(_Prices):
+    """Has a close for every series it is asked for, and records each read of closes and each
+    stream, so a restart on other holdings can be seen; it can fail every read after the first."""
+
+    def __init__(self, *, fail_later_reads: bool = False) -> None:
+        super().__init__()
+        self.fail_later_reads = fail_later_reads
+        self.reads: list[list[str]] = []
+        self.streams: list[list[str]] = []
+
+    async def read_closes(
+        self, symbols: list[str], on_quote: Callable[[Quote], None]
+    ) -> None:
+        self.reads.append(symbols)
+        if self.fail_later_reads and len(self.reads) > 1:
+            raise ConnectionError("Yahoo is out of reach")
+        for symbol in symbols:
+            on_quote(Quote(symbol, Decimal("100"), Decimal("99"), "daily", NOW))
+
+    async def stream(
+        self,
+        symbols: list[str],
+        on_quote: Callable[[Quote], None],
+        on_open: Callable[[bool], None],
+    ) -> None:
+        self.streams.append(symbols)
+        await super().stream(symbols, on_quote, on_open)
+
+
+# The sample's holdings with NVDA sold and AAPL bought.
+SAVED = [HOLDINGS[0], HOLDINGS[1].model_copy(update={"symbol": "AAPL"}), HOLDINGS[2]]
+STARTED = ["2330.TW", "NVDA", "^SOX", "TWD=X"]
+
+
+async def _until(done: Callable[[], bool]) -> None:
+    for _ in range(200):
+        if done():
+            return
+        await asyncio.sleep(0)
+    raise AssertionError("the feed did not get there")
+
+
+def _follow(feed: _Following, holdings: list[HoldingView]) -> None:
+    async def main() -> None:
+        state = StrategyState()
+        await state.start(feed, [])
+        await _until(lambda: len(feed.streams) == 1)
+        state.follow(holdings)
+        await _until(lambda: len(feed.streams) == 2)
+        await state.stop()
+
+    asyncio.run(main())
+
+
+def test_after_a_save_the_closes_of_the_new_holdings_are_read_and_the_stream_follows_them(
+    reads: list[int],
+) -> None:
+    feed = _Following()
+
+    _follow(feed, SAVED)
+
+    assert feed.reads == [STARTED, ["AAPL"]]
+    assert feed.streams == [STARTED, ["2330.TW", "AAPL", "^SOX", "TWD=X"]]
+    assert feed.stopped
+
+
+def test_holdings_saved_with_the_same_symbols_leave_the_feed_as_it_is(
+    reads: list[int],
+) -> None:
+    feed = _Following()
+
+    async def main() -> None:
+        state = StrategyState()
+        await state.start(feed, [])
+        await _until(lambda: len(feed.streams) == 1)
+        state.follow(HOLDINGS)
+        await _settle()
+        await state.stop()
+
+    asyncio.run(main())
+
+    assert feed.reads == [STARTED]
+    assert feed.streams == [STARTED]
+
+
+def test_closes_that_cannot_be_read_after_a_save_are_logged_and_the_stream_still_follows(
+    reads: list[int], caplog: pytest.LogCaptureFixture
+) -> None:
+    feed = _Following(fail_later_reads=True)
+
+    _follow(feed, SAVED)
+
+    assert feed.streams[-1] == ["2330.TW", "AAPL", "^SOX", "TWD=X"]
+    assert "could not be read" in caplog.text

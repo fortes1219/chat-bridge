@@ -1,6 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { strategyKeys } from '@/queries/keys';
-import { decideProposal, saveRules, type DecideInput, type RulesInput, type Strategy } from '@/service/api/strategy';
+import {
+  decideProposal,
+  saveHoldings,
+  saveRules,
+  type DecideInput,
+  type HoldingsInput,
+  type RulesInput,
+  type Strategy
+} from '@/service/api/strategy';
 import type { AppError } from '@/service/error';
 
 /**
@@ -28,6 +36,18 @@ export function useSaveRules() {
   const queryClient = useQueryClient();
   return useMutation<Strategy, AppError, RulesInput>({
     mutationFn: input => saveRules(input),
+    retry: false,
+    onSuccess: strategy => {
+      queryClient.setQueryData(strategyKeys.current(), strategy);
+    }
+  });
+}
+
+/** Saving the person's holdings, as the rules are saved. */
+export function useSaveHoldings() {
+  const queryClient = useQueryClient();
+  return useMutation<Strategy, AppError, HoldingsInput>({
+    mutationFn: input => saveHoldings(input),
     retry: false,
     onSuccess: strategy => {
       queryClient.setQueryData(strategyKeys.current(), strategy);

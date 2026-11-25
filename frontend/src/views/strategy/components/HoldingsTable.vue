@@ -8,6 +8,7 @@ import { useStrategyFormat } from '../composables/useStrategyFormat';
 import { CASH, MISSING } from '../constants';
 
 const props = defineProps<{ strategy: Strategy; holdings: ReadonlyMap<string, Holding> }>();
+const emit = defineEmits<{ edit: [] }>();
 
 const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
 const format = useStrategyFormat();
@@ -107,7 +108,26 @@ const TABLE_UI = { th: 'px-2 py-2', td: 'px-2 py-2' };
 
 <template>
   <section class="flex flex-col gap-2">
-    <h3 class="font-semibold">{{ t('strategy.holdingsTable.title') }}</h3>
+    <div class="flex items-center justify-between gap-2">
+      <h3 class="font-semibold">{{ t('strategy.holdingsTable.title') }}</h3>
+      <UButton
+        data-test="holdings-edit"
+        size="sm"
+        color="neutral"
+        variant="outline"
+        icon="i-lucide-pencil"
+        :label="t('holdings.edit')"
+        @click="emit('edit')"
+      />
+    </div>
+    <UAlert
+      v-if="strategy.targets_total !== 100"
+      data-test="targets-total"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      :description="t('holdings.targetsTotal', { total: strategy.targets_total })"
+    />
     <UTable data-test="holdings-table" :data="rows" :columns="columns" :ui="TABLE_UI" />
     <p class="text-muted text-xs">{{ t('strategy.holdingsTable.note') }}</p>
   </section>

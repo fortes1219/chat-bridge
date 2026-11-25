@@ -183,6 +183,8 @@ export const StrategySchema = z
   .object({
     holdings: HoldingSchema.array(),
     targets: TargetRowSchema.array(),
+    /** What the current targets add up to; other than 100 after a holding with a target is removed. */
+    targets_total: z.number().int(),
     /** The rules checked on the current targets; prices do not move them. */
     rule_checks: RuleChecksSchema,
     proposal: ProposalSchema.nullable(),
@@ -210,6 +212,27 @@ export const DecisionRequestSchema = z
 export const RulesRequestSchema = z
   .object({
     rules: RuleSchema.array()
+  })
+  .strict();
+
+/** A holding as the page sends it; the service works out its market and currency from the symbol. */
+export const HoldingInputSchema = z
+  .object({
+    symbol: z.string(),
+    names: LocalizedSchema,
+    quantity: AmountSchema,
+    average_cost: AmountSchema
+  })
+  .strict();
+
+/**
+ * `PUT /strategy/holdings` body: every holding but cash, in the order the screen lists them, and the
+ * cash in Taiwan dollars, replacing the saved ones. A JSON body, for the same reason as the rules.
+ */
+export const HoldingsRequestSchema = z
+  .object({
+    holdings: HoldingInputSchema.array(),
+    cash: AmountSchema
   })
   .strict();
 

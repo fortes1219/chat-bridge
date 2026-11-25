@@ -152,6 +152,26 @@ uv run chat-bridge
 
 A question, or a document you ingest, can contain instructions such as "ignore the rules above". OWASP's Top 10 for LLM applications says no method fully prevents this. So the app limits what a led-astray answer can do: the model can run no command, change no file and go nowhere online (Claude Code has no tools; Codex keeps a patch tool that cannot be turned off, and a read-only sandbox stops it writing); the sources and the question reach it separately, through standard input, marked as data that cannot change its rules; and the sources and disclaimer are added by the app. What it does not promise is that the model's own text is never led astray.
 
+## Your own holdings
+
+The strategy panel starts with a made-up sample portfolio (`data/profile/sample.json`). Choose
+**Edit holdings** to add a holding, change its quantity, average cost or name, remove one, or set
+the cash, then **Save**. Write symbols as Yahoo Finance does: Taiwan listings end in `.TW` or
+`.TWO` (`2330.TW`, `6488.TWO`), US tickers stand alone (`AAPL`, `BRK-B`). The panel values the
+holdings at their latest prices, and every question in the chat is answered with the holdings as
+they are now.
+
+What it does not do:
+
+- Targets are not typed in. A new holding starts at 0%, a removed one takes its target with it,
+  and the panel says when the targets no longer add up to 100%. Ask the chat to revise the
+  strategy; accepting the proposal sets the targets again.
+- Other markets, indices, currencies and coins are refused: the service has the exchange rate and
+  the rules of Taiwan and US listings only.
+- There are no trades and no history: saving replaces the quantities and costs you typed.
+- A question about "my holdings" that names none is searched for at most 8 of them; up to 30
+  holdings can be kept.
+
 ## Sample data
 
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).

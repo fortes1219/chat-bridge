@@ -4,8 +4,9 @@ With no program named, the service falls back to Codex when Claude Code is not l
 test that makes Claude Code look missing would otherwise reach the Codex on the machine.
 
 Nor does a chat test start a program to split a question, or read the database for the date the
-data reaches or for the market sections of the documents found, unless it says otherwise: the
-split lists no parts, the date is fixed, and no document has a market section.
+data reaches, for the market sections of the documents found or for the profile, unless it says
+otherwise: the split lists no parts, the date is fixed, no document has a market section, and
+there is no profile.
 """
 
 import asyncio
@@ -43,7 +44,9 @@ def codex_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def no_parts(program: object, question: str) -> SplitOutcome:
+    async def no_parts(
+        program: object, question: str, holdings: object = None
+    ) -> SplitOutcome:
         return SplitOutcome()
 
     async def latest() -> date:
@@ -55,6 +58,15 @@ def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service, "split_question", no_parts)
     monkeypatch.setattr(service, "latest_event_date", latest)
     monkeypatch.setattr(service, "sections_headed", no_market_sections)
+
+
+@pytest.fixture(autouse=True)
+def no_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Apart from the one above: the strategy tests share that one and read their own profile.
+    async def none() -> None:
+        return None
+
+    monkeypatch.setattr(service, "_profile_or_none", none)
 
 
 @pytest.fixture

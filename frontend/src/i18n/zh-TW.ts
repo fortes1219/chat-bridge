@@ -119,6 +119,26 @@ const zhTW: typeof en = {
     rule_market: {
       title: '市場上限的規則要選台股或美股；其他種類不選市場。',
       description: '改好之後再儲存一次。'
+    },
+    holding_symbol: {
+      title: '代號只收台股（結尾 .TW 或 .TWO）和美股的代號。',
+      description: '用 Yahoo Finance 上的寫法，例如 2330.TW、AAPL，改好之後再儲存一次。'
+    },
+    holding_repeated: {
+      title: '同一個代號只能列一次。',
+      description: '把重複的那一筆刪掉或改掉，再儲存一次。'
+    },
+    holding_name: {
+      title: '每一檔都要有名稱，最多 40 個字。',
+      description: '改好之後再儲存一次。'
+    },
+    holding_amount: {
+      title: '數量要大於 0，成本與現金不能小於 0，都不能超過 1e15。',
+      description: '只填數字，小數用小數點，改好之後再儲存一次。'
+    },
+    holdings_too_many: {
+      title: '持股最多 30 檔（現金不算）。',
+      description: '刪掉幾檔再儲存一次。'
     }
   },
   refusals: {
@@ -190,6 +210,22 @@ const zhTW: typeof en = {
     TW: '台股',
     US: '美股',
     cash: '現金'
+  },
+  holdings: {
+    title: '編輯持股',
+    edit: '編輯持股',
+    add: '新增一檔',
+    remove: '刪除這一檔',
+    save: '儲存',
+    cancel: '取消',
+    symbol: '代號',
+    name: '名稱',
+    quantity: '數量',
+    cost: '平均成本',
+    cash: '現金（新台幣）',
+    note: '代號用 Yahoo Finance 的寫法：台股加 .TW 或 .TWO，美股直接寫代號。新增的一檔目標比例是 0%；刪掉的一檔，目標比例跟著刪掉。存檔時，還沒決定的修正提案會關掉。',
+    targetsTotal: '目標比例合計 {total}%，不是 100%。在聊天裡請模型調整策略，接受提案後就會重新設好。',
+    which: '第 {item} 檔：{title}'
   },
   rules: {
     title: '你的規則',

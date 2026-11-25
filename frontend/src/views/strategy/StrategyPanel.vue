@@ -5,10 +5,11 @@ import type { Locale, MessageSchema } from '@/i18n';
 import type { AppError } from '@/service/error';
 import { useStrategy } from './composables/useStrategy';
 import { useStrategySocket } from './composables/useStrategySocket';
-import { useRuleEditor } from './composables/useRuleEditor';
+import { useStrategyEditors } from './composables/useStrategyEditors';
 import SummaryCards from './components/SummaryCards.vue';
 import AllocationDonut from './components/AllocationDonut.vue';
 import HoldingsTable from './components/HoldingsTable.vue';
+import HoldingsEditor from './components/HoldingsEditor.vue';
 import QuotesColumn from './components/QuotesColumn.vue';
 import ProposalDiff from './components/ProposalDiff.vue';
 import RuleChecks from './components/RuleChecks.vue';
@@ -21,7 +22,8 @@ const { t, locale } = useI18n<{ message: MessageSchema }, Locale>();
 const { strategy, holdings, loading, error, deciding, decisionError, decide } = useStrategy();
 // While the panel is shown, each new price brings the strategy the service recomputed from it.
 const { connectionState, invalidUpdates } = useStrategySocket();
-const ruleEditor = useRuleEditor(() => strategy.value?.rule_checks ?? null);
+// Kept by the page, so a draft outlives this panel when the window crosses the narrow width.
+const { holdings: holdingsEditor, rules: ruleEditor } = useStrategyEditors();
 
 /** The page's own words for an error: the service's reason when it gave one, else the page's code. */
 function errorKey(appError: AppError): keyof MessageSchema['errors'] {
@@ -61,7 +63,23 @@ const shownError = computed(() => decisionError.value ?? error.value);
         @decide="decide"
       />
       <AllocationDonut :valuation="strategy.valuation" :holdings="holdings" />
-      <HoldingsTable :strategy="strategy" :holdings="holdings" />
+      <HoldingsEditor
+        v-if="holdingsEditor.editing.value"
+        :draft="holdingsEditor.draft.value"
+        :changed="holdingsEditor.changed.value"
+        :saving="holdingsEditor.saving.value"
+        :error="holdingsEditor.saveError.value"
+        @symbol="holdingsEditor.setSymbol"
+        @name="holdingsEditor.setName"
+        @quantity="holdingsEditor.setQuantity"
+        @cost="holdingsEditor.setCost"
+        @cash="holdingsEditor.setCash"
+        @remove="holdingsEditor.remove"
+        @add="holdingsEditor.add"
+        @save="holdingsEditor.save"
+        @cancel="holdingsEditor.cancel"
+      />
+      <HoldingsTable v-else :strategy="strategy" :holdings="holdings" @edit="holdingsEditor.start" />
       <RuleEditor
         v-if="ruleEditor.editing.value"
         :rules="ruleEditor.draft.value"

@@ -79,14 +79,21 @@ class Run:
         self.records: list[dict[str, Any]] = []
         self.saved: list[CheckedProposal] = []
         self.streamed = False
+        # The input of an answer that streams, a question that asks for no revision.
+        self.streamed_input = ""
         self.profile_read = False
+        # What the split was given of the holdings.
+        self.split_holdings: object = None
 
 
 @pytest.fixture
 def run(monkeypatch: pytest.MonkeyPatch) -> Run:
     seen = Run()
 
-    async def revise(program: object, question: str) -> SplitOutcome:
+    async def revise(
+        program: object, question: str, holdings: object = None
+    ) -> SplitOutcome:
+        seen.split_holdings = holdings
         return SplitOutcome(revise=True)
 
     async def logged_in() -> LoginStatus:
@@ -119,6 +126,7 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
         system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
     ) -> AsyncIterator[str]:
         seen.streamed = True
+        seen.streamed_input = input_text
         yield "一般答案"
 
     monkeypatch.setattr(service, "split_question", revise)
@@ -151,6 +159,17 @@ def _read() -> list[ChatDelta]:
         return [delta async for delta in service.answer_stream(QUESTION, [SECTION])]
 
     return asyncio.run(collect())
+
+
+def test_the_split_is_given_the_holdings_but_cash_before_the_search(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": None})
+
+    _read()
+
+    # The profile's names are its symbols here; each holding is named once.
+    assert run.split_holdings == ["2330.TW: 2330.TW", "NVDA: NVDA"]
 
 
 def test_a_revision_answer_comes_whole_then_the_checked_proposal(
@@ -305,10 +324,12 @@ def test_a_reply_that_is_not_the_shape_fails_after_the_context_and_is_recorded(
     assert run.saved == []
 
 
-def test_a_question_that_asks_for_no_revision_streams_as_before_without_a_proposal(
+def test_a_question_that_asks_for_no_revision_streams_with_the_holdings_and_no_proposal(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def no_revision(program: object, question: str) -> SplitOutcome:
+    async def no_revision(
+        program: object, question: str, holdings: object = None
+    ) -> SplitOutcome:
         return SplitOutcome()
 
     monkeypatch.setattr(service, "split_question", no_revision)
@@ -323,8 +344,14 @@ def test_a_question_that_asks_for_no_revision_streams_as_before_without_a_propos
     assert deltas[0].context is not None
     assert not deltas[0].context.proposal_expected
     assert run.streamed
-    assert not run.profile_read
     assert run.inputs == []
+    # Advice depends on what the person holds now, so the plain answer is given the holdings,
+    # with the numbers the service computed, before the question.
+    assert run.profile_read
+    sent = run.streamed_input
+    assert sent.index("<strategy>") < sent.index("<question>")
+    assert '"value_TWD"' in sent
+    assert '"weight_percent"' in sent
 
 
 def test_without_a_profile_a_revision_question_is_answered_as_any_other(

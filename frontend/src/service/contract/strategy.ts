@@ -1,6 +1,11 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
-import { DecisionRequestSchema, RulesRequestSchema, StrategySchema } from '@/service/schema/strategy';
+import {
+  DecisionRequestSchema,
+  HoldingsRequestSchema,
+  RulesRequestSchema,
+  StrategySchema
+} from '@/service/schema/strategy';
 
 /** The strategy screen's calls (oRPC, types only: nothing calls it at run time). */
 export const strategyContract = {
@@ -32,5 +37,13 @@ export const strategyContract = {
       summary: 'Replace the person’s rules; the checks come back recomputed'
     })
     .input(RulesRequestSchema)
+    .output(StrategySchema),
+  saveHoldings: oc
+    .route({
+      method: 'PUT',
+      path: '/strategy/holdings',
+      summary: 'Replace the person’s holdings and cash; the prices then follow the saved holdings'
+    })
+    .input(HoldingsRequestSchema)
     .output(StrategySchema)
 };

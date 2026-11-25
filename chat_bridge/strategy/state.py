@@ -17,7 +17,7 @@ from collections.abc import Awaitable, Callable
 from chat_bridge.strategy import store
 from chat_bridge.strategy.compute import priced_symbols, valuation
 from chat_bridge.strategy.prices import PriceBook, PriceSource, Quote
-from chat_bridge.strategy.schemas import StoredStrategy, StrategyView
+from chat_bridge.strategy.schemas import HoldingView, StoredStrategy, StrategyView
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,11 @@ class StrategyState:
         self._reading = asyncio.Lock()
         self._listeners: list[Listener] = []
         self._feed: asyncio.Task[None] | None = None
+        # The price source and the series the live stream follows, so a change of holdings can
+        # restart it on the new ones.
+        self._source: PriceSource | None = None
+        self._symbols: list[str] = []
+        self._following: asyncio.Task[None] | None = None
         # Publishing tasks, kept so they are not collected while they run.
         self._publishing: set[asyncio.Task[None]] = set()
 
@@ -110,6 +115,8 @@ class StrategyState:
         # Made on the service's own loop, which a lock binds to when it is first waited on.
         self._reading = asyncio.Lock()
         self._listeners = list(listeners)
+        self._source = source
+        self._symbols = []
         if source is None:
             return
         try:
@@ -138,6 +145,53 @@ class StrategyState:
             len(symbols),
             time.perf_counter() - began,
         )
+        self._symbols = symbols
+        self._feed = asyncio.get_running_loop().create_task(
+            self._run_stream(source, symbols)
+        )
+
+    def follow(self, holdings: list[HoldingView]) -> None:
+        """After the holdings changed: read the recent closes of the series with no price yet, the
+        new holdings' among them, and restart the live stream on the saved holdings, in the
+        background. Each price reaches the page as it comes, so saving does not wait for Yahoo.
+        Holdings saved with the same series leave the feed as it is."""
+        symbols = priced_symbols(holdings)
+        if self._source is None or symbols == self._symbols:
+            return
+        previous = self._following
+        self._following = asyncio.get_running_loop().create_task(
+            self._follow(self._source, symbols, previous)
+        )
+
+    async def _follow(
+        self,
+        source: PriceSource,
+        symbols: list[str],
+        previous: asyncio.Task[None] | None,
+    ) -> None:
+        # A save that came before this one finishes first, so the last save's holdings win.
+        if previous is not None:
+            await asyncio.gather(previous, return_exceptions=True)
+        await self._stop_feed()
+        new = [symbol for symbol in symbols if self.book.get(symbol) is None]
+        if new:
+            try:
+                await asyncio.wait_for(
+                    source.read_closes(new, self.price), CLOSES_WAIT_SECONDS
+                )
+            except TimeoutError:
+                logger.warning(
+                    "The recent prices of %s were not read within %d seconds.",
+                    ", ".join(new),
+                    CLOSES_WAIT_SECONDS,
+                )
+            except Exception:
+                # A background task's error reaches no one: it is logged, and the live stream
+                # still starts on the saved holdings, so their prices can come from it.
+                logger.exception(
+                    "The recent prices of %s could not be read.", ", ".join(new)
+                )
+        self._symbols = symbols
         self._feed = asyncio.get_running_loop().create_task(
             self._run_stream(source, symbols)
         )
@@ -145,6 +199,13 @@ class StrategyState:
     async def stop(self) -> None:
         """Stop the price feed and wait for it to close its connection."""
         self._listeners = []
+        following, self._following = self._following, None
+        if following is not None:
+            following.cancel()
+            await asyncio.gather(following, return_exceptions=True)
+        await self._stop_feed()
+
+    async def _stop_feed(self) -> None:
         feed, self._feed = self._feed, None
         if feed is None:
             return

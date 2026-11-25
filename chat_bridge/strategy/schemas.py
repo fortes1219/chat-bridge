@@ -38,7 +38,9 @@ RefusalCode = Literal[
 
 # Why a strategy request was refused. The rule codes say what is wrong with a rule the person
 # saved: a kind the service does not know, a limit outside 0 to 100, or a market that does not
-# fit the kind (a market rule names TW or US; the others name none).
+# fit the kind (a market rule names TW or US; the others name none). The holding codes say what is
+# wrong with the holdings the person saved: a symbol of no Taiwan or US listing, a symbol listed
+# twice, a name empty or too long, an amount out of range, or too many holdings.
 StrategyErrorCode = Literal[
     "profile_missing",
     "proposal_not_found",
@@ -46,12 +48,20 @@ StrategyErrorCode = Literal[
     "rule_unknown_kind",
     "rule_limit_out_of_range",
     "rule_market",
+    "holding_symbol",
+    "holding_repeated",
+    "holding_name",
+    "holding_amount",
+    "holdings_too_many",
 ]
 
 
 class StrategyErrorDetail(BaseModel):
     code: StrategyErrorCode
     message: str
+    # The place in the list, from 1, of the holding a refusal is about, so the page can point at
+    # it; none when it is about the whole request.
+    item: int | None = None
 
 
 class HoldingView(BaseModel):
@@ -139,6 +149,9 @@ class StoredStrategy(BaseModel):
 
     holdings: list[HoldingView]
     targets: list[TargetRow]
+    # What the current targets add up to, in whole percents. It is 100 until the person removes a
+    # holding whose target was above 0; a proposal the person accepts makes it 100 again.
+    targets_total: int
     # The rules checked on the current targets. Prices do not move them.
     rule_checks: RuleChecks
     # The proposal waiting for the person; none when there is none.
@@ -246,6 +259,28 @@ class RulesRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     rules: list[RuleInput]
+
+
+class HoldingInput(BaseModel):
+    """One holding as the page sends it; the service works out its market and currency from the
+    symbol."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symbol: str
+    names: Localized
+    quantity: Decimal
+    average_cost: Decimal
+
+
+class HoldingsRequest(BaseModel):
+    """Every holding but cash, in the order the screen lists them, and the cash in Taiwan dollars;
+    they replace the saved ones. A JSON body, for the same reason as the rules."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    holdings: list[HoldingInput]
+    cash: Decimal
 
 
 class ProposalRefusal(BaseModel):

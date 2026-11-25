@@ -10,14 +10,20 @@ export interface StrategyQueryOptions {
    * none yet, and again whenever it is invalidated.
    */
   refetchOnMount?: boolean;
+  /**
+   * False for state that only follows the strategy another view reads, such as the editors the
+   * chat page keeps: it never reads the strategy itself, before the page is open included.
+   */
+  enabled?: boolean;
 }
 
 /** The strategy as server state. A decision or a new proposal replaces it in the cache. */
-export function useStrategyQuery({ refetchOnMount = true }: StrategyQueryOptions = {}) {
+export function useStrategyQuery({ refetchOnMount = true, enabled = true }: StrategyQueryOptions = {}) {
   return useQuery<Strategy, AppError>({
     queryKey: strategyKeys.current(),
     queryFn: ({ signal }) => getStrategy(signal),
-    refetchOnMount
+    refetchOnMount,
+    enabled
   });
 }
 

@@ -28,15 +28,24 @@ export const ServiceErrorCodeSchema = z.enum([
   'proposal_not_open',
   'rule_unknown_kind',
   'rule_limit_out_of_range',
-  'rule_market'
+  'rule_market',
+  'holding_symbol',
+  'holding_repeated',
+  'holding_name',
+  'holding_amount',
+  'holdings_too_many'
 ]);
 export type ServiceErrorCode = z.infer<typeof ServiceErrorCodeSchema>;
 
-/** The reason and the service's own message, which is for logs and is never drawn. */
+/**
+ * The reason and the service's own message, which is for logs and is never drawn; and, for a
+ * refused holding, its place in the list, from 1, so the page can point at it.
+ */
 export const ErrorDetailSchema = z
   .object({
     code: ServiceErrorCodeSchema,
-    message: z.string()
+    message: z.string(),
+    item: z.number().int().positive().nullable().optional()
   })
   .strict();
 

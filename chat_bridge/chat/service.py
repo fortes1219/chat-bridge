@@ -53,6 +53,7 @@ from chat_bridge.search.service import (
 )
 from chat_bridge.strategy import revision
 from chat_bridge.strategy import store as strategy_store
+from chat_bridge.strategy.models import CASH
 from chat_bridge.strategy.state import STATE
 from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
 
@@ -301,7 +302,7 @@ def system_prompt(today: date) -> str:
 
 def model_input(question: str, sections: list[FoundSection], strategy: str = "") -> str:
     """The sources and the question, each between its own tags, so the two stay apart; for a
-    revision question, the profile's own block between them."""
+    question the program answers, the profile's own block between them."""
     blocks = [
         f"[{section.source.number}] file: {section.source.file}"
         f" | event date: {section.source.event_date or 'none'}"
@@ -394,7 +395,10 @@ async def answer_stream(
     refusal: NoLoginError | None = None
     split: SplitOutcome | None = None
     searches: list[dict[str, Any]] | None = None
-    # The profile, read when the question asks to revise the strategy; none otherwise.
+    # The profile as it is now, read for every question the program answers, so its advice is on
+    # the person's current holdings; and the same profile when the question asks to revise the
+    # strategy, none otherwise.
+    current: strategy_store.Profile | None = None
     profile: strategy_store.Profile | None = None
     proposal: dict[str, Any] | None = None
     # A question the data has nothing on is answered without a model, so no login is read.
@@ -424,11 +428,14 @@ async def answer_stream(
         answering.add_done_callback(_ANSWERING.discard)
     try:
         if sections and program is not None:
-            split = await split_question(PROGRAMS[program], question)
+            current = await _profile_or_none()
+            split = await split_question(
+                PROGRAMS[program], question, holding_lines(current)
+            )
             # A failed split has no parts, so the question's own sections go on alone.
             sections, searches = await gather_sections(question, sections, split.parts)
             if split.revise:
-                profile = await _profile_or_none()
+                profile = current
         yield ChatDelta(
             type="response.context",
             context=ChatContext(
@@ -472,7 +479,10 @@ async def answer_stream(
             yield ChatDelta(type=PROPOSAL, proposal=event)
             await record(None)
             return
-        sent = model_input(question, sections)
+        holdings = (
+            "" if current is None else revision.strategy_input(current, STATE.book)
+        )
+        sent = model_input(question, sections, holdings)
         async for piece in PROGRAMS[program].stream_answer(
             system_prompt(date.today()), sent, on_start=command.extend
         ):
@@ -508,8 +518,20 @@ async def finish_answers(timeout: float) -> None:
         await asyncio.wait(pending, timeout=timeout)
 
 
+def holding_lines(profile: strategy_store.Profile | None) -> list[str]:
+    """Each holding but cash as the split reads it: its symbol and its names, so a question about
+    the user's own holdings that names none can be searched for each."""
+    if profile is None:
+        return []
+    return [
+        f"{holding.symbol}: {' / '.join(dict.fromkeys(holding.names.values()))}"
+        for holding in profile.holdings
+        if holding.symbol != CASH
+    ]
+
+
 async def _profile_or_none() -> strategy_store.Profile | None:
-    """The profile for a revision question. Without one, the question is answered as any other,
+    """The profile as it is now. Without one, the question is answered from the sources alone,
     with no proposal asked for."""
     try:
         return await strategy_store.read_profile()
