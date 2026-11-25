@@ -65,3 +65,20 @@ requests 2.34.2: none (OSV, 2026-11-25). The lock file is checked again before d
    (scenario 11). None of these was seen in a product or measured; each costs a fallback that
    follows the same order of sources. When the open-data daily tables change to the day is to be
    measured (task T007).
+9. **Decided here, without a precedent:** once FinMind fails in a read, it is not asked for the
+   other series in that read, as each request would wait as long, and the daily tables still
+   follow. Each request to FinMind and the open data gives up after 10 seconds, yfinance's own
+   default for a daily series (`yfinance/scrapers/history.py:112`, 1.8.0), so a source that does
+   not answer holds neither the other sources nor the service's stop for long.
+10. **A US price outside the regular session is measured from the last regular close.** Yahoo's
+    stream measures it so (spec 006 research: NVIDIA past midnight in New York against the last
+    regular close). A price from 16:00 New York on is measured as the next day's, so nothing
+    moves at midnight; on an early-close day (13:00) a price before 16:00 is still measured from
+    the day before's close, as the service has no exchange calendar. The sources are read again
+    on a series' first price of a new calendar day where it trades, not of the day it is measured
+    from: read that evening, they give the same day. So a US price of an evening, before
+    midnight in New York, is measured from the stream's own previous close; one that does not
+    say it has none until the sources are read on the next day (inferred, not measured). A
+    currency pair's days are the days in
+    London, as Yahoo dates them (TWD=X: exchange time zone Europe/London, each daily value at
+    00:00 there), and it has no session end.

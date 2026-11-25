@@ -28,6 +28,7 @@ whole portfolio, are measured from the previous close, as a broker's quote scree
 9. **Given** a US holding whose day before is missing from Yahoo's daily series, **When** its change is shown, **Then** the previous close comes from Yahoo's own quote; only when that has none either is it named.
 10. **Given** an open-data daily table whose date is earlier than the quote's day, **When** it gives the previous close, **Then** the previous close is its close; **given** its date is the quote's day, **then** the previous close is its close less its change; **given** that day is an ex-dividend or ex-rights day, **then** the table's change is not used and the previous close is the reference price (scenarios 2 and 3).
 11. **Given** the service has run since the day before, **When** the first quote of a new trading day arrives for a series, **Then** that series goes through the sources again for that day, once a series a day, and its previous close is the day before's close.
+12. **Given** a US price outside the regular session (in the evening, overnight or before the open, New York time), **When** its change is shown, **Then** it is measured from the last regular close, as Yahoo's stream measures it, and it does not move at midnight in New York.
 
 ### User Story 2 - The answering program is given the same previous close (Priority: P1)
 
@@ -59,6 +60,7 @@ whole portfolio, are measured from the previous close, as a broker's quote scree
 - The Taiwan exchanges' own websites and their real-time quote service: their terms and robots.txt forbid programs.
 - Fugle: it needs an account and a key.
 - A US ex-dividend day is measured as Yahoo measures it; that is not checked against an exchange.
+- A US early-close day (13:00 New York): a price between that close and 16:00 is measured from the day before's close. The service has no exchange calendar.
 
 ## Success Criteria *(mandatory)*
 

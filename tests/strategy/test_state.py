@@ -6,14 +6,15 @@ The store is stubbed and counts its reads; the price feed is a stand-in.
 import asyncio
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from chat_bridge.strategy import state as state_module
 from chat_bridge.strategy import store
-from chat_bridge.strategy.prices import Quote
+from chat_bridge.strategy.history import History
+from chat_bridge.strategy.prices import Quote, latest_quote
 from chat_bridge.strategy.schemas import (
     HoldingView,
     RuleChecks,
@@ -232,6 +233,48 @@ def test_slow_closes_do_not_hold_the_service_and_the_stream_starts(
     assert "were not all read within" in caplog.text
 
 
+class _Late(_Prices):
+    """Sends NVDA's price at once and 2330's after the service stopped waiting, then reads on
+    until stopped."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.read_ended_by_stop = False
+
+    async def read_closes(
+        self, symbols: list[str], on_quote: Callable[[Quote], None]
+    ) -> None:
+        on_quote(Quote("NVDA", Decimal("180"), Decimal("175"), "daily", NOW))
+        await asyncio.sleep(0.2)
+        on_quote(_quote("1480"))
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.read_ended_by_stop = True
+            raise
+
+
+def test_closes_read_after_the_wait_still_reach_the_book_and_a_stop_ends_the_read(
+    reads: list[int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(state_module, "CLOSES_WAIT_SECONDS", 0.05)
+    feed = _Late()
+
+    async def main() -> tuple[list[str], list[str]]:
+        state = StrategyState()
+        await state.start(feed, [])
+        at_start = [s for s in ("NVDA", "2330.TW") if state.book.get(s) is not None]
+        async with asyncio.timeout(2):
+            while state.book.get("2330.TW") is None:
+                await asyncio.sleep(0.01)
+        later = [s for s in ("NVDA", "2330.TW") if state.book.get(s) is not None]
+        await state.stop()
+        return at_start, later
+
+    assert asyncio.run(main()) == (["NVDA"], ["NVDA", "2330.TW"])
+    assert feed.read_ended_by_stop
+
+
 def test_the_page_is_told_when_the_live_stream_opens_and_ends(reads: list[int]) -> None:
     sent: list[bool] = []
 
@@ -384,3 +427,153 @@ def test_closes_that_cannot_be_read_after_a_save_are_logged_and_the_stream_still
 
     assert feed.streams[-1] == ["2330.TW", "AAPL", "^SOX", "TWD=X"]
     assert "could not be read" in caplog.text
+
+
+BEFORE = {date(2026, 11, 20): Decimal("1450"), date(2026, 11, 23): Decimal("1440")}
+# 09:30 in Taipei, the morning after the service first read the days.
+MORNING = datetime(2026, 11, 25, 1, 30, tzinfo=UTC)
+
+
+class _Overnight(_Prices):
+    """Read first while 2026-11-24 traded, so that day's value is not its close; read again, the
+    day has its close. It can fail every read after the first."""
+
+    def __init__(self, *, fail_later_reads: bool = False) -> None:
+        super().__init__()
+        self.fail_later_reads = fail_later_reads
+        self.reads: list[list[str]] = []
+
+    async def read_closes(
+        self, symbols: list[str], on_quote: Callable[[Quote], None]
+    ) -> None:
+        self.reads.append(symbols)
+        if len(self.reads) == 1:
+            history = History(
+                read_on=date(2026, 11, 24),
+                closes={**BEFORE, date(2026, 11, 24): Decimal("1480")},
+            )
+        elif self.fail_later_reads:
+            raise ConnectionError("FinMind is out of reach")
+        else:
+            history = History(
+                read_on=date(2026, 11, 25),
+                closes={**BEFORE, date(2026, 11, 24): Decimal("1495")},
+            )
+        quote = latest_quote("2330.TW", history)
+        assert quote is not None
+        on_quote(quote)
+
+
+def _overnight(feed: _Overnight) -> Quote | None:
+    async def main() -> Quote | None:
+        state = StrategyState()
+        await state.start(feed, [])
+        state.price(Quote("2330.TW", Decimal("1500"), None, "live", MORNING))
+        await _until(lambda: len(feed.reads) == 2)
+        await _settle()
+        state.price(
+            Quote("2330.TW", Decimal("1505"), None, "live", MORNING.replace(minute=31))
+        )
+        await _settle()
+        await state.stop()
+        return state.book.get("2330.TW")
+
+    return asyncio.run(main())
+
+
+def test_the_first_price_of_a_new_day_reads_the_series_again_for_the_close_before(
+    reads: list[int],
+) -> None:
+    feed = _Overnight()
+
+    quote = _overnight(feed)
+
+    assert feed.reads == [STARTED, ["2330.TW"]]
+    assert quote is not None
+    assert (quote.price, quote.previous_close) == (Decimal("1505"), Decimal("1495"))
+
+
+class _UsEvening(_Prices):
+    """NVDA's days as Yahoo gives them: read on 11-25 in New York after its close, and on 11-26
+    once that day has come."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[list[str]] = []
+        self.read_on = date(2026, 11, 25)
+
+    async def read_closes(
+        self, symbols: list[str], on_quote: Callable[[Quote], None]
+    ) -> None:
+        self.reads.append(symbols)
+        history = History(
+            read_on=self.read_on,
+            closes={
+                date(2026, 11, 24): Decimal("155.38"),
+                date(2026, 11, 25): Decimal("150.00"),
+            },
+        )
+        quote = latest_quote("NVDA", history)
+        assert quote is not None
+        on_quote(quote)
+
+
+def test_a_us_evening_price_reads_nothing_and_the_next_session_reads_the_days_again(
+    reads: list[int],
+) -> None:
+    feed = _UsEvening()
+
+    async def main() -> list[Decimal | None]:
+        state = StrategyState()
+        # Started in the Taipei morning: 21:00 on 11-25 in New York.
+        await state.start(feed, [])
+        measured_from: list[Decimal | None] = []
+        # 21:05 that evening, then 10:00 the next day; the stream's own previous close of the
+        # second is a cent off the exchange's.
+        for moment, own in (
+            (datetime(2026, 11, 26, 2, 5, tzinfo=UTC), Decimal("150.00")),
+            (datetime(2026, 11, 26, 15, 0, tzinfo=UTC), Decimal("150.01")),
+        ):
+            if moment.hour == 15:
+                feed.read_on = date(2026, 11, 26)
+            state.price(Quote("NVDA", Decimal("149.50"), own, "live", moment))
+            await _settle()
+            quote = state.book.get("NVDA")
+            measured_from.append(None if quote is None else quote.previous_close)
+        await state.stop()
+        return measured_from
+
+    assert asyncio.run(main()) == [Decimal("150.00"), Decimal("150.00")]
+    # The evening price reads nothing; the next session's first price reads NVDA once.
+    assert feed.reads == [STARTED, ["NVDA"]]
+
+
+def test_a_new_days_price_that_comes_as_the_service_stops_starts_no_read(
+    reads: list[int],
+) -> None:
+    feed = _Overnight()
+
+    async def main() -> None:
+        state = StrategyState()
+        await state.start(feed, [])
+        await state.stop()
+        state.price(Quote("2330.TW", Decimal("1500"), None, "live", MORNING))
+        await _settle()
+
+    asyncio.run(main())
+
+    assert feed.reads == [STARTED]
+
+
+def test_a_new_days_read_that_fails_is_logged_and_not_made_again_that_day(
+    reads: list[int], caplog: pytest.LogCaptureFixture
+) -> None:
+    feed = _Overnight(fail_later_reads=True)
+
+    quote = _overnight(feed)
+
+    assert feed.reads == [STARTED, ["2330.TW"]]
+    # The value read while 11-24 traded is not filled in as its close.
+    assert quote is not None
+    assert quote.previous_close is None
+    assert "The recent prices of 2330.TW could not be read." in caplog.text

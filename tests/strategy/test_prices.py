@@ -5,7 +5,7 @@ network is reached.
 import asyncio
 import threading
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -16,11 +16,13 @@ import pytest
 
 from chat_bridge.config import local_data_dir
 from chat_bridge.strategy import prices
+from chat_bridge.strategy.history import History
 from chat_bridge.strategy.prices import (
     PriceBook,
     Quote,
     YahooPrices,
-    quote_from_history,
+    history_from_frame,
+    latest_quote,
     quote_from_message,
 )
 
@@ -45,6 +47,15 @@ def _message(**fields: Any) -> dict[str, Any]:
 def _closes(*values: float, zone: ZoneInfo = TAIPEI) -> pd.DataFrame:
     days = pd.date_range("2026-11-19", periods=len(values), freq="D", tz=zone)
     return pd.DataFrame({"Close": list(values)}, index=days)
+
+
+# A day after every day of the series above, so none of them was read while it traded.
+READ_ON = date(2026, 11, 25)
+
+
+def quote_from_history(symbol: str, frame: pd.DataFrame) -> Quote | None:
+    """The latest daily value Yahoo's series alone gives, as the service reads it."""
+    return latest_quote(symbol, history_from_frame(symbol, frame, READ_ON))
 
 
 def test_a_float_price_becomes_a_decimal_rounded_by_its_hint() -> None:
@@ -175,6 +186,8 @@ def test_a_live_price_without_a_previous_close_keeps_the_known_one() -> None:
 
 class _Ticker:
     calls: list[tuple[str, dict[str, Any]]] = []
+    # Yahoo's own quote: no previous close, unless a test says otherwise.
+    fast_info = SimpleNamespace(regular_market_previous_close=None, previous_close=None)
 
     def __init__(self, symbol: str) -> None:
         self.symbol = symbol
@@ -232,6 +245,13 @@ def stand_in_yfinance(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(prices, "yf", stand_in)
     monkeypatch.setattr(prices, "RECONNECT_SECONDS", 0)
+
+    # No network: the Taiwan sources add nothing in these tests; the ones below that need them
+    # replace the sources themselves.
+    async def no_taiwan_sources(*arguments: Any) -> None:
+        pass
+
+    monkeypatch.setattr(prices, "add_taiwan_sources", no_taiwan_sources)
 
 
 # What the stream said of its connection in the last run: true when it opened, false when it ended.
@@ -374,3 +394,344 @@ def test_messages_that_lack_a_field_are_dropped_and_counted(
 
     assert [quote.basis for quote in received] == ["daily", "live"]
     assert source.dropped == 2
+
+
+# Spec 012: where the previous close comes from.
+TODAY = date(2026, 11, 25)
+# Yahoo's series of 0050 as it was on 2026-11-25: no close for 11-24.
+YAHOO_0050 = History(
+    read_on=TODAY,
+    closes={date(2026, 11, 23): Decimal("87.00"), TODAY: Decimal("90.30")},
+    missing=frozenset({date(2026, 11, 24)}),
+)
+FINMIND_0050 = History(
+    read_on=TODAY,
+    closes={
+        date(2026, 11, 23): Decimal("87.0"),
+        date(2026, 11, 24): Decimal("95.7"),
+        TODAY: Decimal("90.3"),
+    },
+)
+
+
+class _Sources:
+    """FinMind, the notices and the daily tables, each answering or failing as a test says."""
+
+    def __init__(
+        self, monkeypatch: pytest.MonkeyPatch, *, finmind: bool = True
+    ) -> None:
+        self.read: list[str] = []
+        self.finmind = finmind
+        monkeypatch.setattr(prices, "finmind_history", self.finmind_history)
+        monkeypatch.setattr(prices, "notices", self.notices)
+        monkeypatch.setattr(prices, "daily_tables", self.daily_tables)
+
+    def finmind_history(self, symbol: str, today: date) -> History:
+        self.read.append(f"finmind {symbol}")
+        if not self.finmind:
+            raise prices.SourceError("Requests reach the upper limit.")
+        return FINMIND_0050
+
+    def notices(self, symbols: list[str], today: date) -> dict[str, Any]:
+        self.read.append("notices")
+        return {}
+
+    def daily_tables(
+        self, symbols: list[str], today: date, dividends: dict[str, Any]
+    ) -> dict[str, History]:
+        self.read.append(f"tables {symbols}")
+        return {
+            "0050.TW": History(
+                read_on=TODAY,
+                closes={date(2026, 11, 24): Decimal("95.70")},
+                given={date(2026, 11, 24): Decimal("87.00")},
+            )
+        }
+
+
+def _add_taiwan(
+    symbols: list[str], histories: dict[str, History]
+) -> tuple[dict[str, History], list[str]]:
+    """The series' days after the Taiwan sources, and the series told as they grew."""
+    found = dict(histories)
+    changed: list[str] = []
+    asyncio.run(prices.add_taiwan_sources(symbols, found, TODAY, changed.append))
+    return found, changed
+
+
+def test_finmind_gives_the_previous_close_yahoos_series_lacked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = _Sources(monkeypatch)
+
+    found, changed = _add_taiwan(["0050.TW"], {"0050.TW": YAHOO_0050})
+
+    quote = latest_quote("0050.TW", found["0050.TW"])
+    assert quote is not None
+    assert (quote.price, quote.previous_close) == (Decimal("90.3"), Decimal("95.7"))
+    # FinMind had it, so the daily tables are not read.
+    assert sources.read == ["finmind 0050.TW", "notices"]
+    assert changed == ["0050.TW"]
+
+
+def test_once_finmind_fails_it_is_not_asked_for_the_other_series(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = _Sources(monkeypatch, finmind=False)
+
+    _add_taiwan(["0050.TW", "006208.TW"], {})
+
+    assert sources.read == [
+        "finmind 0050.TW",
+        "notices",
+        "tables ['0050.TW', '006208.TW']",
+    ]
+
+
+def test_a_close_finmind_has_and_yahoo_has_not_yet_is_the_latest_with_its_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _Sources(monkeypatch)
+    yahoo = History(
+        read_on=TODAY,
+        closes={date(2026, 11, 23): Decimal("87.00")},
+        missing=frozenset({date(2026, 11, 24)}),
+    )
+
+    found, _ = _add_taiwan(["0050.TW"], {"0050.TW": yahoo})
+
+    quote = latest_quote("0050.TW", found["0050.TW"])
+    assert quote is not None
+    assert (quote.price, quote.at.date(), quote.previous_close) == (
+        Decimal("90.3"),
+        TODAY,
+        Decimal("95.7"),
+    )
+
+
+def test_without_finmind_the_exchanges_daily_table_gives_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = _Sources(monkeypatch, finmind=False)
+
+    found, _ = _add_taiwan(["0050.TW"], {"0050.TW": YAHOO_0050})
+
+    assert found["0050.TW"].previous_close(TODAY) == Decimal("95.70")
+    assert sources.read == ["finmind 0050.TW", "notices", "tables ['0050.TW']"]
+
+
+def test_a_us_series_reads_no_taiwan_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    sources = _Sources(monkeypatch)
+    nvda = History(read_on=TODAY)
+
+    assert _add_taiwan(["NVDA"], {"NVDA": nvda}) == ({"NVDA": nvda}, [])
+    assert sources.read == []
+
+
+def test_yahoos_own_quote_is_the_last_source(
+    stand_in_yfinance: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A series missing the day before its latest, which no other source fills.
+    monkeypatch.setattr(
+        _Ticker,
+        "history",
+        lambda self, **options: _closes(165.05, float("nan"), 155.38),
+    )
+    monkeypatch.setattr(
+        _Ticker,
+        "fast_info",
+        SimpleNamespace(
+            regular_market_previous_close=165.0500030517578, previous_close=165.2596
+        ),
+    )
+    received: list[Quote] = []
+
+    asyncio.run(YahooPrices().read_closes(["NVDA"], received.append))
+
+    # The price is sent from the series first, then with the quote's previous close.
+    assert [quote.previous_close for quote in received] == [None, Decimal("165.0500")]
+
+
+def test_a_taiwan_source_that_does_not_answer_holds_back_no_price_from_yahoo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # yfinance answers; FinMind does not, until the test lets it.
+    monkeypatch.setattr(
+        prices,
+        "yf",
+        SimpleNamespace(Ticker=_Ticker, set_tz_cache_location=lambda folder: None),
+    )
+    monkeypatch.setattr(
+        _Ticker, "history", lambda self, **options: _closes(1495.0, 1480.0)
+    )
+    answer = threading.Event()
+
+    def finmind_history(symbol: str, today: date) -> History:
+        answer.wait(timeout=5)
+        raise prices.SourceError("timed out")
+
+    monkeypatch.setattr(prices, "finmind_history", finmind_history)
+    monkeypatch.setattr(prices, "notices", lambda symbols, today: {})
+    monkeypatch.setattr(prices, "daily_tables", lambda symbols, today, dividends: {})
+    received: list[Quote] = []
+
+    async def main() -> set[str]:
+        reading = asyncio.create_task(
+            YahooPrices().read_closes(["2330.TW", "NVDA"], received.append)
+        )
+        try:
+            async with asyncio.timeout(2):
+                while len(received) < 2:
+                    await asyncio.sleep(0.01)
+            return {quote.symbol for quote in received}
+        finally:
+            answer.set()
+            await reading
+
+    # Both prices arrive while FinMind has not answered.
+    assert asyncio.run(main()) == {"2330.TW", "NVDA"}
+
+
+def test_a_live_price_takes_the_previous_close_of_its_day_from_the_series_days() -> (
+    None
+):
+    book = PriceBook()
+    daily = latest_quote("0050.TW", FINMIND_0050)
+    assert daily is not None
+    book.put(daily)
+
+    # The stream works its previous close out from its own change; the series' days win.
+    live = Quote(
+        "0050.TW",
+        Decimal("90.50"),
+        Decimal("96.00"),
+        "live",
+        datetime(2026, 11, 25, 2, tzinfo=UTC),
+    )
+    assert book.put(live)
+
+    quote = book.get("0050.TW")
+    assert quote is not None
+    assert (quote.price, quote.previous_close) == (Decimal("90.50"), Decimal("95.7"))
+    assert not book.needs_days(live)
+    tomorrow = Quote(
+        "0050.TW", Decimal("91"), None, "live", datetime(2026, 11, 26, 2, tzinfo=UTC)
+    )
+    assert book.needs_days(tomorrow)
+
+
+def test_days_that_arrive_after_a_later_price_still_give_it_its_previous_close() -> (
+    None
+):
+    book = PriceBook()
+    live = Quote(
+        "0050.TW", Decimal("90.50"), None, "live", datetime(2026, 11, 25, 2, tzinfo=UTC)
+    )
+    book.put(live)
+    daily = latest_quote("0050.TW", FINMIND_0050)
+    assert daily is not None
+
+    # The daily value is older than the live price, but its days give the previous close.
+    assert book.put(daily)
+
+    quote = book.get("0050.TW")
+    assert quote is not None
+    assert (quote.basis, quote.previous_close) == ("live", Decimal("95.7"))
+
+
+def test_a_currency_pairs_days_are_the_days_yahoo_names_in_london() -> None:
+    # TWD=X as Yahoo gave it on 2026-11-25: each value at 00:00 in London.
+    london = ZoneInfo("Europe/London")
+    days = pd.DatetimeIndex(
+        [datetime(2026, 11, day, tzinfo=london) for day in (19, 20, 23, 24, 25)]
+    )
+    frame = pd.DataFrame({"Close": [32.9, 32.95, 32.8, 32.8485, 33.126]}, index=days)
+    book = PriceBook()
+    daily = latest_quote("TWD=X", history_from_frame("TWD=X", frame, READ_ON))
+    assert daily is not None
+    book.put(daily)
+
+    assert (daily.at.date(), daily.price, daily.previous_close) == (
+        READ_ON,
+        Decimal("33.126"),
+        Decimal("32.8485"),
+    )
+    # A live rate at 10:00 in London on 11-25 is measured from 11-24's value.
+    book.put(
+        Quote(
+            "TWD=X",
+            Decimal("33.15"),
+            Decimal("32.8485"),
+            "live",
+            datetime(2026, 11, 25, 10, tzinfo=UTC),
+        )
+    )
+    quote = book.get("TWD=X")
+    assert quote is not None
+    assert quote.previous_close == Decimal("32.8485")
+
+
+def test_a_us_price_outside_the_regular_session_is_measured_from_the_last_regular_close() -> (
+    None
+):
+    book = PriceBook()
+    daily = latest_quote(
+        "NVDA",
+        History(
+            read_on=TODAY,
+            closes={
+                date(2026, 11, 23): Decimal("165.05"),
+                date(2026, 11, 24): Decimal("155.38"),
+            },
+        ),
+    )
+    assert daily is not None
+    book.put(daily)
+    measured_from: list[Decimal | None] = []
+    # In New York: 11-24 at 20:30 (evening), 11-25 at 00:30 (overnight) and 08:00 (pre-market).
+    for moment in (
+        datetime(2026, 11, 25, 1, 30, tzinfo=UTC),
+        datetime(2026, 11, 25, 5, 30, tzinfo=UTC),
+        datetime(2026, 11, 25, 13, 0, tzinfo=UTC),
+    ):
+        book.put(Quote("NVDA", Decimal("154.60"), Decimal("155.38"), "live", moment))
+        quote = book.get("NVDA")
+        measured_from.append(None if quote is None else quote.previous_close)
+
+    # The day's close, from the evening on: nothing moves at midnight in New York.
+    assert measured_from == [Decimal("155.38")] * 3
+    assert daily.previous_close == Decimal("165.05")
+
+
+def test_a_live_price_of_a_day_after_the_days_were_read_keeps_its_own_previous_close() -> (
+    None
+):
+    # Read on 11-24 before it opened: the sources had up to 11-23.
+    book = PriceBook()
+    daily = latest_quote(
+        "0050.TW",
+        History(
+            read_on=date(2026, 11, 24),
+            closes={
+                date(2026, 11, 20): Decimal("84.45"),
+                date(2026, 11, 23): Decimal("87.00"),
+            },
+        ),
+    )
+    assert daily is not None
+    book.put(daily)
+
+    book.put(
+        Quote(
+            "0050.TW",
+            Decimal("90.30"),
+            Decimal("95.70"),
+            "live",
+            datetime(2026, 11, 25, 2, tzinfo=UTC),
+        )
+    )
+
+    # 11-23's close is not 11-25's previous close; the stream's own is kept.
+    quote = book.get("0050.TW")
+    assert quote is not None
+    assert quote.previous_close == Decimal("95.70")
