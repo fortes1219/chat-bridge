@@ -199,6 +199,13 @@ const zhTW: typeof en = {
       closeOn: '{day} 日線',
       source: '價格來自 {name}，不是交易所官方的資料。',
       terms: '使用條款',
+      closeSources: '台股的昨收另取自 FinMind（資料源自臺灣證券交易所、證券櫃檯買賣中心）與兩個交易所的開放資料：',
+      finmindTerms: 'FinMind 使用條款',
+      listedData: '臺灣證券交易所 {year} 臺灣證券交易所 OpenAPI 1.0：上市個股日成交資訊、上市股票除權除息預告表',
+      otcData: '證券櫃檯買賣中心 {year} 證券櫃檯買賣中心 OpenAPI 1.0.0：上櫃股票行情、上櫃股票除權除息預告表',
+      openDataLicense:
+        '此開放資料依政府資料開放授權條款 (Open Government Data License) 進行公眾釋出，使用者於遵守本條款各項規定之前提下，得利用之。',
+      openDataLicenseName: '政府資料開放授權條款：',
       updating: '更新中',
       sourceDown: '沒有連上行情來源，價格停在顯示的時間',
       connecting: '連線中…',

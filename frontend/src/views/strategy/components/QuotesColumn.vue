@@ -33,6 +33,18 @@ const PAGE_CONNECTION: Record<SocketConnectionState, Following> = {
   disconnected: 'disconnected'
 };
 
+/**
+ * Where the previous closes of Taiwan holdings also come from. The exchanges' open data is named
+ * as the Open Government Data License's attribution annex asks: provider, year, the data's name
+ * and version, the license's statement and its address.
+ */
+const FINMIND_TERMS: Record<Locale, string> = {
+  'zh-TW': 'https://finmind.github.io/PrivacyPolicy/',
+  en: 'https://finmind.github.io/en/PrivacyPolicy/'
+};
+const OPEN_DATA_LICENSE_URL = 'https://data.gov.tw/license';
+const year = new Date().getFullYear();
+
 /** The source's stated delay, in words. */
 function delay(quote: Quote): string {
   if (quote.delay_minutes === null) return t('strategy.quotes.delayUnstated');
@@ -99,5 +111,22 @@ const following = computed(() => {
         {{ t('strategy.quotes.terms') }}
       </ULink>
     </p>
+    <div class="text-muted flex flex-col gap-1 text-xs" data-test="close-sources">
+      <p>
+        {{ t('strategy.quotes.closeSources') }}
+        <ULink :to="FINMIND_TERMS[locale]" target="_blank" rel="noopener noreferrer" class="underline">
+          {{ t('strategy.quotes.finmindTerms') }}
+        </ULink>
+      </p>
+      <p>{{ t('strategy.quotes.listedData', { year }) }}</p>
+      <p>{{ t('strategy.quotes.otcData', { year }) }}</p>
+      <p>
+        {{ t('strategy.quotes.openDataLicense') }}
+        {{ t('strategy.quotes.openDataLicenseName') }}
+        <ULink :to="OPEN_DATA_LICENSE_URL" target="_blank" rel="noopener noreferrer" class="underline">
+          {{ OPEN_DATA_LICENSE_URL }}
+        </ULink>
+      </p>
+    </div>
   </section>
 </template>

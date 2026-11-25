@@ -79,6 +79,28 @@ requests 2.34.2: none (OSV, 2026-11-25). The lock file is checked again before d
     from: read that evening, they give the same day. So a US price of an evening, before
     midnight in New York, is measured from the stream's own previous close; one that does not
     say it has none until the sources are read on the next day (inferred, not measured). A
-    currency pair's days are the days in
-    London, as Yahoo dates them (TWD=X: exchange time zone Europe/London, each daily value at
-    00:00 there), and it has no session end.
+    currency pair's days are the days in London, as Yahoo dates them (TWD=X: exchange time zone
+    Europe/London, each daily value at 00:00 there), and it has no session end.
+11. **Naming the sources (FR-006).** Read on 2026-11-25:
+    - The Open Government Data License (https://data.gov.tw/license, 3(2)): whoever uses the open
+      data or what is made from it names the providing agency as its annex asks, or the license
+      is void from the start. The annex, as the English page gives it: "Data Providing
+      Organization/Agency [year] [distinguishing full name of the released Open Data and its
+      version number]", the statement "The Open Data is made available to the public under the
+      Open Government Data License, User can make use of it when complying to the condition and
+      obligation of its terms.", and the license's address. The page in Chinese shows the
+      Chinese one, word for word as the annex has it.
+    - The Taiwan Stock Exchange's OpenAPI (`openapi.twse.com.tw/v1/swagger.json`, `info`) welcomes
+      programs and links that license. The Taipei Exchange's OpenAPI links its terms, which forbid
+      automated download other than in a way it agrees to, ask that a quote names its source
+      (section 7), and except the data it gives the open data platform. On the platform, two of
+      the four tables read were found, both under license code 1: the listed stocks' daily
+      trading (`data.gov.tw/api/v2/rest/dataset/11549`) and the OTC ex-dividend notices
+      (`/11634`). The OTC quotes table was not found there (the platform's search page is drawn
+      by script and gave no result to a program); the listed ex-dividend notices were not looked
+      up, as the Taiwan Stock Exchange's OpenAPI as a whole links the license.
+    - The data's names and versions are the OpenAPIs' own (`summary` of each path; `info.version`
+      1.0 and 1.0.0). The year is the year the page is shown.
+    - FinMind's terms say nothing of attribution; its Commercial Use page asks to credit the source
+      as "FinMind", and its Disclaimer (section 2) asks that the original providing agency be named
+      too. The service is not a commercial use; FinMind is named with the two exchanges anyway.

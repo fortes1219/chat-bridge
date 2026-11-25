@@ -172,6 +172,30 @@ What it does not do:
 - A question about "my holdings" that names none is searched for at most 8 of them; up to 30
   holdings can be kept.
 
+## Where the prices come from
+
+Prices come from Yahoo Finance through yfinance, not from the exchanges' own feeds; the panel links
+Yahoo's terms. Yahoo's daily series can miss a day, so the previous close of a Taiwan holding also
+comes from:
+
+- FinMind's public API, without a key ([terms](https://finmind.github.io/en/PrivacyPolicy/)). Its
+  Taiwan data comes from the Taiwan Stock Exchange and the Taipei Exchange. Only past closes and
+  ex-dividend reference prices are read.
+- The two exchanges' open data, named as the Open Government Data License asks:
+
+  > Taiwan Stock Exchange 2026 TWSE OpenAPI 1.0: STOCK_DAY_ALL (daily trading of listed stocks),
+  > TWT48U_ALL (ex-dividend and ex-rights notices of listed stocks)
+  >
+  > Taipei Exchange 2026 TPEx OpenAPI 1.0.0: tpex_mainboard_daily_close_quotes (OTC stock quotes),
+  > tpex_exright_prepost (ex-dividend and ex-rights notices of OTC stocks)
+  >
+  > The Open Data is made available to the public under the Open Government Data License, User can
+  > make use of it when complying to the condition and obligation of its terms.
+  >
+  > Open Government Data License: https://data.gov.tw/license
+
+The panel shows the same lines under its quotes.
+
 ## Sample data
 
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
