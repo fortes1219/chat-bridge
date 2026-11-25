@@ -17,5 +17,7 @@ one, and change `.gitignore` so the shared parts of `.claude/` are tracked.
 ## Files
 
 - `.claude/hooks/guard.py`, `.claude/hooks/validators/`, `.claude/hooks/utils/`, `.claude/hooks/README.md`
+- `.claude/hooks/tests/` (the scenarios, one module per use)
 - `.claude/settings.json` (shared), `.claude/settings.local.json` (personal, ignored)
+- `.claude/CLAUDE.md` (shared), `CLAUDE.local.md` (personal, ignored)
 - `.gitignore`

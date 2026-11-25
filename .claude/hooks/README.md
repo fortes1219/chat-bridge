@@ -48,6 +48,16 @@ its spec, and commits, installs, writes outside the project and uploads still st
 the file goes missing on a machine that has a reviewer, the reviewer's limits are gone without a
 warning. A session that is in neither list gets the reviewer's limits as ask instead of deny.
 
+## Tests
+
+```
+uv run --no-sync pytest .claude/hooks/tests
+```
+
+Each module builds a throwaway project with this guard installed and asks the guard about calls
+the way Claude Code does. Cases name places with tokens (`<project>`, `<scratch>`, `<home>`) and
+sessions by role, so they hold no machine's paths and no real session ids.
+
 ## Layout
 
 ```
@@ -69,6 +79,13 @@ hooks
 │       ├── git.py            git that reads; changes only in the scratch folder
 │       ├── targets.py        where its shell may write, and what it may run
 │       └── refusal.py        deny for the reviewer, ask for an unlisted session
+│
+├── tests                     one module per use, run against a throwaway project
+│   ├── conftest.py           the throwaway project, and asking the guard about one call
+│   ├── test_reviewer.py      the reviewer's limits
+│   ├── test_writer.py        the writer's rules and the spec gate
+│   ├── test_every_role.py    sending data out; every shell command is logged
+│   └── test_roles.py         a session in neither list, subagents, a clone without the list
 │
 └── utils                     what every rule shares
     ├── roles.py              who is calling
