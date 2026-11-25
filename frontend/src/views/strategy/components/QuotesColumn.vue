@@ -33,6 +33,13 @@ const PAGE_CONNECTION: Record<SocketConnectionState, Following> = {
   disconnected: 'disconnected'
 };
 
+/**
+ * The previous closes of Taiwan holdings also come from FinMind and the exchanges' open data. One
+ * line names them and links the open data's license; the full attribution, in the form the
+ * license's annex asks for, is in the README.
+ */
+const OPEN_DATA_LICENSE_URL = 'https://data.gov.tw/license';
+
 /** The source's stated delay, in words. */
 function delay(quote: Quote): string {
   if (quote.delay_minutes === null) return t('strategy.quotes.delayUnstated');
@@ -97,6 +104,12 @@ const following = computed(() => {
       {{ t('strategy.quotes.source', { name: valuation.source.name }) }}
       <ULink :to="valuation.source.terms_url" target="_blank" rel="noopener noreferrer" class="underline">
         {{ t('strategy.quotes.terms') }}
+      </ULink>
+    </p>
+    <p class="text-muted text-xs" data-test="close-sources">
+      {{ t('strategy.quotes.closeSources') }}
+      <ULink :to="OPEN_DATA_LICENSE_URL" target="_blank" rel="noopener noreferrer" class="underline">
+        {{ t('strategy.quotes.openDataLicense') }}
       </ULink>
     </p>
   </section>

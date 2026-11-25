@@ -199,6 +199,9 @@ export default {
       closeOn: 'daily, {day}',
       source: 'Prices from {name}, not the exchanges’ own feed.',
       terms: 'Terms of use',
+      closeSources:
+        'Previous closes of Taiwan holdings also come from FinMind and the open data of the Taiwan Stock Exchange and the Taipei Exchange.',
+      openDataLicense: 'Open Government Data License',
       updating: 'Updating',
       sourceDown: 'Not connected to the price source; prices stay as of their times',
       connecting: 'Connecting…',

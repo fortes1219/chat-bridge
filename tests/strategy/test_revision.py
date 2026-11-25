@@ -16,7 +16,9 @@ from chat_bridge.chat.programs import Program
 from chat_bridge.chat.schemas import ChatDelta, Source
 from chat_bridge.chat.split import SplitOutcome
 from chat_bridge.strategy import store
-from chat_bridge.strategy.prices import PriceBook, Quote
+from chat_bridge.strategy.compute import valuation
+from chat_bridge.strategy.history import History
+from chat_bridge.strategy.prices import PriceBook, Quote, latest_quote
 from chat_bridge.strategy.proposal import PROPOSAL_SCHEMA, CheckedProposal
 from chat_bridge.strategy.revision import RevisionReplyError
 from chat_bridge.strategy.schemas import (
@@ -26,7 +28,7 @@ from chat_bridge.strategy.schemas import (
     RuleView,
 )
 from chat_bridge.strategy.state import STATE
-from tests.strategy.test_valuation import NOW, US_DAY
+from tests.strategy.test_valuation import HOLDINGS, NOW, US_DAY
 
 QUESTION = "依據聯準會這半年的動向，調整我的配置以降低風險"
 SECTION = service.FoundSection(
@@ -236,6 +238,47 @@ def test_the_program_gets_the_latest_prices_with_their_time_and_none_for_a_missi
     assert data["exchange_rates_to_TWD"]["USD"]["price"] == "32.1"
 
 
+def test_the_program_gets_the_previous_close_the_panel_measures_from(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": None})
+    book = PriceBook()
+    # The days as FinMind gave them, then a live price that does not say its previous close.
+    days = History(
+        read_on=date(2026, 11, 25),
+        closes={
+            date(2026, 11, 24): Decimal("2230"),
+            date(2026, 11, 25): Decimal("2150"),
+        },
+    )
+    book.put(latest_quote("2330.TW", days) or pytest.fail("no daily value"))
+    book.put(
+        Quote(
+            "2330.TW",
+            Decimal("2155"),
+            None,
+            "live",
+            datetime(2026, 11, 25, 5, tzinfo=UTC),
+        )
+    )
+    monkeypatch.setattr(STATE, "book", book)
+
+    _read()
+
+    [sent] = run.inputs
+    data = json.loads(sent[sent.index("<strategy>") + 10 : sent.index("</strategy>")])
+    [given] = [
+        holding["latest_price"]
+        for holding in data["holdings"]
+        if holding["symbol"] == "2330.TW"
+    ]
+    assert (given["price"], given["previous_close"]) == ("2155", "2230")
+    [panel] = [
+        quote for quote in valuation(HOLDINGS, book).quotes if quote.symbol == "2330.TW"
+    ]
+    assert panel.change_percent == Decimal("-3.36")
+
+
 def test_the_record_keeps_the_answer_the_command_line_and_the_proposal(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -268,6 +311,29 @@ def test_a_proposal_that_fails_a_check_is_refused_with_its_reason_and_not_kept(
     assert proposal.proposal.refused.code == "not_100"
     assert run.saved == []
     assert run.records[0]["proposal"]["refused"]["code"] == "not_100"
+
+
+def test_a_proposal_not_in_its_shape_still_shows_the_answer_and_says_why_it_was_refused(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A real run once added a reason without a source, which cost the whole answer.
+    unsourced = {
+        **GOOD_PROPOSAL,
+        "reasons": [*GOOD_PROPOSAL["reasons"], {"text": "另一個理由", "sources": []}],
+    }
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": unsourced})
+
+    _, text, proposal = _read()
+
+    assert text.delta == ANSWER
+    assert proposal.proposal is not None
+    assert proposal.proposal.proposal is None
+    assert proposal.proposal.refused is not None
+    assert proposal.proposal.refused.code == "not_the_shape"
+    assert run.saved == []
+    assert run.records[0]["answer"] == ANSWER
+    assert run.records[0]["error"] is None
+    assert run.records[0]["proposal"]["refused"]["code"] == "not_the_shape"
 
 
 def test_no_proposal_is_said_as_neither_a_proposal_nor_a_refusal(

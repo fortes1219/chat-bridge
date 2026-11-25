@@ -98,6 +98,16 @@ describe('the strategy panel with prices', () => {
     expect(source.find('a').attributes('href')).toBe(VALUATION.source.terms_url);
   });
 
+  it('names FinMind and the exchanges’ open data in one line, with the license', async () => {
+    const page = await mountPanel(STRATEGY);
+
+    const sources = page.find('[data-test="close-sources"]');
+    expect(sources.text()).toBe(
+      '台股的昨收另取自 FinMind、臺灣證券交易所與證券櫃檯買賣中心的開放資料。 政府資料開放授權條款'
+    );
+    expect(sources.findAll('a').map(link => link.attributes('href'))).toEqual(['https://data.gov.tw/license']);
+  });
+
   it('draws a missing price as missing, not zero, and names what the totals leave out', async () => {
     const page = await mountPanel({ ...STRATEGY, valuation: TSMC_MISSING });
 

@@ -199,6 +199,8 @@ const zhTW: typeof en = {
       closeOn: '{day} 日線',
       source: '價格來自 {name}，不是交易所官方的資料。',
       terms: '使用條款',
+      closeSources: '台股的昨收另取自 FinMind、臺灣證券交易所與證券櫃檯買賣中心的開放資料。',
+      openDataLicense: '政府資料開放授權條款',
       updating: '更新中',
       sourceDown: '沒有連上行情來源，價格停在顯示的時間',
       connecting: '連線中…',

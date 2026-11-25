@@ -93,9 +93,19 @@ class ProposalReply(_Strict):
     reasons: Annotated[list[ReasonReply], Field(min_length=1)]
 
 
-class RevisionReply(_Strict):
+class _AnswerReply(_Strict):
+    """The reply's outer shape. The proposal in it is read on its own, so one not in its shape
+    costs the proposal, not the answer."""
+
     answer: str
-    proposal: ProposalReply | None
+    proposal: Any
+
+
+@dataclass(frozen=True)
+class RevisionReply:
+    answer: str
+    # The proposal as read; or why it is not one; or none, when the program proposed nothing.
+    proposal: ProposalReply | ProposalRefusal | None
 
 
 @dataclass(frozen=True)
@@ -104,11 +114,6 @@ class CheckedProposal:
 
     targets: dict[str, int]
     reasons: list[Reason]
-
-
-def read_reply(reply: dict[str, Any]) -> RevisionReply:
-    """The reply as a revision answer. Raises ValidationError when it is not that shape."""
-    return RevisionReply.model_validate(reply)
 
 
 def first_problem(error: ValidationError) -> str:
@@ -120,6 +125,23 @@ def first_problem(error: ValidationError) -> str:
 
 def _refusal(code: RefusalCode, message: str) -> ProposalRefusal:
     return ProposalRefusal(code=code, message=message)
+
+
+def read_reply(reply: dict[str, Any]) -> RevisionReply:
+    """The reply as a revision answer. Raises ValidationError when it has no answer to show.
+
+    A proposal not in its shape, such as a reason without a source, is refused with the reason
+    and the answer is still shown (spec User Story 2, scenario 4).
+    """
+    outer = _AnswerReply.model_validate(reply)
+    if outer.proposal is None:
+        return RevisionReply(answer=outer.answer, proposal=None)
+    try:
+        proposal = ProposalReply.model_validate(outer.proposal)
+    except ValidationError as error:
+        refused = _refusal("not_the_shape", first_problem(error))
+        return RevisionReply(answer=outer.answer, proposal=refused)
+    return RevisionReply(answer=outer.answer, proposal=proposal)
 
 
 def check_proposal(

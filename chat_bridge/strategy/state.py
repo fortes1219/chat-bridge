@@ -13,9 +13,11 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import date
 
 from chat_bridge.strategy import store
 from chat_bridge.strategy.compute import priced_symbols, valuation
+from chat_bridge.strategy.history import trading_day
 from chat_bridge.strategy.prices import PriceBook, PriceSource, Quote
 from chat_bridge.strategy.schemas import HoldingView, StoredStrategy, StrategyView
 
@@ -23,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 Listener = Callable[[StrategyView], Awaitable[None]]
 # How long the service waits for the recent closes before it takes requests. Past it, the service
-# starts anyway, as Yahoo may be slow or out of reach.
+# starts anyway, as a source may be slow or out of reach, and the closes still being read reach
+# the page as they come.
 CLOSES_WAIT_SECONDS = 20
 
 
@@ -42,6 +45,10 @@ class StrategyState:
         self._source: PriceSource | None = None
         self._symbols: list[str] = []
         self._following: asyncio.Task[None] | None = None
+        # The series and trading days whose sources were read again, so each is read once a day.
+        self._reread: set[tuple[str, date]] = set()
+        # Reads of closes still running, ended when the service stops.
+        self._reads: set[asyncio.Task[None]] = set()
         # Publishing tasks, kept so they are not collected while they run.
         self._publishing: set[asyncio.Task[None]] = set()
 
@@ -81,9 +88,52 @@ class StrategyState:
             self._publish()
 
     def price(self, quote: Quote) -> None:
-        """A new price: recompute and send the view when it changed anything."""
+        """A new price: recompute and send the view when it changed anything. The first price of
+        a trading day after the one the series' days were read on reads its sources again, once a
+        series a day, so a service left running overnight knows the day before's close."""
         if self.book.put(quote):
             self._publish()
+        if self._source is None or not self.book.needs_days(quote):
+            return
+        key = (quote.symbol, trading_day(quote.symbol, quote.at))
+        if key in self._reread:
+            return
+        self._reread.add(key)
+        self._read_closes(self._source, [quote.symbol])
+
+    def _read_closes(
+        self, source: PriceSource, symbols: list[str]
+    ) -> asyncio.Task[None]:
+        """Read the series' closes in the background; each price reaches the page as it comes."""
+        task = asyncio.get_running_loop().create_task(
+            self._reading_closes(source, symbols)
+        )
+        self._reads.add(task)
+        task.add_done_callback(self._reads.discard)
+        return task
+
+    async def _reading_closes(self, source: PriceSource, symbols: list[str]) -> None:
+        try:
+            await source.read_closes(symbols, self.price)
+        except Exception:
+            # A background task's error reaches no one; it is logged, and the prices keep what
+            # they have.
+            logger.exception(
+                "The recent prices of %s could not be read.", ", ".join(symbols)
+            )
+
+    async def _wait_for_closes(self, source: PriceSource, symbols: list[str]) -> None:
+        """Read the series' closes and wait for them for at most CLOSES_WAIT_SECONDS; the read
+        goes on past it."""
+        reading = self._read_closes(source, symbols)
+        done, _ = await asyncio.wait({reading}, timeout=CLOSES_WAIT_SECONDS)
+        if not done:
+            logger.warning(
+                "The recent prices of %s were not all read within %d seconds; the rest are "
+                "shown as they come.",
+                ", ".join(symbols),
+                CLOSES_WAIT_SECONDS,
+            )
 
     def _publish(self) -> None:
         if not self._listeners:
@@ -106,8 +156,8 @@ class StrategyState:
         """Begin with an empty price book and read the profile again; read the recent closes and
         start the live stream, sending the view to `listeners` after each price that changes it.
 
-        The closes are read before this returns, for at most CLOSES_WAIT_SECONDS, so the first page
-        that opens shows prices instead of every holding left out.
+        The closes are waited for before this returns, for at most CLOSES_WAIT_SECONDS, so the
+        first page that opens shows prices instead of every holding left out.
         """
         self.book = PriceBook()
         self._live = False
@@ -117,6 +167,8 @@ class StrategyState:
         self._listeners = list(listeners)
         self._source = source
         self._symbols = []
+        self._reread = set()
+        self._reads = set()
         if source is None:
             return
         try:
@@ -128,16 +180,7 @@ class StrategyState:
         # Said, so the pause before the page opens has a reason on the screen.
         logger.info("Reading the recent prices of %d series.", len(symbols))
         began = time.perf_counter()
-        try:
-            await asyncio.wait_for(
-                source.read_closes(symbols, self.price), CLOSES_WAIT_SECONDS
-            )
-        except TimeoutError:
-            logger.warning(
-                "The recent prices were not all read within %d seconds; the service starts "
-                "without the rest.",
-                CLOSES_WAIT_SECONDS,
-            )
+        await self._wait_for_closes(source, symbols)
         found = sum(self.book.get(symbol) is not None for symbol in symbols)
         logger.info(
             "Read %d of %d recent prices in %.1f seconds.",
@@ -175,34 +218,28 @@ class StrategyState:
         await self._stop_feed()
         new = [symbol for symbol in symbols if self.book.get(symbol) is None]
         if new:
-            try:
-                await asyncio.wait_for(
-                    source.read_closes(new, self.price), CLOSES_WAIT_SECONDS
-                )
-            except TimeoutError:
-                logger.warning(
-                    "The recent prices of %s were not read within %d seconds.",
-                    ", ".join(new),
-                    CLOSES_WAIT_SECONDS,
-                )
-            except Exception:
-                # A background task's error reaches no one: it is logged, and the live stream
-                # still starts on the saved holdings, so their prices can come from it.
-                logger.exception(
-                    "The recent prices of %s could not be read.", ", ".join(new)
-                )
+            # A read that fails is logged, and the live stream still starts on the saved
+            # holdings, so their prices can come from it.
+            await self._wait_for_closes(source, new)
         self._symbols = symbols
         self._feed = asyncio.get_running_loop().create_task(
             self._run_stream(source, symbols)
         )
 
     async def stop(self) -> None:
-        """Stop the price feed and wait for it to close its connection."""
+        """Stop the price feed and the reads of closes, and wait for the feed to close its
+        connection."""
         self._listeners = []
+        # No price that comes before the feed ends starts another read.
+        self._source = None
         following, self._following = self._following, None
         if following is not None:
             following.cancel()
             await asyncio.gather(following, return_exceptions=True)
+        reads, self._reads = self._reads, set()
+        for task in reads:
+            task.cancel()
+        await asyncio.gather(*reads, return_exceptions=True)
         await self._stop_feed()
 
     async def _stop_feed(self) -> None:

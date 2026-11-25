@@ -53,6 +53,16 @@ in the terminal (research.md decision 13).
 - [x] T032 [P] Tests: a shutdown cuts the answer off and the stream ends with the `error` event; the grace period stays below uvicorn's limit; for each program, a stop ends everything a `.cmd` launcher started (fails with the old stop); the stream's events unchanged.
 - [x] T033 Checks as T013; Ctrl+C as a person (an answer coming in, no answer, a connection that never ends), with the record, the processes, the database and what the page says; the file list and one commit message.
 
+## Phase 2 follow-up: a proposal not in the shape fails the whole answer
+
+A real run of a revision question had one reason without a source. The reply was checked as one
+shape, so the answer was dropped with the proposal and the person saw an error, where User Story 2,
+scenario 4 shows the answer and says why the proposal was refused.
+
+- [x] T034 `chat_bridge/strategy/proposal.py`: the answer and the proposal are read apart; a proposal not in the shape is refused with `not_the_shape` and the answer is shown; a reply with no answer still fails. `revision.py` passes the refusal to the proposal event.
+- [x] T035 [P] Tests: a proposal not in the shape, a reason without a source among them, gives the answer and the `not_the_shape` refusal, and nothing is kept; a reply with no answer still fails after the context.
+- [x] T036 Checks as T013; the file list and one commit message.
+
 ## Phase 3: Rules (US4; P2)
 
 - [x] T022 `chat_bridge/strategy/compute.py` (rules part) and `router.py` `PUT /strategy/rules`: the three kinds as a table, checked on target weights; unknown kinds and limits outside 0 to 100 refused with a code; a proposal's rule results before and after (FR-007; decision 9). The refusal codes and saving the list are in `store.py`, beside the proposal's refusals.
