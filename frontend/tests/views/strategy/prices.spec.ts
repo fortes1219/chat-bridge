@@ -98,24 +98,14 @@ describe('the strategy panel with prices', () => {
     expect(source.find('a').attributes('href')).toBe(VALUATION.source.terms_url);
   });
 
-  it('names FinMind and the exchanges’ open data as the license asks', async () => {
+  it('names FinMind and the exchanges’ open data in one line, with the license', async () => {
     const page = await mountPanel(STRATEGY);
 
     const sources = page.find('[data-test="close-sources"]');
-    const year = new Date().getFullYear();
-    for (const named of [
-      'FinMind（資料源自臺灣證券交易所、證券櫃檯買賣中心）',
-      `臺灣證券交易所 ${year} 臺灣證券交易所 OpenAPI 1.0：上市個股日成交資訊、上市股票除權除息預告表`,
-      `證券櫃檯買賣中心 ${year} 證券櫃檯買賣中心 OpenAPI 1.0.0：上櫃股票行情、上櫃股票除權除息預告表`,
-      '此開放資料依政府資料開放授權條款 (Open Government Data License) 進行公眾釋出',
-      '政府資料開放授權條款： https://data.gov.tw/license'
-    ]) {
-      expect(sources.text()).toContain(named);
-    }
-    expect(sources.findAll('a').map(link => link.attributes('href'))).toEqual([
-      'https://finmind.github.io/PrivacyPolicy/',
-      'https://data.gov.tw/license'
-    ]);
+    expect(sources.text()).toBe(
+      '台股的昨收另取自 FinMind、臺灣證券交易所與證券櫃檯買賣中心的開放資料。 政府資料開放授權條款'
+    );
+    expect(sources.findAll('a').map(link => link.attributes('href'))).toEqual(['https://data.gov.tw/license']);
   });
 
   it('draws a missing price as missing, not zero, and names what the totals leave out', async () => {

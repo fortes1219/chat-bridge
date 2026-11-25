@@ -54,7 +54,7 @@ whole portfolio, are measured from the previous close, as a broker's quote scree
   - Yahoo's own quote: one request a series that still has no previous close.
 - **FR-004**: No real-time data is read from FinMind; only daily closes and the reference prices of ex-dividend and ex-rights days.
 - **FR-005**: Nothing is guessed: a change is shown only from a previous close one of the sources gives, or from a reference price worked out from a cash dividend the exchange announced.
-- **FR-006**: Under the quotes, and in the README, FinMind and the two exchanges' open data are named as sources of the previous closes of Taiwan holdings; the open data in the form of the Open Government Data License's attribution annex (provider, year, the data's name and version, the license's statement and its address).
+- **FR-006**: FinMind and the two exchanges' open data are named as sources of the previous closes of Taiwan holdings: under the quotes in one line that links the Open Government Data License, and in the README in the form of the license's attribution annex (provider, year, the data's name and version, the license's statement and its address).
 
 ## Not done
 

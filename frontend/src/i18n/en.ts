@@ -200,15 +200,8 @@ export default {
       source: 'Prices from {name}, not the exchanges’ own feed.',
       terms: 'Terms of use',
       closeSources:
-        'The previous closes of Taiwan holdings also come from FinMind (whose data comes from the Taiwan Stock Exchange and the Taipei Exchange) and from the two exchanges’ open data:',
-      finmindTerms: 'FinMind terms',
-      listedData:
-        'Taiwan Stock Exchange {year} TWSE OpenAPI 1.0: STOCK_DAY_ALL (daily trading of listed stocks), TWT48U_ALL (ex-dividend and ex-rights notices of listed stocks)',
-      otcData:
-        'Taipei Exchange {year} TPEx OpenAPI 1.0.0: tpex_mainboard_daily_close_quotes (OTC stock quotes), tpex_exright_prepost (ex-dividend and ex-rights notices of OTC stocks)',
-      openDataLicense:
-        'The Open Data is made available to the public under the Open Government Data License, User can make use of it when complying to the condition and obligation of its terms.',
-      openDataLicenseName: 'Open Government Data License:',
+        'Previous closes of Taiwan holdings also come from FinMind and the open data of the Taiwan Stock Exchange and the Taipei Exchange.',
+      openDataLicense: 'Open Government Data License',
       updating: 'Updating',
       sourceDown: 'Not connected to the price source; prices stay as of their times',
       connecting: 'Connecting…',

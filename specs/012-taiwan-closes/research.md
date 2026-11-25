@@ -100,7 +100,9 @@ requests 2.34.2: none (OSV, 2026-11-25). The lock file is checked again before d
       by script and gave no result to a program); the listed ex-dividend notices were not looked
       up, as the Taiwan Stock Exchange's OpenAPI as a whole links the license.
     - The data's names and versions are the OpenAPIs' own (`summary` of each path; `info.version`
-      1.0 and 1.0.0). The year is the year the page is shown.
+      1.0 and 1.0.0). The full attribution is in the README, with the year it was written; the
+      license says it must be explicit, not where it goes. The panel keeps one line that names
+      the sources and links the license, so the quotes are not crowded.
     - FinMind's terms say nothing of attribution; its Commercial Use page asks to credit the source
       as "FinMind", and its Disclaimer (section 2) asks that the original providing agency be named
       too. The service is not a commercial use; FinMind is named with the two exchanges anyway.

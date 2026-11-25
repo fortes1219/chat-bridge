@@ -194,7 +194,7 @@ comes from:
   >
   > Open Government Data License: https://data.gov.tw/license
 
-The panel shows the same lines under its quotes.
+Under its quotes, the panel names these sources in one line and links the license.
 
 ## Sample data
 
