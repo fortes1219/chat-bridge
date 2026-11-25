@@ -53,6 +53,16 @@ describe('ChatEventSchema', () => {
     expect(() => ChatEventSchema.parse({ ...CONTEXT_EVENT, context: withoutNotice })).toThrow();
   });
 
+  it('refuses a context that does not say whether the question could be split', () => {
+    const withoutSplit = Object.fromEntries(
+      Object.entries(CONTEXT_EVENT.context).filter(([key]) => key !== 'split_failed')
+    );
+    expect(() => ChatEventSchema.parse({ ...CONTEXT_EVENT, context: withoutSplit })).toThrow();
+    expect(() =>
+      ChatEventSchema.parse({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, split_failed: 'no' } })
+    ).toThrow();
+  });
+
   it('refuses an event type the contract does not have', () => {
     expect(() => ChatEventSchema.parse({ type: 'response.done', delta: null, context: null })).toThrow();
   });

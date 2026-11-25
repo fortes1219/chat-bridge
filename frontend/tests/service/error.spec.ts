@@ -31,6 +31,17 @@ describe('normalizeHttpError', () => {
     });
   });
 
+  it('keeps which holding a refusal is about, and leaves it out when it is about none', () => {
+    const holding = { code: 'holding_symbol', message: "holding 3: '0700.HK' is not…", item: 3 };
+    const rules = { code: 'rule_market', message: 'rule 1: …', item: null };
+
+    expect(normalizeHttpError(axiosError(422, { detail: holding }))).toMatchObject({
+      reason: 'holding_symbol',
+      item: 3
+    });
+    expect(normalizeHttpError(axiosError(422, { detail: rules }))).not.toHaveProperty('item');
+  });
+
   it('calls a refusal without the service’s reason a contract error', () => {
     expect(normalizeHttpError(axiosError(503, { detail: 'the knowledge base is empty' }))).toMatchObject({
       source: 'contract',

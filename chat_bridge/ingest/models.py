@@ -68,7 +68,9 @@ class Document(Base):
     content_hash: Mapped[str] = mapped_column()
     title: Mapped[str] = mapped_column()
     keyword_groups: Mapped[list[list[str]]] = mapped_column(JSONB)
-    event_date: Mapped[date | None] = mapped_column()
+    # Indexed so the date the data reaches, the latest of these, is one index read. `create_all`
+    # adds it only with a new table: an older knowledge base reads every row until rebuilt.
+    event_date: Mapped[date | None] = mapped_column(index=True)
 
 
 class Section(Base):

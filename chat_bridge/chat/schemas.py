@@ -6,18 +6,19 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from chat_bridge.chat.programs import Login, Program
+from chat_bridge.chat.sources import Language as Language
+from chat_bridge.chat.sources import Localized as Localized
+from chat_bridge.chat.sources import Source as Source
+from chat_bridge.strategy.schemas import ProposalEvent
 
 # Far longer than any question; the limit keeps one request from filling the model's input or
 # the record table.
 MAX_QUESTION_LENGTH = 10_240
 
-DeltaType = Literal["response.context", "response.output_text.delta"]
+DeltaType = Literal[
+    "response.context", "response.output_text.delta", "response.proposal"
+]
 
-# The languages the service writes its own texts in. A client shows the one it needs; a reader
-# of the API gets both.
-Language = Literal["zh-TW", "en"]
-# One text in each language, keyed by language, as a localization dictionary in an API.
-Localized = dict[Language, str]
 
 # Why a question was refused or its answer failed, for a client to say so in its own language.
 # The message beside it is for people reading the API or the logs.
@@ -51,42 +52,44 @@ class ProgramState(BaseModel):
     state: Login
 
 
-class Source(BaseModel):
-    """A section the answer may use, numbered as the model sees it."""
+class SampleQuestions(BaseModel):
+    """Questions the page offers before the first one, each in both languages; none when the
+    knowledge base does not hold the documents they are about."""
 
-    number: int
-    file: str
-    title: str
-    # The document's own words: what the model reads and the records keep.
-    heading: str
-    # The heading in each language, when it is a section name this app's sample format fixes;
-    # null for any other heading, which is shown as the document wrote it.
-    heading_localizations: Localized | None = None
-    event_date: date | None
+    questions: list[Localized]
 
 
 class ChatContext(BaseModel):
     """What the program, not the model, says about an answer: its sources and the disclaimer."""
 
     sources: list[Source]
-    # The newest event date among the sources: how recent the answer's data is.
+    # The latest event date in the whole knowledge base: how recent the data is, whatever the
+    # search found.
     data_latest_date: date | None
     disclaimer: Localized
     # The program that answers; none when no program is asked, as for a question the data has
     # nothing on, or when none can answer.
     program: Program | None = None
+    # The program could not list the question's parts, so only the question as asked was
+    # searched. Said, so a failed split never looks like one that worked.
+    split_failed: bool = False
+    # The question asks to revise the strategy: the answer comes whole, with a proposal event
+    # after it, so a page can say what it is waiting for.
+    proposal_expected: bool = False
 
 
 class ChatDelta(BaseModel):
     """One event of the answer's Server-Sent Events stream.
 
     The first event carries the context, so the sources and the disclaimer arrive even when the
-    answer is cut off; each later event carries a piece of the answer.
+    answer is cut off; each later event carries a piece of the answer. A revision question ends
+    with one more, carrying what came of its proposal.
     """
 
     type: DeltaType
     delta: str | None = None
     context: ChatContext | None = None
+    proposal: ProposalEvent | None = None
 
 
 class ChatRecordPublic(BaseModel):

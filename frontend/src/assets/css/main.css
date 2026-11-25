@@ -27,4 +27,8 @@
   /* textLink.foreground. The theme's button blue, #0078d4, is too dark for text on #1f1f1f. */
   --ui-primary: #4daafc;
   --ui-error: #f85149; /* errorForeground */
+
+  /* A chart's first color is the primary, blue here, and Nuxt UI's second is blue as well, so the
+     first two slices of the allocation donut could not be told apart. The second is green. */
+  --ui-chart-2: var(--color-emerald-400);
 }

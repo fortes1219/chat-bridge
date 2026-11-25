@@ -24,7 +24,12 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
-from chat_bridge.chat.programs import Login, LoginStatus, ProgramError
+from chat_bridge.chat.programs import (
+    Login,
+    LoginStatus,
+    ProgramError,
+    end_process_tree,
+)
 
 # Nothing from the user's own Claude Code setup (settings, hooks, MCP servers), no built-in
 # tools, and no session saved to disk. With no tools the model can only write text, and the
@@ -44,6 +49,8 @@ STREAM_ARGS = (
     "--verbose",
     "--include-partial-messages",
 )
+# One JSON result at the end, holding a reply in the shape the schema after these gives.
+SHAPED_ARGS = ("--output-format", "json", "--json-schema")
 # With one of these set, `claude -p` would use a key instead of the user's login, and bill an
 # account the user may not know is set.
 STRIPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
@@ -65,7 +72,14 @@ ERROR_TAIL_CHARS = 300
 MAX_LINE_BYTES = 1024 * 1024
 
 
-__all__ = ["ClaudeCodeError", "Login", "LoginStatus", "login_status", "stream_answer"]
+__all__ = [
+    "ClaudeCodeError",
+    "Login",
+    "LoginStatus",
+    "login_status",
+    "reply_in_shape",
+    "stream_answer",
+]
 
 
 class ClaudeCodeError(ProgramError):
@@ -102,9 +116,14 @@ async def _start(args: list[str], *, with_input: bool) -> Process:
 
 
 async def _stop(process: Process) -> None:
-    if process.returncode is None:
-        process.kill()
-        await process.wait()
+    """End Claude Code and every process it started (programs.end_process_tree).
+
+    An npm install is a `.cmd` launcher in front of node; ending only the launcher left Claude
+    Code writing the answer after the person stopped it.
+    """
+    problem = await end_process_tree(process)
+    if problem is not None:
+        raise ClaudeCodeError(f"Claude Code {problem}")
 
 
 async def login_status() -> LoginStatus:
@@ -126,8 +145,12 @@ async def login_status() -> LoginStatus:
             process.communicate(), LOGIN_STATUS_TIMEOUT_SECONDS
         )
     except TimeoutError:
-        await _stop(process)
-        return LoginStatus(Login.UNKNOWN, "`claude auth status` did not reply in time")
+        detail = "`claude auth status` did not reply in time"
+        try:
+            await _stop(process)
+        except ClaudeCodeError as error:
+            detail = f"{detail}, and {error}"
+        return LoginStatus(Login.UNKNOWN, detail)
     return login_from_status(output)
 
 
@@ -173,6 +196,62 @@ def _failure(
     if exit_code != 0:
         return f"Claude Code exited with code {exit_code}: {tail}"
     return None
+
+
+async def reply_in_shape(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    *,
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """Run Claude Code once for a reply in the given JSON shape, and return it.
+
+    The schema is fixed text, so it may be on the command line; the input goes on standard
+    input. Raises ClaudeCodeError when the run fails or ends without a reply in that shape.
+    """
+    with tempfile.TemporaryDirectory(prefix="chat-bridge-") as folder:
+        prompt_file = Path(folder) / "system_prompt.md"
+        prompt_file.write_text(system_prompt, encoding="utf-8")
+        args = [
+            find_executable(),
+            "-p",
+            *ISOLATION_ARGS,
+            *SHAPED_ARGS,
+            json.dumps(schema, separators=(",", ":")),
+            "--system-prompt-file",
+            str(prompt_file),
+        ]
+        on_start(args)
+        process = await _start(args, with_input=True)
+        try:
+            output, stderr = await process.communicate(input_text.encode("utf-8"))
+        finally:
+            await _stop(process)
+    return shaped_reply(
+        output, process.returncode, stderr.decode("utf-8", errors="replace")
+    )
+
+
+def shaped_reply(output: bytes, exit_code: int | None, stderr: str) -> dict[str, Any]:
+    """The reply in the asked-for shape from the JSON result `--output-format json` prints."""
+    try:
+        result = json.loads(output)
+    except ValueError:
+        result = None
+    if not isinstance(result, dict):
+        result = None
+    failure = _failure(result, exit_code, stderr)
+    if failure:
+        raise ClaudeCodeError(failure)
+    # A run that ends without valid structured output, for example because the model declined,
+    # has no such field (headless.md, "Get structured output").
+    reply = result.get("structured_output") if result else None
+    if not isinstance(reply, dict):
+        raise ClaudeCodeError(
+            "Claude Code ended without a reply in the asked-for shape"
+        )
+    return reply
 
 
 async def stream_answer(

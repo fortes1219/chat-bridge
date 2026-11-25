@@ -26,6 +26,8 @@ export interface AppError {
   source: AppErrorSource;
   code: BackendErrorCode | LocalErrorCode;
   reason?: ServiceErrorCode;
+  /** For a refused holding: its place in the list, from 1. */
+  item?: number;
   message: string;
   status?: number;
   raw?: unknown;
@@ -77,7 +79,9 @@ export function normalizeHttpError(error: unknown): AppError {
     const { status, data } = response;
     const parsed = ErrorBodySchema.safeParse(data);
     if (parsed.success) {
-      return backendError('rejected', parsed.data.detail.code, parsed.data.detail.message, error, status);
+      const { code, message, item } = parsed.data.detail;
+      const rejected = backendError('rejected', code, message, error, status);
+      return item == null ? rejected : { ...rejected, item };
     }
 
     // A status with a body that is not the service's error body: the service drifted.

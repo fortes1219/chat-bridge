@@ -7,7 +7,14 @@ coverage/
 /frontend/auto-imports.d.ts
 /frontend/components.d.ts
 
-.claude/
+# Claude Code: the hook, the shared settings and the skills are shared; the rest is personal.
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/roles.json
+!.claude/skills/
+/CLAUDE.local.md
 
 # Run-time data: the embedded database and the downloaded dictionary.
 /local_data/

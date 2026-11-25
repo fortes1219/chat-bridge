@@ -6,6 +6,12 @@ import { CONTEXT_EVENT, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
 
 const getProgramsMock = vi.fn<() => Promise<ProgramState[]>>();
+// The strategy beside the chat reads a fixed strategy, so no test reaches the network for it.
+vi.mock('@/service/api/strategy', async () => {
+  const { STRATEGY } = await import('../../helpers/strategy');
+  return { getStrategy: () => Promise.resolve(STRATEGY), decideProposal: () => Promise.resolve(STRATEGY) };
+});
+
 vi.mock('@/service/api/programs', () => ({
   getPrograms: () => getProgramsMock()
 }));
@@ -103,9 +109,12 @@ describe('hostile content in an answer and its sources', () => {
   it('runs nothing, opens no dialog and loads nothing', async () => {
     const page = await askHostile();
 
+    await page.find('[data-test="all-sources-toggle"]').trigger('click');
+    await flushPromises();
+
     expect(alertSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    for (const part of ['answer-text', 'sources', 'notice']) {
+    for (const part of ['answer-text', 'all-sources-list', 'sources', 'notice']) {
       const area = page.find(`[data-test="${part}"]`);
       expect(area.exists()).toBe(true);
       expect(area.findAll(EXECUTABLE_OR_LOADING)).toHaveLength(0);

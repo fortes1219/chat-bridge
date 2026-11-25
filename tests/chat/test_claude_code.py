@@ -3,13 +3,16 @@
 import asyncio
 import json
 import shutil
+import sys
 from pathlib import Path
 
+import psutil
 import pytest
 
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.claude_code import Login, LoginStatus
 from chat_bridge.chat.service import NO_LOGIN_MESSAGES, NoLoginError
+from tests.chat.conftest import StartLauncher
 
 
 def test_the_key_variables_are_removed_from_the_child(
@@ -114,3 +117,154 @@ def test_each_failure_rule_fails_the_run_on_its_own(
 
     assert failure is not None
     assert reason in failure
+
+
+# --- The split run ---------------------------------------------------------------------------
+
+SPLIT_QUESTION = "<question>\n台積電與 0050 的變化？\n</question>\n"
+
+
+class _FinishedProcess:
+    """Stands in for a `claude -p --output-format json` run that printed `output` and ended."""
+
+    def __init__(self, output: bytes, exit_code: int = 0) -> None:
+        self.output = output
+        self.returncode = exit_code
+        self.input: bytes | None = None
+
+    async def communicate(self, data: bytes) -> tuple[bytes, bytes]:
+        self.input = data
+        return self.output, b""
+
+
+def test_the_split_asks_for_its_shape_with_tools_off_and_the_question_on_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: dict[str, object] = {}
+    result = {
+        "type": "result",
+        "is_error": False,
+        "structured_output": {"parts": ["台積電"]},
+    }
+
+    async def fake_start(args: list[str], *, with_input: bool) -> object:
+        started["args"] = args
+        started["process"] = _FinishedProcess(json.dumps(result).encode())
+        return started["process"]
+
+    monkeypatch.setattr(claude_code, "find_executable", lambda: "claude")
+    monkeypatch.setattr(claude_code, "_start", fake_start)
+    told: list[str] = []
+    schema = {"type": "object", "properties": {"parts": {"type": "array"}}}
+
+    reply = asyncio.run(
+        claude_code.reply_in_shape(
+            "rules", SPLIT_QUESTION, schema, on_start=told.extend
+        )
+    )
+
+    assert reply == {"parts": ["台積電"]}
+    args = started["args"]
+    assert isinstance(args, list)
+    assert told == args
+    assert args[args.index("--json-schema") + 1] == json.dumps(
+        schema, separators=(",", ":")
+    )
+    assert args[args.index("--output-format") + 1] == "json"
+    assert args[args.index("--tools") + 1] == ""
+    assert "--restricted" in args and "--strict-mcp-config" in args
+    assert "台積電" not in " ".join(args)
+    process = started["process"]
+    assert isinstance(process, _FinishedProcess)
+    assert process.input == SPLIT_QUESTION.encode()
+
+
+@pytest.mark.parametrize(
+    ("output", "exit_code", "reason"),
+    [
+        (b"not json", 0, "ended without a result"),
+        (
+            json.dumps({"type": "result", "is_error": True, "result": "x"}).encode(),
+            0,
+            "reported an error",
+        ),
+        (
+            json.dumps({"type": "result", "is_error": False, "result": "x"}).encode(),
+            0,
+            "asked-for shape",
+        ),
+        (
+            json.dumps({"type": "result", "structured_output": ["a"]}).encode(),
+            0,
+            "asked-for shape",
+        ),
+        (
+            json.dumps({"type": "result", "structured_output": {"parts": []}}).encode(),
+            1,
+            "exited with code 1",
+        ),
+    ],
+)
+def test_a_split_run_without_a_reply_in_its_shape_fails(
+    output: bytes, exit_code: int, reason: str
+) -> None:
+    with pytest.raises(claude_code.ClaudeCodeError, match=reason):
+        claude_code.shaped_reply(output, exit_code, "")
+
+
+ECHO_FIRST_ARGUMENT = (
+    "import sys\nsys.stdout.buffer.write(sys.argv[1].encode('utf-8'))\n"
+)
+
+
+def _arrives_unchanged(args: list[str]) -> str:
+    async def run() -> str:
+        process = await claude_code._start(args, with_input=False)
+        output, _ = await process.communicate()
+        return output.decode("utf-8")
+
+    return asyncio.run(run())
+
+
+def test_the_schema_reaches_an_executable_unchanged(tmp_path: Path) -> None:
+    from chat_bridge.chat.split import SPLIT_SCHEMA
+
+    script = tmp_path / "echo.py"
+    script.write_text(ECHO_FIRST_ARGUMENT, encoding="utf-8")
+    schema = json.dumps(SPLIT_SCHEMA, separators=(",", ":"))
+
+    assert _arrives_unchanged([sys.executable, "-I", str(script), schema]) == schema
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="a .cmd launcher exists only on Windows"
+)
+def test_the_schema_reaches_a_cmd_launcher_unchanged(tmp_path: Path) -> None:
+    from chat_bridge.chat.split import SPLIT_SCHEMA
+
+    # An npm install of Claude Code is a .cmd launcher, which cmd.exe reads before node does.
+    script = tmp_path / "echo.py"
+    script.write_text(ECHO_FIRST_ARGUMENT, encoding="utf-8")
+    launcher = tmp_path / "claude.cmd"
+    launcher.write_text(f'@"{sys.executable}" -I "{script}" %*\r\n', encoding="utf-8")
+    schema = json.dumps(SPLIT_SCHEMA, separators=(",", ":"))
+
+    assert _arrives_unchanged([str(launcher), schema]) == schema
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="a .cmd launcher exists only on Windows"
+)
+def test_a_stop_ends_claude_code_and_everything_it_started(
+    start_launcher: StartLauncher,
+) -> None:
+    # Ending only the launcher left Claude Code writing the answer after the person stopped it,
+    # and holding the output pipes.
+    async def run() -> list[psutil.Process]:
+        process, below = await start_launcher(claude_code._start)
+        await claude_code._stop(process)
+        return below
+
+    below = asyncio.run(run())
+
+    assert not [child for child in below if child.is_running()]

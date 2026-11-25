@@ -86,3 +86,43 @@ def test_a_question_whose_client_went_away_is_still_recorded(
     [written] = records
     assert written["answer"] == "聯準會"
     assert written["error"] == service.CUT_OFF
+
+
+def test_an_answer_cancelled_at_shutdown_is_recorded_before_the_service_goes_on(
+    records: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As when uvicorn's shutdown limit passes: the request is cancelled while the program is
+    # still writing, and the service goes on to stop the database. It waits for the answer
+    # first, so the cut-off answer's record, which takes a moment to write, is written.
+    async def slow_record(
+        question: str, answer: str, sections: Any, **kwargs: Any
+    ) -> None:
+        await asyncio.sleep(0.05)
+        records.append({"question": question, "answer": answer, **kwargs})
+
+    async def endless(
+        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+    ) -> AsyncIterator[str]:
+        on_start(COMMAND)
+        yield "聯準會"
+        await asyncio.Event().wait()
+        yield "never sent"
+
+    monkeypatch.setattr(service, "_record", slow_record)
+    monkeypatch.setattr(claude_code, "stream_answer", endless)
+
+    async def main() -> list[dict[str, Any]]:
+        async def read() -> None:
+            async for _ in service.answer_stream("q", [SECTION]):
+                pass
+
+        answering = asyncio.create_task(read())
+        await asyncio.sleep(0.05)
+        answering.cancel()
+        await service.finish_answers(1)
+        # What the database holds when it is stopped, right after.
+        return list(records)
+
+    [written] = asyncio.run(main())
+    assert written["answer"] == "聯準會"
+    assert written["error"] == service.CUT_OFF

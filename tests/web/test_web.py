@@ -280,7 +280,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
         yield test_client
 
 
-@pytest.mark.parametrize("address", ["/", "/?lang=en&program=codex", "/strategy"])
+@pytest.mark.parametrize("address", ["/", "/?lang=en&program=codex", "/a/later/page"])
 def test_the_page_and_any_address_it_owns_return_index_html(
     client: TestClient, address: str
 ) -> None:

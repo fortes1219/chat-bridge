@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-22
 
-**Status**: Draft
+**Status**: Draft, revised 2026-11-23 after review against the maintainer's words
 
 **Input**: User description: "The chat stays the centre of the demo. Beside it, the person sees their own investment strategy: summary number cards, an allocation donut, profit and loss, a quotes column, and the checks of rules they set themselves. When they ask in the chat for the strategy to be revised, the answering program hands back a revised strategy; the screen shows current, proposed and change side by side, and the person accepts or rejects it. It is not a copy of a trading product and connects to no broker."
 
@@ -51,13 +51,14 @@ own profile into new settings, with the difference visible at once.
 4. **Given** the program hands back something that does not follow the format, names a holding that is not in the profile, or whose targets do not add up to 100%, **When** the service checks it, **Then** no proposal is shown, and the chat says why the proposal was refused.
 5. **Given** a question that asks for no revision, **When** it is answered, **Then** no proposal is shown.
 6. **Given** Claude Code answers, or Codex answers, **When** the same revision question is asked, **Then** both hand back a proposal through the same format and the screen behaves the same.
+7. **Given** a question that asks for a revision, **When** the service has its sources and is waiting for the program, **Then** the waiting line says the named program is writing the answer and a proposal and that the answer will arrive at once, distinct from the waiting line of other questions.
 
 ---
 
 ### User Story 3 - Accept or reject (Priority: P1)
 
-Nothing changes until the person says so. Accepting makes the proposed targets the current ones
-and keeps the previous version; rejecting leaves everything as it was.
+Nothing changes until the person says so. Accepting makes the proposed targets the current ones;
+rejecting leaves everything as it was.
 
 **Why this priority**: the program proposes; only the person decides.
 
@@ -67,17 +68,19 @@ and keeps the previous version; rejecting leaves everything as it was.
 
 1. **Given** a proposal is shown, **When** the user has done nothing, **Then** the current strategy is unchanged.
 2. **Given** a proposal, **When** the user rejects it, **Then** the current strategy stays as it was and the proposal is closed.
-3. **Given** a proposal, **When** the user accepts it, **Then** the proposed targets become the current ones, the rule checks are recomputed, and the previous strategy is kept as an earlier version with the time and the question that led to the change. The holdings, the cards and the donut do not change, because nothing is traded; the screen says so.
+3. **Given** a proposal, **When** the user accepts it, **Then** the proposed targets become the current ones, the rule checks are recomputed, and the proposal is marked accepted. The holdings, the cards and the donut do not change, because nothing is traded; the screen says so.
 4. **Given** the answering program, **When** it answers, **Then** it can only hand back a proposal; it never changes the profile itself.
+5. **Given** a proposal is shown and the user has another web page open in the same browser, **When** that page sends a request to accept or reject the proposal, or to change the rules, **Then** the service refuses it and nothing changes.
 
 ---
 
 ### User Story 4 - The rules I set, checked (Priority: P2)
 
-The person sets limits on the target weights of their own strategy: the most any one holding may
-weigh, the least any held holding may weigh, or the most one market may weigh. The screen shows
-how many of the rules the strategy meets, and which ones it breaks; a proposal shows the checks
-before and after.
+The person chooses which limits apply to the target weights of their own strategy and sets each
+limit: the most any one holding may weigh, the least any held holding may weigh, or the most one
+market may weigh. These are the weight limits portfolio optimisers already take (per-asset bounds
+and per-group bounds). The screen shows how many of the rules the strategy meets, and which ones it
+breaks; a proposal shows the checks before and after.
 
 **Why this priority**: what counts as better is the person's own measure, not the program's.
 
@@ -85,7 +88,7 @@ before and after.
 
 **Acceptance Scenarios**:
 
-1. **Given** the sample profile's rules, **When** the screen opens, **Then** it shows "M of N rules met" and each rule with pass or fail.
+1. **Given** the sample profile's rules, **When** the screen opens, **Then** it shows "M of N rules met" and each rule with pass or fail, and says that the rules are checked against the strategy's target weights.
 2. **Given** the user adds, changes or turns off a rule, **When** they save it, **Then** the checks are recomputed at once.
 3. **Given** a proposal, **When** it is shown, **Then** each rule's result is shown for the current and for the proposed strategy.
 4. **Given** a rule of an unknown kind, or a limit outside 0 to 100 percent, **When** the user saves it, **Then** it is refused with the reason.
@@ -104,8 +107,8 @@ its time misleads.
 
 **Acceptance Scenarios**:
 
-1. **Given** a holding listed in Taiwan, **When** its price is shown, **Then** it is the latest daily close from the Taiwan Stock Exchange's public data, with its date.
-2. **Given** a holding listed in the US, or the Philadelphia Semiconductor index, **When** its price is shown, **Then** it comes from a public source that needs no key, with its time, and the README names the source and its terms of use.
+1. **Given** a holding listed in Taiwan or in the US, or the Philadelphia Semiconductor index, **When** its price is shown, **Then** it comes from one public source that needs no key, with the time it is from; outside trading hours it is the last close with its date.
+2. **Given** the same, **When** the user reads the screen or the README, **Then** they name the source, say it is not the exchanges' own feed, give its delay (Taiwan quotes arrive 20 minutes late), and point to its terms of use.
 3. **Given** a new price arrives while the page is open, **When** it does, **Then** the column, cards, donut and actual weights update without a reload; the rule checks, which look at target weights, do not change.
 
 ---
@@ -115,7 +118,9 @@ its time misleads.
 - No price at all can be had: the screen shows the holdings and the strategy with prices missing, and says so; it does not show zero values.
 - The user asks for a revision while a proposal is still open: the new proposal replaces the open one, which is closed as not accepted.
 - The program hands back a proposal and an answer that disagree: the proposal is checked on its own; the answer text is shown as written.
+- The program hands back a proposal whose targets are all the current ones: there is nothing to accept or reject, so it is treated as no proposal. It is not kept, no difference is shown, an open proposal stays open, and the chat shows the answer with the line that no change was proposed.
 - The window is narrow: the strategy screen is in the drawer of the chat page (feature 003), and a proposal card in the chat opens it.
+- A proposal card stays in the chat after its proposal is accepted, rejected or replaced: from then on it says the proposal no longer waits for the user and has no button, since the strategy screen no longer shows that proposal. Only the open proposal's card opens the strategy screen.
 - Every text of the screen exists in Traditional Chinese and English, as for the chat page.
 
 ## Requirements *(mandatory)*
@@ -127,15 +132,17 @@ its time misleads.
 - **FR-003**: Both answering programs MUST be able to hand back a revised strategy in one fixed format (new target weights for the profile's holdings and cash, and reasons citing source numbers), using each program's own way to return a result in a given format.
 - **FR-004**: The service MUST check every proposal before showing it: the format, only holdings already in the profile and cash, targets between 0% and 100% adding up to 100%, and source numbers that exist. A proposal that fails any check MUST be refused with the reason, never shown or repaired.
 - **FR-005**: The change column and the rule checks of a proposal MUST be computed by the service.
-- **FR-006**: The current strategy MUST change only when the user accepts a proposal. Each accepted change MUST keep the previous strategy as a version with its time and the question that led to it.
-- **FR-007**: Rules MUST be set by the user and are checked against the strategy's target weights. Each rule is one kind (the most any one holding may weigh, the least any held holding may weigh, the most one market may weigh) with a limit in percent, and can be turned off.
+- **FR-006**: The current strategy MUST change only when the user accepts a proposal. A proposal is kept with its question, the program that made it, its time and whether it was accepted, rejected or replaced.
+- **FR-007**: Rules MUST be set by the user and are checked against the strategy's target weights, and the screen MUST say so. Each rule is one kind (the most any one holding may weigh, the least any held holding may weigh, the most one market may weigh) with a limit in percent, and can be turned off.
 - **FR-008**: Prices MUST reach the page over the real-time connection of the frontend standards, each with the time it is from; the numbers that depend on prices follow them.
 - **FR-009**: The answering programs MUST get the profile, the rules and the prices as data from the service, with the retrieved passages; they get no tool to fetch prices or change the profile themselves.
+- **FR-010**: A request that changes the strategy or the rules MUST come from the page itself: a request another web page can send without the browser asking the service first is refused, and nothing changes.
+- **FR-011**: While a revision answer is awaited, the page MUST say that the answer and a proposal are being written and will arrive at once.
 
 ### Key Entities
 
 - **Profile**: holdings (symbol, name, market, quantity, average cost) and cash.
-- **Strategy**: the target weight of each holding and of cash; the current one and its earlier versions.
+- **Strategy**: the current target weight of each holding and of cash.
 - **Rule**: kind, limit, on or off.
 - **Price**: symbol, price, the time it is from, its source.
 - **Proposal**: the proposed targets, the reasons with source numbers, the program that made it, and whether it was accepted, rejected or replaced.
@@ -147,15 +154,19 @@ its time misleads.
 - **SC-001**: With the sample profile, the five parts of the strategy screen are shown on opening, with no value shown as zero for a missing price.
 - **SC-002**: The sample revision question, asked once with Claude Code and once with Codex, yields a checked proposal shown as current, proposed and change in both runs.
 - **SC-003**: Every malformed proposal in the tests is refused with its reason, and none is shown.
-- **SC-004**: In every test, the stored strategy is unchanged until acceptance, and after acceptance the previous version can be read back.
+- **SC-004**: In every test, the stored strategy is unchanged until acceptance, and after acceptance it equals the accepted proposal's targets.
 - **SC-005**: The change column equals the service's own computation in every test.
 - **SC-006**: The existing fast and slow test suites still pass.
+- **SC-007**: In the tests, a form post or a plain-text post to accept, reject or change the rules is refused and changes nothing.
 
 ## Assumptions
 
 - The profile, strategy, rules and versions are kept in the same local database as the knowledge base, in their own tables.
 - There is no broker, no orders and no trading: accepting changes the targets, not the holdings.
-- Whether the answer text still streams piece by piece when the program also hands back a proposal in a given format is not yet known; the plan measures it. If it does not, the answer to a revision question arrives whole, as Codex's answers already do.
-- Back-tests and performance curves are out of scope.
+- The answer to a question that asks for a revision arrives whole, together with the proposal, as Codex's answers already do; other answers stream as before.
+- Back-tests and performance curves are not among the items this feature lists, and are not built.
+- Holdings that drift away from their targets as prices move are not rebalanced or flagged: that is a rebalancing feature, which this feature does not list.
+- The strategy screen is shown only behind the login check of feature 003, like the chat.
 - The page is the chat page of feature 003; this feature fills the place it leaves for the strategy screen.
 - Verification that really calls either program is made on the maintainer's machine with the maintainer's consent.
+- Prices come from Yahoo Finance's public quotes through an open-source client. It is not an official feed: the Nasdaq quotes used here are real time, Taiwan quotes 20 minutes late, and Yahoo's terms allow personal use.

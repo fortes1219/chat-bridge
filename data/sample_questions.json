@@ -1,0 +1,21 @@
+{
+  "about": "Questions about the sample news in data/truth. The service offers them only while that news is in the knowledge base.",
+  "questions": [
+    {
+      "zh-TW": "聯準會在這近半年的動向哪些行為導致股市動盪？",
+      "en": "Which of the Fed’s moves over the past half year shook the stock market?"
+    },
+    {
+      "zh-TW": "微軟與其他科技巨頭的 AI 投資，為什麼讓投資人擔心？",
+      "en": "Why are investors worried about Microsoft’s and other tech giants’ AI spending?"
+    },
+    {
+      "zh-TW": "台積電與供應鏈最近受到哪些事件影響？",
+      "en": "Which recent events have affected TSMC and its supply chain?"
+    },
+    {
+      "zh-TW": "有沒有權威說法認為股市會恢復正常？",
+      "en": "Do any authoritative sources say the market will return to normal?"
+    }
+  ]
+}

@@ -41,7 +41,16 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/chat': { target: DEV_SERVICE_TARGET, changeOrigin: true }
+      '/chat': { target: DEV_SERVICE_TARGET, changeOrigin: true },
+      '/strategy': { target: DEV_SERVICE_TARGET, changeOrigin: true },
+      // The service accepts the real-time connection only from its own origin, so the proxy sends
+      // the service's origin in place of the dev server's.
+      '/socket.io': {
+        target: DEV_SERVICE_TARGET,
+        changeOrigin: true,
+        ws: true,
+        headers: { origin: DEV_SERVICE_TARGET }
+      }
     }
   }
 });

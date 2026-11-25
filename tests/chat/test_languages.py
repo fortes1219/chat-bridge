@@ -73,7 +73,7 @@ def test_only_the_fixed_section_names_are_given_in_both_languages(
             score=0.03,
         )
 
-    async def search(question: str, limit: int) -> SimpleNamespace:
+    async def search(question: str, limit: int, **kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(
             hits=[hit(1, "影響股市證據"), hit(2, "My own heading"), hit(3, "Page 3")]
         )

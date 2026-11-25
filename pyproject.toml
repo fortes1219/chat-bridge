@@ -22,10 +22,13 @@ dependencies = [
     "psutil>=7.2.2",
     "pydantic>=2.14.3",
     "pypdf==6.21.4",
+    "python-socketio>=5.18.1",
     "pyyaml>=6.0.3",
     "sentence-transformers>=6.3.0",
     "sqlalchemy[asyncio]>=2.1.9",
+    "sse-starlette==3.7.1",
     "torch>=2.15.0",
+    "yfinance==1.8.0",
 ]
 
 [project.scripts]
@@ -70,7 +73,7 @@ plugins = ["pydantic.mypy"]
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["jieba", "jieba.*", "psutil", "yaml"]
+module = ["jieba", "jieba.*", "pandas", "psutil", "socketio", "yaml", "yfinance"]
 ignore_missing_imports = true
 
 [tool.ruff]

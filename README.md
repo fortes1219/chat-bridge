@@ -55,6 +55,22 @@ uv run chat-bridge search "Did the Fed raise rates?"
 - The first run downloads jieba's Traditional Chinese dictionary (8.6 MB) and the bge-m3 model (about 2.3 GB). The database, the dictionary and the model are kept in `local_data/`, which git ignores. To start over, delete that folder. To use another folder, set `CHAT_BRIDGE_LOCAL_DATA`.
 - Exit codes: `0` when everything succeeded, `1` when `ingest` rejected a file or `search` found nothing, and `2` on an error.
 
+### Use your own documents
+
+Put your Word, PDF, text and Markdown files in one folder (subfolders are fine) and run:
+
+```
+uv run chat-bridge ingest path/to/your-folder --replace
+```
+
+- `--replace` keeps only that folder's documents: every other stored document is removed, the sample news included, and the command lists what it removed. The chat then answers from your documents only.
+- Without `--replace`, `ingest` adds the folder to what is already stored and removes nothing; it says how many other documents are still stored, so they are never mixed in without your knowing.
+- When nothing in the folder can be read, `--replace` removes nothing and exits with `2`.
+- Run the same command again after you add, change or delete files; a deleted file's document is removed.
+- The sample questions on the chat page are about the sample news, so they are shown only while it is stored.
+- The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
+- Word and PDF files have no event date, so an answer from them says the data has no date.
+
 ### If you don't have uv
 
 From the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/):
@@ -107,10 +123,17 @@ uv run chat-bridge
 - `uv run chat-bridge` starts the chat service on http://127.0.0.1:8000. Stop it with Ctrl+C. To try it, open http://127.0.0.1:8000/docs.
 - `GET /chat/programs` says whether Claude Code and Codex are each installed and logged in: `logged in`, `not logged in`, `not installed`, or `unknown` when the program's own status could not be read. It starts no model and shows nothing of the program's own status text, which can name your account.
 - Send a question with `POST /chat/stream`, as JSON with `Content-Type: application/json`: `{"question": "..."}`. To pick the program, add `"program": "claude-code"` or `"program": "codex"`. Without it, Claude Code answers when it is logged in, otherwise Codex. A program you pick that is not logged in is refused, never swapped for the other. The reply is a stream of Server-Sent Events (`text/event-stream`), with one JSON object as the data of each event:
-  - The first event, `response.context`, lists the sources (file, title, heading, event date) and the newest event date among them, names the program that answers, and carries the disclaimer as `{"zh-TW": "...", "en": "..."}`, one text per language. A source whose heading is one of the section names the sample news is written with also has `heading_localizations`, the name in both languages; any other heading has `null` there and is the document's own words.
+  - The first event, `response.context`, lists the sources (file, title, heading, event date) and the latest event date in the whole knowledge base, names the program that answers, says with `split_failed` whether the question could not be split into parts, and carries the disclaimer as `{"zh-TW": "...", "en": "..."}`, one text per language. A source whose heading is one of the section names the sample news is written with also has `heading_localizations`, the name in both languages; any other heading has `null` there and is the document's own words.
   - The following `response.output_text.delta` events carry the answer. Claude Code's comes piece by piece, as it is written; Codex's comes whole, once it is finished, because that is how Codex reports it.
   - If the answer fails after the first event, the last event is named `error`, with `{"code": "...", "message": "..."}` as its data: `not_logged_in` when the program is no longer logged in, `answer_failed` otherwise. A search that cannot run is refused before the stream starts, with HTTP 503 and `{"detail": {"code": "...", "message": "..."}}`: `knowledge_base_empty`, `knowledge_base_outdated` (built by another version) or `setup_failed`. The page words each code in its own language; the message is in English, for logs.
-- The question is searched as asked, and the eight best sections go to your own Claude Code or Codex with the question. It uses the sign-in stored in your own Claude Code or Codex: your plan, or an API key you saved in that program yourself, which is then what the answer is billed to. The key variables are removed from its environment (`ANTHROPIC_API_KEY` and the others for Claude Code; `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN` and `OPENAI_API_KEY` for Codex), so a key in your shell is never used.
+- How a question is searched:
+  - The question is searched as asked, twice: first as before, for its 8 best sections with the market tables ranking too, kept whole and first; then for its 30 best sections, market tables left out.
+  - The program that will answer is then started once, with all its tools off, to list the separate things the question asks about, as JSON. Each of those parts, at most 8, is searched on its own for its 8 best sections. The parts are only search text: they are checked for shape and length, passed to the search as query parameters, and never given to the model as instructions.
+  - The model gets the question's sections first, then each part's, then the market table of each file found, each section once. Nothing is cut to fit a total, so a part that the whole question's search ranks low still reaches the model, and nothing the question's own search found is dropped.
+  - If the split fails (an error, no reply in the asked-for shape, or more than 120 seconds), only the question's own sections are used, and the response and the page say so.
+  - On the page, one line above the answer says how many sources were found and opens the whole list; under the answer are the sources it cites, read from its bracketed numbers.
+  - Measured without a model on 20 questions about the sample news, with the parts cut from each question's own wording: 59 of 63 expected files found, against 45 with the eight best sections before; none of the earlier finds lost. For the question about rate policy, AI spending, TSMC, 0050, US tech indices and institutions' views, every part was found. Four expected files were still missed, among them the market table of 5 November 2026 for a question about the Taiwan market's moves. In real runs both programs split that question into the same six parts, in both languages, and every part reached the model; listing the parts took 4 to 18 seconds. Asked in English, though, the 0050 part found none of the market tables, so both answers said the sources do not cover 0050. The cause was that the market tables read nearly the same in every file, so ranked on their own they matched whatever the event. Now they do not rank on their own: each news file found brings its market table. In a second round of real runs, the English answers got 12 market tables holding 0050 and gave its moves after each Fed meeting. Asked in Chinese, the rate-policy part still found only the June and July Fed meetings, not the September rise. The model now reads 35,000 to 72,000 characters a question, where the eight best sections alone were 2,000 to 12,000, and answers take longer: on the single-topic Fed question, one run each, Claude Code took 98 s against 50 s before this feature, and Codex 33 s against 15 s. The measurement and the real runs are in [specs/007-search-each-part/research.md](specs/007-search-each-part/research.md).
+- The model uses the sign-in stored in your own Claude Code or Codex: your plan, or an API key you saved in that program yourself, which is then what the answer is billed to. The key variables are removed from its environment (`ANTHROPIC_API_KEY` and the others for Claude Code; `CODEX_API_KEY`, `CODEX_ACCESS_TOKEN` and `OPENAI_API_KEY` for Codex), so a key in your shell is never used.
 - What each program runs with:
   - Claude Code runs with all of its tools turned off, so it can only write text.
   - Codex runs with every tool that would run a command, read or write a file, or go online turned off: the shell, the terminal, the image viewer, image generation, computer use, the browser, apps, plug-ins and web search. It works in an empty folder made for the answer, does not load your `config.toml` (your login is still used), and keeps no session. Its patch tool cannot be turned off; a read-only sandbox stops it from writing. The flags and their sources in Codex's code are in [specs/004-answer-with-codex/research.md](specs/004-answer-with-codex/research.md).
@@ -129,10 +152,31 @@ uv run chat-bridge
 
 A question, or a document you ingest, can contain instructions such as "ignore the rules above". OWASP's Top 10 for LLM applications says no method fully prevents this. So the app limits what a led-astray answer can do: the model can run no command, change no file and go nowhere online (Claude Code has no tools; Codex keeps a patch tool that cannot be turned off, and a read-only sandbox stops it writing); the sources and the question reach it separately, through standard input, marked as data that cannot change its rules; and the sources and disclaimer are added by the app. What it does not promise is that the model's own text is never led astray.
 
+## Your own holdings
+
+The strategy panel starts with a made-up sample portfolio (`data/profile/sample.json`). Choose
+**Edit holdings** to add a holding, change its quantity, average cost or name, remove one, or set
+the cash, then **Save**. Write symbols as Yahoo Finance does: Taiwan listings end in `.TW` or
+`.TWO` (`2330.TW`, `6488.TWO`), US tickers stand alone (`AAPL`, `BRK-B`). The panel values the
+holdings at their latest prices, and every question in the chat is answered with the holdings as
+they are now.
+
+What it does not do:
+
+- Targets are not typed in. A new holding starts at 0%, a removed one takes its target with it,
+  and the panel says when the targets no longer add up to 100%. Ask the chat to revise the
+  strategy; accepting the proposal sets the targets again.
+- Other markets, indices, currencies and coins are refused: the service has the exchange rate and
+  the rules of Taiwan and US listings only.
+- There are no trades and no history: saving replaces the quantities and costs you typed.
+- A question about "my holdings" that names none is searched for at most 8 of them; up to 30
+  holdings can be kept.
+
 ## Sample data
 
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
 - `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
+- `data/sample_questions.json`: the questions the chat page offers about the sample news, in both languages, while that news is stored.
 
 ## Development
 

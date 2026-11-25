@@ -1,0 +1,122 @@
+{
+  "about": "The six-part question of feature 007 in both languages. parts_from_wording splits each question at its punctuation and list words, without a model, as the retrieval measurement did. parts_from_real_runs holds the parts each program listed in the recorded real runs. core_files lists, for each part, the files whose subject is that part; institutions_bullish and institutions_warning are the two sides of the institutions part. The 0050 part counts market sections of the files in market_from.",
+  "market_heading": "當日與之後的行情",
+  "questions": {
+    "zh-TW": "近期有哪些利率政策與 AI 資本支出事件？這些事件前後，台積電、0050 與美股科技指數分別出現什麼變化？有哪些機構對後市持不同看法？",
+    "en": "Which interest-rate policy and AI capital-spending events happened recently? Around those events, how did TSMC, 0050 and the US technology indices move? Which institutions disagree about where the market goes next?"
+  },
+  "parts_from_wording": {
+    "zh-TW": [
+      "近期有哪些利率政策",
+      "AI 資本支出事件",
+      "這些事件前後",
+      "台積電",
+      "0050",
+      "美股科技指數分別出現什麼變化",
+      "有哪些機構對後市持不同看法"
+    ],
+    "en": [
+      "Which interest-rate policy",
+      "AI capital-spending events happened recently",
+      "Around those events",
+      "how did TSMC",
+      "0050",
+      "the US technology indices move",
+      "Which institutions disagree about where the market goes next"
+    ]
+  },
+  "parts_from_real_runs": {
+    "claude-code": {
+      "zh-TW": [
+        "近期利率政策事件",
+        "近期 AI 資本支出事件",
+        "台積電在利率政策與 AI 資本支出事件前後的股價變化",
+        "0050 在利率政策與 AI 資本支出事件前後的變化",
+        "美股科技指數在利率政策與 AI 資本支出事件前後的變化",
+        "機構對後市的不同看法"
+      ],
+      "en": [
+        "Recent interest-rate policy events",
+        "Recent AI capital-spending events",
+        "TSMC stock price movement around recent interest-rate and AI capex events",
+        "0050 ETF price movement around recent interest-rate and AI capex events",
+        "US technology indices movement around recent interest-rate and AI capex events",
+        "Institutions that disagree about the market outlook"
+      ]
+    },
+    "codex": {
+      "zh-TW": [
+        "近期有哪些利率政策事件？",
+        "近期有哪些 AI 資本支出事件？",
+        "近期利率政策與 AI 資本支出事件前後，台積電股價有什麼變化？",
+        "近期利率政策與 AI 資本支出事件前後，0050 有什麼變化？",
+        "近期利率政策與 AI 資本支出事件前後，美股科技指數有什麼變化？",
+        "近期利率政策與 AI 資本支出事件後，哪些機構對後市持不同看法？各自的看法是什麼？"
+      ],
+      "en": [
+        "Recent interest-rate policy events",
+        "Recent AI capital-spending events",
+        "TSMC share price moves around recent interest-rate policy and AI capital-spending events",
+        "0050 ETF price moves around recent interest-rate policy and AI capital-spending events",
+        "US technology index moves around recent interest-rate policy and AI capital-spending events",
+        "Institutions with conflicting views on where the market is headed"
+      ]
+    }
+  },
+  "core_files": {
+    "rate_policy": [
+      "2026-06-17-fomc-holds-rate",
+      "2026-07-29-fomc-holds-rate-three-dissents",
+      "2026-09-16-fomc-raises-rate",
+      "2026-10-28-fomc-holds-rate-two-dissents",
+      "2026-06-18-cbc-holds-policy-rates",
+      "2026-09-17-cbc-holds-rates-eases-mortgage-cap",
+      "2026-08-28-warsh-jackson-hole-speech",
+      "2026-09-03-waller-leans-to-hold-stocks-rally",
+      "2026-11-10-waller-bowman-signal-more-tightening"
+    ],
+    "ai_capex": [
+      "2026-06-10-oracle-capex-and-financing-worries",
+      "2026-07-29-microsoft-fy26-q4-results",
+      "2026-10-21-meta-q3-2026-results",
+      "2026-10-22-meta-capex-tech-selloff",
+      "2026-10-28-alphabet-q3-2026-results",
+      "2026-10-28-microsoft-fy27-q1-results",
+      "2026-10-29-amazon-q3-2026-results",
+      "2026-10-30-us-stocks-worst-day-since-june-ai-cash-burn",
+      "2026-11-02-oracle-raises-20-billion-stock-and-notes",
+      "2026-11-10-tsmc-october-revenue-record"
+    ],
+    "tsmc": [
+      "2026-07-16-tsmc-q2-2026-results",
+      "2026-10-15-tsmc-q3-2026-results",
+      "2026-11-10-tsmc-october-revenue-record"
+    ],
+    "us_tech_index": [
+      "2026-06-05-us-tech-selloff-broadcom-jobs",
+      "2026-09-14-tech-selloff-after-ai-slowdown-call",
+      "2026-10-16-us-tech-selloff-worst-week-since-june",
+      "2026-10-22-meta-capex-tech-selloff",
+      "2026-10-30-us-stocks-worst-day-since-june-ai-cash-burn",
+      "2026-11-04-us-stocks-surge-after-midterms",
+      "2026-11-05-us-ai-selloff-after-midterms",
+      "2026-11-17-us-stocks-another-wipeout"
+    ],
+    "institutions_bullish": [
+      "2026-11-02-morgan-stanley-correction-final-innings",
+      "2026-11-09-strategists-call-rout-buying-chance",
+      "2026-11-12-goldman-sees-sp500-8700",
+      "2026-11-17-us-stocks-another-wipeout",
+      "2026-10-21-bessent-dismisses-ai-systemic-risk"
+    ],
+    "institutions_warning": [
+      "2026-09-30-boe-warns-ai-debt-and-valuations",
+      "2026-10-13-imf-gfsr-ai-correction-risk",
+      "2026-11-13-fed-financial-stability-report-ai"
+    ]
+  },
+  "market_from": [
+    "rate_policy",
+    "ai_capex"
+  ]
+}

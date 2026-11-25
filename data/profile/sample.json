@@ -1,0 +1,111 @@
+{
+  "about": "A simulated sample profile for the demo. It is not anyone's portfolio and not investment advice.",
+  "holdings": [
+    {
+      "symbol": "2330.TW",
+      "names": {
+        "zh-TW": "台積電",
+        "en": "TSMC"
+      },
+      "market": "TW",
+      "currency": "TWD",
+      "quantity": "2000",
+      "average_cost": "1980"
+    },
+    {
+      "symbol": "2308.TW",
+      "names": {
+        "zh-TW": "台達電",
+        "en": "Delta Electronics"
+      },
+      "market": "TW",
+      "currency": "TWD",
+      "quantity": "1000",
+      "average_cost": "1150"
+    },
+    {
+      "symbol": "0050.TW",
+      "names": {
+        "zh-TW": "元大台灣50",
+        "en": "Yuanta Taiwan 50"
+      },
+      "market": "TW",
+      "currency": "TWD",
+      "quantity": "20000",
+      "average_cost": "92.4"
+    },
+    {
+      "symbol": "006208.TW",
+      "names": {
+        "zh-TW": "富邦台50",
+        "en": "Fubon Taiwan 50"
+      },
+      "market": "TW",
+      "currency": "TWD",
+      "quantity": "10000",
+      "average_cost": "205.5"
+    },
+    {
+      "symbol": "NVDA",
+      "names": {
+        "zh-TW": "輝達",
+        "en": "NVIDIA"
+      },
+      "market": "US",
+      "currency": "USD",
+      "quantity": "150",
+      "average_cost": "142.3"
+    },
+    {
+      "symbol": "MSFT",
+      "names": {
+        "zh-TW": "微軟",
+        "en": "Microsoft"
+      },
+      "market": "US",
+      "currency": "USD",
+      "quantity": "40",
+      "average_cost": "455.8"
+    },
+    {
+      "symbol": "CASH",
+      "names": {
+        "zh-TW": "現金",
+        "en": "Cash"
+      },
+      "market": null,
+      "currency": "TWD",
+      "quantity": "600000",
+      "average_cost": "1"
+    }
+  ],
+  "targets": {
+    "2330.TW": 25,
+    "2308.TW": 10,
+    "0050.TW": 20,
+    "006208.TW": 15,
+    "NVDA": 12,
+    "MSFT": 8,
+    "CASH": 10
+  },
+  "rules": [
+    {
+      "kind": "max_holding_weight",
+      "limit_percent": 30,
+      "market": null,
+      "enabled": true
+    },
+    {
+      "kind": "min_holding_weight",
+      "limit_percent": 5,
+      "market": null,
+      "enabled": true
+    },
+    {
+      "kind": "max_market_weight",
+      "limit_percent": 30,
+      "market": "US",
+      "enabled": true
+    }
+  ]
+}

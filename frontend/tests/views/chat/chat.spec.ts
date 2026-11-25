@@ -6,8 +6,15 @@ import type { ProgramState } from '@/service/api/programs';
 import type { ChatEvent, ChatRequest } from '@/service/api/chat';
 import { CONTEXT_EVENT, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
+import { getSampleQuestionsMock } from '../../helpers/samples';
 
 const getProgramsMock = vi.fn<() => Promise<ProgramState[]>>();
+// The strategy beside the chat reads a fixed strategy, so no test reaches the network for it.
+vi.mock('@/service/api/strategy', async () => {
+  const { STRATEGY } = await import('../../helpers/strategy');
+  return { getStrategy: () => Promise.resolve(STRATEGY), decideProposal: () => Promise.resolve(STRATEGY) };
+});
+
 vi.mock('@/service/api/programs', () => ({
   getPrograms: () => getProgramsMock()
 }));
@@ -95,14 +102,32 @@ async function typeAndSend(page: VueWrapper, question: string): Promise<void> {
 }
 
 describe('asking a question', () => {
-  it('shows sample questions first; picking one fills the box and sends nothing', async () => {
+  it('shows the sample questions the service offers; picking one fills the box and sends nothing', async () => {
     const page = await open(CODEX_ONLY);
 
-    await page.find('[data-test="sample-fed"]').trigger('click');
+    await page.find('[data-test="sample-0"]').trigger('click');
 
     const box = page.find('textarea[data-test="question-box"]').element as HTMLTextAreaElement;
     expect(box.value).toBe('Which of the Fed’s moves over the past half year shook the stock market?');
     expect(askMock).not.toHaveBeenCalled();
+  });
+
+  it('shows no sample question when the service offers none, and the box invites questions on the documents', async () => {
+    getSampleQuestionsMock.mockResolvedValue([]);
+
+    const page = await open(CODEX_ONLY);
+
+    expect(page.find('[data-test="sample-questions"]').exists()).toBe(false);
+    expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe(
+      'Ask about the documents in the knowledge base…'
+    );
+  });
+
+  it('shows the sample questions and the hint in Traditional Chinese on the Chinese page', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
+    expect(page.find('[data-test="sample-0"]').text()).toBe('聯準會在這近半年的動向哪些行為導致股市動盪？');
+    expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe('問問知識庫裡的文件……');
   });
 
   it('does not send an empty question or one longer than the service takes, and says why', async () => {
@@ -161,7 +186,7 @@ describe('asking a question', () => {
     expect(page.find('[data-test="language"]').text()).toBe('English');
   });
 
-  it('shows the sources first, then the answer as it grows, with the notice', async () => {
+  it('shows how many sources were found first, then the answer as it grows, the sources it cites and the notice', async () => {
     const answer = controlledAnswer();
     askMock.mockImplementation(answer.events);
     const page = await open(CODEX_ONLY);
@@ -171,12 +196,17 @@ describe('asking a question', () => {
 
     answer.send(CONTEXT_EVENT);
     await flushPromises();
+    expect(page.find('[data-test="all-sources-toggle"]').text()).toBe('Found 2 sources');
+    expect(page.find('[data-test="source-1"]').exists()).toBe(false);
+    await page.find('[data-test="all-sources-toggle"]').trigger('click');
+    await flushPromises();
     // A section name the sample news fixes is shown in the page's language; any other heading as written.
     expect(page.find('[data-test="source-1"]').text()).toBe(
       '[1] data/truth/a.md · Evidence of market impact · 2026-09-17'
     );
     expect(page.find('[data-test="source-2"]').text()).toBe('[2] data/truth/b.md · My own heading · No date');
-    expect(page.find('[data-test="latest-date"]').text()).toBe('The sources reach 2026-09-17.');
+    expect(page.find('[data-test="latest-date"]').text()).toBe('The data reaches 2026-09-17.');
+    expect(page.find('[data-test="split-failed"]').exists()).toBe(false);
     expect(page.find('[data-test="notice"]').text()).toBe('notice');
     expect(page.find('[data-test="answer-text"]').text()).toBe('');
 
@@ -186,10 +216,107 @@ describe('asking a question', () => {
     answer.send(textEvent('cut rates [1].'));
     await flushPromises();
     expect(page.find('[data-test="answer-text"]').text()).toBe('The Fed cut rates [1].');
+    expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
+      'source-1'
+    ]);
 
     answer.end();
     await flushPromises();
     expect(page.find('[data-test="sample-questions"]').exists()).toBe(false);
+  });
+
+  it('lists under the answer only the sources it cites, and keeps all of them one click away', async () => {
+    const many = Array.from({ length: 60 }, (_, index) => ({
+      number: index + 1,
+      file: `data/truth/${index + 1}.md`,
+      title: 'T',
+      heading: '事件發生',
+      heading_localizations: null,
+      event_date: '2026-09-01'
+    }));
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'q');
+
+    answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, sources: many } });
+    await flushPromises();
+    // Before the first words: what was found is said in one line, not listed.
+    expect(page.find('[data-test="all-sources-toggle"]').text()).toBe('Found 60 sources');
+    expect(page.findAll('li[data-test^="source-"]')).toHaveLength(0);
+    expect(page.find('[data-test="waiting"]').exists()).toBe(true);
+
+    answer.send(textEvent('Rates rose [3][41], on [2026-11-05], with [3, 7]; [99] names no source.'));
+    answer.end();
+    await flushPromises();
+    await vi.waitFor(() =>
+      expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
+        'source-3',
+        'source-7',
+        'source-41'
+      ])
+    );
+
+    await page.find('[data-test="all-sources-toggle"]').trigger('click');
+    await flushPromises();
+    expect(page.findAll('[data-test="all-sources"] li')).toHaveLength(60);
+  });
+
+  it('says when the answer cites none of its sources, which stay one click away', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, 'q');
+
+    answer.send(CONTEXT_EVENT);
+    answer.send(textEvent('沒有引用的答案。'));
+    answer.end();
+    await flushPromises();
+
+    await vi.waitFor(() => expect(page.find('[data-test="none-cited"]').text()).toBe('答案沒有引用任何出處。'));
+    expect(page.find('[data-test="cited-sources"]').exists()).toBe(false);
+    expect(page.find('[data-test="all-sources-toggle"]').text()).toBe('找到 2 個出處');
+  });
+
+  it('says, in the page’s language, when the question was searched as a whole', async () => {
+    for (const [lang, line, date] of [
+      ['zh-TW', '這個問題沒能拆成幾個部分，所以整句一起查。', '資料最新到 2026-09-17。'],
+      [
+        'en',
+        'This question could not be split into parts, so it was searched as a whole.',
+        'The data reaches 2026-09-17.'
+      ]
+    ] as const) {
+      const answer = controlledAnswer();
+      askMock.mockImplementationOnce(answer.events);
+      const page = await open(CODEX_ONLY, `/?lang=${lang}`);
+      await typeAndSend(page, 'q');
+      answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, split_failed: true } });
+      await flushPromises();
+
+      expect(page.find('[data-test="split-failed"]').text()).toBe(line);
+      expect(page.find('[data-test="latest-date"]').text()).toBe(date);
+      answer.end();
+      page.unmount();
+    }
+  });
+
+  it('stops while the data is being searched, before any source arrives', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementationOnce(answer.events);
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'first');
+    expect(page.find('[data-test="searching"]').text()).toBe('Searching the news…');
+    expect(page.find('[data-test="waiting"]').exists()).toBe(false);
+
+    await page.find('[data-test="send-or-stop"]').trigger('click');
+    await flushPromises();
+
+    expect(page.find('[data-test="searching"]').exists()).toBe(false);
+    const second = controlledAnswer();
+    askMock.mockImplementationOnce(second.events);
+    await typeAndSend(page, 'second');
+    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
   });
 
   it('stops an answer being written and is ready for another question', async () => {
@@ -396,10 +523,12 @@ describe('the language in the address', () => {
     expect(router.currentRoute.value.query.lang).toBe('en');
     expect(document.documentElement.lang).toBe('en');
     expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe(
-      'Ask about the market news since June…'
+      'Ask about the documents in the knowledge base…'
     );
     // The answer stays as it is; the page's own words around it follow the switch.
     expect(page.text()).toContain('答案');
+    await page.find('[data-test="all-sources-toggle"]').trigger('click');
+    await flushPromises();
     expect(page.find('[data-test="notice"]').text()).toBe('notice');
     expect(page.find('[data-test="source-1"]').text()).toContain('Evidence of market impact');
 

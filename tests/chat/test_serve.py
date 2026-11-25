@@ -40,6 +40,10 @@ def started(
         lambda: calls["prepared"].append("knowledge base"),
     )
     monkeypatch.setattr(
+        server, "prepare_profile", lambda: calls["prepared"].append("profile")
+    )
+    monkeypatch.setattr(server, "load_model", lambda: calls["prepared"].append("model"))
+    monkeypatch.setattr(
         webbrowser, "open", lambda address: calls["browser"].append(address)
     )
     monkeypatch.setattr(
@@ -49,6 +53,17 @@ def started(
         server, "open_when_ready", lambda *args: calls["waiter"].append(args)
     )
     yield calls
+
+
+def test_the_page_knowledge_base_profile_and_model_are_ready_before_requests(
+    started: dict[str, list[object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server, "port_is_free", lambda host, port: True)
+
+    assert server.serve(open_browser=False) == cli.EXIT_OK
+
+    assert started["prepared"] == ["page", "knowledge base", "profile", "model"]
+    assert len(started["uvicorn"]) == 1
 
 
 def test_a_free_port_starts_the_service_and_opens_the_page_once_it_answers(
@@ -61,7 +76,9 @@ def test_a_free_port_starts_the_service_and_opens_the_page_once_it_answers(
 
     assert server.serve() == cli.EXIT_OK
 
-    assert started["uvicorn"] == [{"host": "127.0.0.1", "port": 8000}]
+    assert started["uvicorn"] == [
+        {"host": "127.0.0.1", "port": 8000, "timeout_graceful_shutdown": 5}
+    ]
     assert started["waiter"] == [("127.0.0.1", 8000, "http://127.0.0.1:8000")]
     assert "The chat page is at http://127.0.0.1:8000" in caplog.text
 

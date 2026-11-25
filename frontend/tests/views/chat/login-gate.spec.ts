@@ -4,6 +4,12 @@ import type { ProgramState } from '@/service/api/programs';
 import { mountView } from '../../helpers/mount';
 
 const getProgramsMock = vi.fn<() => Promise<ProgramState[]>>();
+// The strategy beside the chat reads a fixed strategy, so no test reaches the network for it.
+vi.mock('@/service/api/strategy', async () => {
+  const { STRATEGY } = await import('../../helpers/strategy');
+  return { getStrategy: () => Promise.resolve(STRATEGY), decideProposal: () => Promise.resolve(STRATEGY) };
+});
+
 vi.mock('@/service/api/programs', () => ({
   getPrograms: () => getProgramsMock()
 }));

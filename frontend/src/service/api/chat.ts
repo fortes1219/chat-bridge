@@ -14,6 +14,8 @@ export type ChatRequest = InferContractRouterInputs<typeof contract>['chat'][Ask
 export type ChatEvent = EventOf<InferContractRouterOutputs<typeof contract>['chat'][AskRoute]>;
 export type ChatContext = Extract<ChatEvent, { type: 'response.context' }>['context'];
 export type Source = ChatContext['sources'][number];
+/** What came of a revision question: the checked proposal, or why it was refused. */
+export type ProposalOutcome = Extract<ChatEvent, { type: 'response.proposal' }>['proposal'];
 
 /**
  * The stream ends when the service closes it, at its own time limit or when the user stops it,

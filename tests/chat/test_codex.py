@@ -4,7 +4,6 @@ import asyncio
 import json
 import shutil
 import sys
-import time
 from contextlib import suppress
 from datetime import date
 from pathlib import Path
@@ -16,6 +15,7 @@ import pytest
 from chat_bridge.chat import codex, service
 from chat_bridge.chat.programs import Login
 from chat_bridge.chat.schemas import Source
+from tests.chat.conftest import StartLauncher
 
 # Taken before the fixture in conftest.py replaces it, to test the real lookup.
 REAL_FIND_EXECUTABLE = codex.find_executable
@@ -88,36 +88,14 @@ def test_a_refused_codex_is_unknown_with_its_reason_not_uninstalled(
     assert "folder the service runs from" in status.detail
 
 
-# A launcher that starts a child holding its output pipe, as npm's Codex launcher on Windows
-# starts node, which starts Codex. Each waits long enough that only a kill ends it.
-LAUNCHER = (
-    "import subprocess, sys, time; "
-    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-    "time.sleep(60)"
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="a .cmd launcher exists only on Windows"
 )
-
-
-async def _start_launcher() -> tuple[asyncio.subprocess.Process, list[psutil.Process]]:
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-c",
-        LAUNCHER,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    launcher = psutil.Process(process.pid)
-    deadline = time.monotonic() + 10
-    while not launcher.children() and time.monotonic() < deadline:
-        await asyncio.sleep(0.1)
-    below: list[psutil.Process] = launcher.children(recursive=True)
-    assert below, "the launcher did not start its child"
-    return process, below
-
-
-def test_a_stop_ends_codex_and_everything_it_started() -> None:
+def test_a_stop_ends_codex_and_everything_it_started(
+    start_launcher: StartLauncher,
+) -> None:
     async def run() -> list[psutil.Process]:
-        process, below = await _start_launcher()
+        process, below = await start_launcher(codex._start)
         await codex._stop(process)
         return below
 
@@ -126,8 +104,11 @@ def test_a_stop_ends_codex_and_everything_it_started() -> None:
     assert not [child for child in below if child.is_running()]
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="a .cmd launcher exists only on Windows"
+)
 def test_a_stop_that_leaves_a_process_running_fails_and_names_it(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, start_launcher: StartLauncher
 ) -> None:
     # psutil reports every process below Codex as still alive after the kill, as it would for
     # one the kill could not end.
@@ -139,7 +120,7 @@ def test_a_stop_that_leaves_a_process_running_fails_and_names_it(
     monkeypatch.setattr(psutil, "wait_procs", none_ended)
 
     async def run() -> tuple[list[psutil.Process], Exception | None]:
-        process, below = await _start_launcher()
+        process, below = await start_launcher(codex._start)
         try:
             await codex._stop(process)
         except codex.CodexError as error:
@@ -295,3 +276,55 @@ def test_codex_starts_without_tools_that_reach_the_machine_and_reads_input_from_
     assert "--ignore-user-config" in args
     assert args[-1] == codex.STDIN_PROMPT
     assert QUESTION.encode() in started["process"].stdin.data
+
+
+# --- The split run ---------------------------------------------------------------------------
+
+
+def test_the_split_gives_codex_its_shape_in_a_file_outside_its_empty_folder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: dict[str, Any] = {}
+    schema = {"type": "object", "properties": {"parts": {"type": "array"}}}
+    reply = {
+        "type": "item.completed",
+        "item": {"type": "agent_message", "text": '{"parts": ["台積電"]}'},
+    }
+
+    async def fake_start(args: list[str], *, with_input: bool) -> Any:
+        started["args"] = args
+        schema_file = Path(args[args.index("--output-schema") + 1])
+        work = Path(args[args.index("--cd") + 1])
+        started["schema"] = json.loads(schema_file.read_text(encoding="utf-8"))
+        started["work_is_empty"] = not any(work.iterdir())
+        started["schema_outside_work"] = work not in schema_file.parents
+        started["process"] = _FakeProcess(_lines(reply))
+        return started["process"]
+
+    monkeypatch.setattr(codex, "find_executable", lambda: "codex")
+    monkeypatch.setattr(codex, "_start", fake_start)
+    told: list[str] = []
+    question = "<question>\n台積電與 0050 的變化？\n</question>\n"
+
+    result = asyncio.run(
+        codex.reply_in_shape("rules", question, schema, on_start=told.extend)
+    )
+
+    assert result == {"parts": ["台積電"]}
+    args: list[str] = started["args"]
+    assert told == args
+    assert started["schema"] == schema
+    assert started["work_is_empty"] is True
+    assert started["schema_outside_work"] is True
+    assert "台積電" not in " ".join(args)
+    for feature in codex.DISABLED_FEATURES:
+        assert args[args.index(feature) - 1] == "--disable"
+    assert args[args.index("--sandbox") + 1] == "read-only"
+    assert args[-1] == codex.STDIN_PROMPT
+    assert question.encode() in started["process"].stdin.data
+
+
+@pytest.mark.parametrize("message", ["not json", '["台積電"]', '"台積電"'])
+def test_a_codex_split_whose_reply_is_not_a_json_object_fails(message: str) -> None:
+    with pytest.raises(codex.CodexError):
+        codex.shaped_reply(message)
