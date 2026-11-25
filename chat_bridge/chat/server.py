@@ -31,6 +31,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from chat_bridge import web
 from chat_bridge.chat import service as chat_service
 from chat_bridge.chat.router import router
+from chat_bridge.chat.samples import SAMPLE_NEWS
 from chat_bridge.cli import EXIT_OK, print_error
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.database import stop_server
@@ -62,8 +63,6 @@ BROWSER_WAIT_SECONDS = 30
 # means stop, and the cut answer is still recorded (service.finish_answers). Five seconds, not a
 # production server's 30, so Ctrl+C does not look frozen.
 SHUTDOWN_WAIT_SECONDS = 5
-# The sample news the README ingests first; a fresh clone answers from it with no other command.
-SAMPLE_NEWS = PROJECT_ROOT / "data" / "truth"
 
 
 def create_app(page: Path | None = None, prices: PriceSource | None = None) -> FastAPI:

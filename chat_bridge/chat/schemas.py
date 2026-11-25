@@ -52,6 +52,13 @@ class ProgramState(BaseModel):
     state: Login
 
 
+class SampleQuestions(BaseModel):
+    """Questions the page offers before the first one, each in both languages; none when the
+    knowledge base does not hold the documents they are about."""
+
+    questions: list[Localized]
+
+
 class ChatContext(BaseModel):
     """What the program, not the model, says about an answer: its sources and the disclaimer."""
 

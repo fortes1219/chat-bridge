@@ -27,7 +27,7 @@ export default {
     language: 'Page language'
   },
   chat: {
-    placeholder: 'Ask about the market news since June…',
+    placeholder: 'Ask about the documents in the knowledge base…',
     answerWith: 'Answer with',
     samplesTitle: 'Try one of these',
     sources: 'Sources',
@@ -228,11 +228,5 @@ export default {
       rule: '{market} holdings at most {limit}% in all',
       measured: 'In all: {value}%'
     }
-  },
-  samples: {
-    fed: 'Which of the Fed’s moves over the past half year shook the stock market?',
-    aiSpending: 'Why are investors worried about Microsoft’s and other tech giants’ AI spending?',
-    tsmc: 'Which recent events have affected TSMC and its supply chain?',
-    recovery: 'Do any authoritative sources say the market will return to normal?'
   }
 };

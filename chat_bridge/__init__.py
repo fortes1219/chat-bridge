@@ -1,4 +1,4 @@
-"""chat-bridge: a RAG demo over market news."""
+"""chat-bridge: a RAG demo over the documents you ingest, with sample market news."""
 
 from importlib.metadata import version
 

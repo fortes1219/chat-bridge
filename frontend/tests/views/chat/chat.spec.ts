@@ -6,6 +6,7 @@ import type { ProgramState } from '@/service/api/programs';
 import type { ChatEvent, ChatRequest } from '@/service/api/chat';
 import { CONTEXT_EVENT, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
+import { getSampleQuestionsMock } from '../../helpers/samples';
 
 const getProgramsMock = vi.fn<() => Promise<ProgramState[]>>();
 // The strategy beside the chat reads a fixed strategy, so no test reaches the network for it.
@@ -101,14 +102,32 @@ async function typeAndSend(page: VueWrapper, question: string): Promise<void> {
 }
 
 describe('asking a question', () => {
-  it('shows sample questions first; picking one fills the box and sends nothing', async () => {
+  it('shows the sample questions the service offers; picking one fills the box and sends nothing', async () => {
     const page = await open(CODEX_ONLY);
 
-    await page.find('[data-test="sample-fed"]').trigger('click');
+    await page.find('[data-test="sample-0"]').trigger('click');
 
     const box = page.find('textarea[data-test="question-box"]').element as HTMLTextAreaElement;
     expect(box.value).toBe('Which of the Fed’s moves over the past half year shook the stock market?');
     expect(askMock).not.toHaveBeenCalled();
+  });
+
+  it('shows no sample question when the service offers none, and the box invites questions on the documents', async () => {
+    getSampleQuestionsMock.mockResolvedValue([]);
+
+    const page = await open(CODEX_ONLY);
+
+    expect(page.find('[data-test="sample-questions"]').exists()).toBe(false);
+    expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe(
+      'Ask about the documents in the knowledge base…'
+    );
+  });
+
+  it('shows the sample questions and the hint in Traditional Chinese on the Chinese page', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
+    expect(page.find('[data-test="sample-0"]').text()).toBe('聯準會在這近半年的動向哪些行為導致股市動盪？');
+    expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe('問問知識庫裡的文件……');
   });
 
   it('does not send an empty question or one longer than the service takes, and says why', async () => {
@@ -504,7 +523,7 @@ describe('the language in the address', () => {
     expect(router.currentRoute.value.query.lang).toBe('en');
     expect(document.documentElement.lang).toBe('en');
     expect(page.find('[data-test="question-box"]').attributes('placeholder')).toBe(
-      'Ask about the market news since June…'
+      'Ask about the documents in the knowledge base…'
     );
     // The answer stays as it is; the page's own words around it follow the switch.
     expect(page.text()).toContain('答案');

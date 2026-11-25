@@ -36,6 +36,3 @@ export const STATE_KEYS: Record<ProgramState['state'], keyof MessageSchema['logi
   'not installed': 'notInstalled',
   unknown: 'unknown'
 };
-
-/** The keys of the sample questions in the page's messages, in the order they are shown. */
-export const SAMPLE_QUESTION_KEYS = ['fed', 'aiSpending', 'tsmc', 'recovery'] as const;

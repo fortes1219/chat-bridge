@@ -99,6 +99,12 @@ class IngestReport:
     rejected: list[Rejection] = field(default_factory=list)
     # Files that were stored before but are now rejected. Their old version is removed.
     removed: list[str] = field(default_factory=list)
+    # With replace: the stored documents that are not in the folder, removed.
+    not_in_folder: list[str] = field(default_factory=list)
+    # With replace: nothing in the folder could be read, so nothing was removed or written.
+    replace_refused: bool = False
+    # Without replace: how many stored documents are not in the folder and were left as they are.
+    others_kept: int = 0
     sections_written: int = 0
     index_update: IndexUpdate = IndexUpdate.NONE
 
@@ -392,8 +398,14 @@ async def _store(
     await session.merge(EntryLayoutState(id=ENTRY_LAYOUT_STATE_ID, layout=ENTRY_LAYOUT))
 
 
-async def ingest_folder(root: Path) -> IngestReport:
-    """Ingest every supported file under `root`. Paths are stored relative to `root`."""
+async def ingest_folder(root: Path, *, replace: bool = False) -> IngestReport:
+    """Ingest every supported file under `root`. Paths are stored relative to `root`.
+
+    With `replace`, every stored document that is not one of the folder's readable files is
+    removed in the same transaction, as LangChain's indexing API does with `cleanup="full"`.
+    When nothing in the folder can be read, nothing is removed or written: the folder is more
+    likely wrong than empty on purpose.
+    """
     report = IngestReport()
     candidates = _collect(root, report)
     synonyms = load_synonyms()
@@ -404,13 +416,12 @@ async def ingest_folder(root: Path) -> IngestReport:
         await create_tables(engine)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         async with sessions() as session:
-            paths = [candidate.source_path for candidate in candidates]
+            # Every stored path: the folder's own are compared by content, the others are
+            # removed with replace and counted without it.
             rows = await session.execute(
-                select(Document.source_path, Document.content_hash).where(
-                    Document.source_path.in_(paths)
-                )
+                select(Document.source_path, Document.content_hash)
             )
-            stored = {row.source_path: row.content_hash for row in rows}
+            stored_everywhere = {row.source_path: row.content_hash for row in rows}
             entries_are_current = _entries_are_current(
                 await session.get(EmbeddingState, EMBEDDING_STATE_ID),
                 await session.get(EntryLayoutState, ENTRY_LAYOUT_STATE_ID),
@@ -420,6 +431,13 @@ async def ingest_folder(root: Path) -> IngestReport:
                 user_words_digest(await user_words(session, synonyms)),
             )
 
+        folder_paths = {candidate.source_path for candidate in candidates}
+        stored = {
+            path: digest
+            for path, digest in stored_everywhere.items()
+            if path in folder_paths
+        }
+        others = sorted(path for path in stored_everywhere if path not in folder_paths)
         changed: list[_Candidate] = []
         for candidate in candidates:
             if stored.get(candidate.source_path) == candidate.content_hash:
@@ -428,6 +446,9 @@ async def ingest_folder(root: Path) -> IngestReport:
             changed.append(candidate)
 
         prepared = _prepare(changed, report)
+        if replace and not prepared and not report.unchanged:
+            report.replace_refused = True
+            return report
         prepared_paths = {item.candidate.source_path for item in prepared}
         stale_paths = [
             c.source_path
@@ -435,6 +456,11 @@ async def ingest_folder(root: Path) -> IngestReport:
             if c.source_path in stored and c.source_path not in prepared_paths
         ]
         report.removed.extend(stale_paths)
+        if replace:
+            report.not_in_folder.extend(others)
+            stale_paths.extend(others)
+        else:
+            report.others_kept = len(others)
         if (
             not prepared
             and not stale_paths
@@ -455,6 +481,19 @@ async def ingest_folder(root: Path) -> IngestReport:
             await session.execute(text("SELECT pg_stat_force_next_flush()"))
         await vacuum(engine)
     return report
+
+
+async def holds_any(source_paths: Sequence[str]) -> bool:
+    """Whether any of these documents is stored. One query on the documents' unique paths."""
+    async with open_engine() as engine:
+        await create_tables(engine)
+        async with async_sessionmaker(engine)() as session:
+            found = await session.scalar(
+                select(Document.source_path)
+                .where(Document.source_path.in_(list(source_paths)))
+                .limit(1)
+            )
+    return found is not None
 
 
 async def knowledge_base_is_empty() -> bool:

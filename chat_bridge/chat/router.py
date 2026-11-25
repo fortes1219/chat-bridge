@@ -9,13 +9,14 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sse_starlette import EventSourceResponse, JSONServerSentEvent
 
-from chat_bridge.chat import service
+from chat_bridge.chat import samples, service
 from chat_bridge.chat.schemas import (
     ChatRecordPublic,
     ChatRequest,
     ErrorCode,
     ErrorDetail,
     ProgramState,
+    SampleQuestions,
 )
 from chat_bridge.database import SchemaMismatchError
 from chat_bridge.errors import LocalSetupError
@@ -152,6 +153,13 @@ async def chat_programs() -> list[ProgramState]:
     """Whether Claude Code and Codex are each installed and logged in, read without starting
     a model."""
     return await service.program_states()
+
+
+@router.get("/samples")
+async def chat_samples() -> SampleQuestions:
+    """Questions about the sample news, in both languages, while that news is stored; none
+    once the knowledge base holds other documents only."""
+    return SampleQuestions(questions=await samples.sample_questions())
 
 
 @router.get("/records")

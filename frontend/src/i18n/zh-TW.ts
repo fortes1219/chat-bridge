@@ -28,7 +28,7 @@ const zhTW: typeof en = {
     language: '頁面語言'
   },
   chat: {
-    placeholder: '問問今年六月以來的市場消息……',
+    placeholder: '問問知識庫裡的文件……',
     answerWith: '回答的程式',
     samplesTitle: '可以從這幾題開始',
     sources: '出處',
@@ -227,12 +227,6 @@ const zhTW: typeof en = {
       rule: '{market}合計最多 {limit}%',
       measured: '合計 {value}%'
     }
-  },
-  samples: {
-    fed: '聯準會在這近半年的動向哪些行為導致股市動盪？',
-    aiSpending: '微軟與其他科技巨頭的 AI 投資，為什麼讓投資人擔心？',
-    tsmc: '台積電與供應鏈最近受到哪些事件影響？',
-    recovery: '有沒有權威說法認為股市會恢復正常？'
   }
 };
 

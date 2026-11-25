@@ -21,10 +21,18 @@ def _run(args: argparse.Namespace) -> int:
     if not folder.is_dir():
         return print_error(f"not a folder: {folder}")
     try:
-        report = asyncio.run(ingest_service.ingest_folder(folder.resolve()))
+        report = asyncio.run(
+            ingest_service.ingest_folder(folder.resolve(), replace=args.replace)
+        )
     except LocalSetupError as error:
         return print_error(str(error))
 
+    if report.replace_refused:
+        _print_rejections(report)
+        return print_error(
+            f"no file in {folder} could be read, so nothing was replaced; "
+            "the knowledge base is as it was"
+        )
     print(f"Written: {len(report.written)} files, {report.sections_written} sections.")
     print(f"Unchanged and skipped: {len(report.unchanged)} files.")
     if report.index_update != IndexUpdate.NONE:
@@ -33,14 +41,31 @@ def _run(args: argparse.Namespace) -> int:
         print(
             f"Removed the stored version of {path}, because the file can no longer be read."
         )
+    if report.not_in_folder:
+        print(
+            f"Removed {len(report.not_in_folder)} documents that are not in {folder}:"
+        )
+        for path in report.not_in_folder:
+            print(f"  {path}")
+    if report.others_kept:
+        print(
+            f"The knowledge base also holds {report.others_kept} documents that are not in "
+            f"{folder}; they are answered from too. Run with --replace to keep only this "
+            "folder's documents."
+        )
     if not report.rejected:
         return EXIT_OK
+    _print_rejections(report)
+    return EXIT_NOT_ALL
 
+
+def _print_rejections(report: ingest_service.IngestReport) -> None:
+    if not report.rejected:
+        return
     print(f"Rejected: {len(report.rejected)} files.")
     for rejection in report.rejected:
         detail = f" ({rejection.detail})" if rejection.detail else ""
         print(f"  {rejection.source_path}: {rejection.reason}{detail}")
-    return EXIT_NOT_ALL
 
 
 def register(commands: Commands) -> None:
@@ -50,5 +75,11 @@ def register(commands: Commands) -> None:
     )
     ingest.add_argument(
         "folder", type=Path, help="the folder to ingest; subfolders are included"
+    )
+    ingest.add_argument(
+        "--replace",
+        action="store_true",
+        help="keep only this folder's documents: remove every stored document that is not "
+        "in it, the sample news included",
     )
     ingest.set_defaults(handler=_run)

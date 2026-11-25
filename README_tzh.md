@@ -55,6 +55,22 @@ uv run chat-bridge search "Did the Fed raise rates?"
 - 第一次執行時會下載 jieba 的繁體中文詞典（8.6 MB）與 bge-m3 模型（約 2.3 GB）。資料庫、詞典與模型都放在 `local_data/`，git 不追蹤。要從頭來就刪掉這個資料夾；要換位置就設環境變數 `CHAT_BRIDGE_LOCAL_DATA`。
 - 結束代碼：全部成功是 `0`；`ingest` 有檔被拒、或 `search` 查不到是 `1`；發生錯誤是 `2`。
 
+### 換成自己的文件
+
+把自己的 Word、PDF、純文字與 Markdown 檔放在一個資料夾（可以有子資料夾），然後執行：
+
+```
+uv run chat-bridge ingest 你的資料夾路徑 --replace
+```
+
+- `--replace` 只留這個資料夾的文件：其他已存的文件都會刪掉，範例新聞也是，指令會列出刪了哪些。之後聊天只從你的文件回答。
+- 不加 `--replace` 時，`ingest` 是把這個資料夾加進已存的內容，什麼都不刪；它會說還有幾份別的文件留在庫裡，不會在你不知道的情況下混在一起。
+- 資料夾裡一個檔都讀不到時，`--replace` 什麼都不刪，結束代碼是 `2`。
+- 新增、修改或刪掉檔案之後，再跑一次同一個指令；刪掉的檔，它的文件會從庫裡移掉。
+- 聊天畫面上的範例問題問的是範例新聞，所以只在範例新聞還在庫裡時顯示。
+- 範例新聞只有在知識庫清空時才會回來，例如刪掉 `local_data/pgdata`：服務發現什麼都沒導入過，就會導入它。
+- Word 與 PDF 檔沒有事件日期，所以從它們來的回答會寫資料都沒有日期。
+
 ### 還沒有 uv
 
 照 [uv 官方安裝說明](https://docs.astral.sh/uv/getting-started/installation/)：
@@ -140,6 +156,7 @@ uv run chat-bridge
 
 - `data/truth/`：2026 年 6 月到 11 月的台股、美股、聯準會與 AI 產業事件，一個事件一檔，每一條附來源連結，並附事件前後的行情。格式見 `docs/truth_format.md`。
 - `data/synonyms.txt`：意思相同的名稱，一行一組，用 Solr 的同義詞格式。檔案開頭的註解列出哪些刻意不放、為什麼。
+- `data/sample_questions.json`：聊天畫面針對範例新聞提供的問題，兩種語言，只在範例新聞還在庫裡時顯示。
 
 ## 開發
 

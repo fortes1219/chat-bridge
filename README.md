@@ -55,6 +55,22 @@ uv run chat-bridge search "Did the Fed raise rates?"
 - The first run downloads jieba's Traditional Chinese dictionary (8.6 MB) and the bge-m3 model (about 2.3 GB). The database, the dictionary and the model are kept in `local_data/`, which git ignores. To start over, delete that folder. To use another folder, set `CHAT_BRIDGE_LOCAL_DATA`.
 - Exit codes: `0` when everything succeeded, `1` when `ingest` rejected a file or `search` found nothing, and `2` on an error.
 
+### Use your own documents
+
+Put your Word, PDF, text and Markdown files in one folder (subfolders are fine) and run:
+
+```
+uv run chat-bridge ingest path/to/your-folder --replace
+```
+
+- `--replace` keeps only that folder's documents: every other stored document is removed, the sample news included, and the command lists what it removed. The chat then answers from your documents only.
+- Without `--replace`, `ingest` adds the folder to what is already stored and removes nothing; it says how many other documents are still stored, so they are never mixed in without your knowing.
+- When nothing in the folder can be read, `--replace` removes nothing and exits with `2`.
+- Run the same command again after you add, change or delete files; a deleted file's document is removed.
+- The sample questions on the chat page are about the sample news, so they are shown only while it is stored.
+- The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
+- Word and PDF files have no event date, so an answer from them says the data has no date.
+
 ### If you don't have uv
 
 From the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/):
@@ -140,6 +156,7 @@ A question, or a document you ingest, can contain instructions such as "ignore t
 
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
 - `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
+- `data/sample_questions.json`: the questions the chat page offers about the sample news, in both languages, while that news is stored.
 
 ## Development
 
