@@ -133,6 +133,9 @@
   text-wrap: pretty;
 }
 .research-cover .cover-start {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -147,6 +150,15 @@
   transition: background-color 160ms ease;
 }
 .research-cover .cover-start:is(:hover, :focus-visible) { background: #274b87; }
+.cover-start::before {
+  position: absolute;
+  z-index: -1;
+  inset: -45% auto -45% 0;
+  width: 58%;
+  background: linear-gradient(90deg, transparent, #c5e6ff6b, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
 .research-scene h1 { font-size: 43px; }
 .research-scene .research-copy p { font-size: 18px; }
 .research-scene .research-copy .caption { font-size: 14px; }
@@ -259,9 +271,53 @@ html.print .research-cover .cover-start { display: none; }
     linear-gradient(90deg, #050b1569, #050b1538 46%, transparent 66%),
     linear-gradient(180deg, #050b154a, transparent 32%, transparent 78%, #050b153b);
 }
+.cover-reflection {
+  position: absolute;
+  inset: 29% 12% 26% 55%;
+  overflow: hidden;
+  mix-blend-mode: screen;
+  mask-image: radial-gradient(ellipse at 50% 54%, #000 24%, #0009 61%, transparent 85%);
+}
+.cover-reflection::before {
+  content: '';
+  position: absolute;
+  inset: -28% auto -28% 0;
+  width: 55%;
+  background: linear-gradient(90deg, transparent 15%, #60a9ff42 35%, #d0efffa6 50%, #86c7ff4d 65%, transparent 86%);
+  opacity: 0;
+}
 @keyframes cover-focus {
   from { opacity: 0.52; transform: scale(1.028); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cover-light-sweep {
+  0%, 6% { opacity: 0; transform: translateX(-122%) skewX(-17deg); }
+  16% { opacity: .88; }
+  34% { opacity: .54; }
+  42%, 100% { opacity: 0; transform: translateX(215%) skewX(-17deg); }
+}
+@keyframes cover-title-light {
+  0%, 6% { background-position: 100% 50%; }
+  42%, 100% { background-position: 0% 50%; }
+}
+
+@media screen and (prefers-reduced-motion: no-preference) {
+  html:not(.print) .research-cover-live .cover-reflection::before {
+    animation: cover-light-sweep 7s ease-in-out both infinite;
+  }
+  html:not(.print) .research-cover-live .cover-start::before {
+    content: '';
+    animation: cover-light-sweep 7s .32s ease-in-out both infinite;
+  }
+  @supports (background-clip: text) {
+    html:not(.print) .research-cover-live .cover-accent {
+      background: linear-gradient(111deg, var(--accent) 42%, #e5f5ff 50%, var(--accent) 57%) 100% 50% / 240% 100%;
+      background-clip: text;
+      color: transparent;
+      animation: cover-title-light 7s .15s ease-in-out both infinite;
+    }
+  }
 }
 
 .retrieval-figure, .allocation-figure { margin: 0; }

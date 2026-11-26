@@ -2,6 +2,10 @@ English | [繁體中文](README_tzh.md)
 
 # chat-bridge
 
+![Which market news matters to my holdings? Portfolio research with sources and allocation previews.](docs/readme-cover.png)
+
+[View the presentation in English](https://chat-bridge.akasa-lab.dev/en/)
+
 A RAG demo that turns market news into a searchable knowledge base, so users can ask questions in natural language and adjust their investment settings against metrics they define themselves. Work in progress.
 
 ## Run it with one command

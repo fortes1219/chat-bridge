@@ -8,6 +8,7 @@ import { clickCountFor, effectFor } from '../effects/strategies.ts'
     :class="{
       'research-ink': $frontmatter.appearance === 'ink',
       'research-cover': $frontmatter.composition === 'cover',
+      'research-cover-live': effectFor($frontmatter.slideId)?.effect === 'cover-artwork' && $page === $nav.currentPage && $renderContext === 'slide',
       'research-scene': $frontmatter.composition === 'scene',
       'research-diagram': $frontmatter.composition === 'diagram',
     }"
