@@ -71,6 +71,37 @@ uv run chat-bridge ingest 你的資料夾路徑 --replace
 - 範例新聞只有在知識庫清空時才會回來，例如刪掉 `local_data/pgdata`：服務發現什麼都沒導入過，就會導入它。
 - Word 與 PDF 檔沒有事件日期，所以從它們來的回答會寫資料都沒有日期。
 
+### 收網頁與訂閱源
+
+從網路收頁面，再加進知識庫：
+
+```
+uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
+uv run chat-bridge ingest local_data/collected
+```
+
+- `collect` 把每一頁的正文寫成一個 Markdown 檔，放在 `local_data/collected/`（用 `--into` 可以換資料夾），選單、頁尾、程式碼都不留。檔頭有標題、網址、網站、收的時間；頁面自己標了發表日期時，另有 `event_date`。這個日期是頁面標的，不是指令自己定的；頁面沒有標，就沒有 `event_date`。它是頁面第一次發表的日期：一直在更新的頁面（例如百科條目）可能是好幾年前。
+- RSS 或 Atom 訂閱源會一項一項讀：每一項的頁面照樣收；某一項的頁面讀不到時，改寫成訂閱源自己的標題與摘要，檔裡會寫明。
+- 收進什麼，知識庫就是什麼用途；指令不認主題，也不會沿著頁面裡的連結往下爬。
+- 每個網站先讀它的 robots.txt 並照著做；同一個網站兩次請求之間等 5 秒；本機與內網的網址一律拒絕；驗不過的憑證不接受；超過 20 MB 的下載會停掉。一個不回應的網站，大約會讓指令卡一到兩分鐘。
+- 網址是 PDF 這類文件時不收：請下載下來，對它的資料夾跑 `ingest`。
+- 同一個網址再收一次，文字有變才改寫它的檔。同一篇文章換了網址（例如追蹤參數不同），會收成兩份。
+- 收回來的頁面只留在你的機器上：`local_data/` 不進 git，刪掉 `local_data/` 也會一起刪掉。別人的網頁有它自己的使用條款，收下與保存是你自己的責任。
+- 結束代碼：全部收到是 `0`；有網址或檔案被拒是 `1`；發生錯誤是 `2`。
+
+#### 新聞檔的行情段
+
+照 `docs/truth_format.md` 格式寫的新聞檔（`data/truth` 裡的檔）有「當日與之後的行情」一段，記事件當天與之後的行情。把檔或它的資料夾交給 `collect`，它會依日線收盤價寫出這一段：
+
+```
+uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
+```
+
+- 要算哪些序列、哪些市場，列在 `data/market_series.json`；改這份清單就能換。
+- 每個市場的 D0，是收盤時刻在檔裡 `event_time`（事件發生的時刻，附時區）當下或之後的第一個交易時段。沒有 `event_time` 的檔照日期對齊，和先前的檔一樣。
+- 收盤價取自 Yahoo 的日線；Yahoo 缺的台股日子由 FinMind 補。兩邊都沒有的日子寫「沒有資料」，不估算。
+- 只有行情段變了才改寫檔案，其他內容一個字都不動。
+
 ### 還沒有 uv
 
 照 [uv 官方安裝說明](https://docs.astral.sh/uv/getting-started/installation/)：
@@ -185,6 +216,7 @@ uv run chat-bridge
 - `data/truth/`：2026 年 6 月到 11 月的台股、美股、聯準會與 AI 產業事件，一個事件一檔，每一條附來源連結，並附事件前後的行情。格式見 `docs/truth_format.md`。
 - `data/synonyms.txt`：意思相同的名稱，一行一組，用 Solr 的同義詞格式。檔案開頭的註解列出哪些刻意不放、為什麼。
 - `data/sample_questions.json`：聊天畫面針對範例新聞提供的問題，兩種語言，只在範例新聞還在庫裡時顯示。
+- `data/market_series.json`：`collect` 寫進新聞檔行情段的市場與日線序列。
 
 ## 開發
 

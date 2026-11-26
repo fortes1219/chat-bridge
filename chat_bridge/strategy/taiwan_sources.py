@@ -95,11 +95,13 @@ def _roc_date(text: object) -> date | None:
         return None
 
 
-def _finmind(dataset: str, code: str, start: date) -> list[dict[str, Any]]:
-    body = _get(
-        FINMIND_URL,
-        {"dataset": dataset, "data_id": code, "start_date": start.isoformat()},
-    )
+def _finmind(
+    dataset: str, code: str, start: date, end: date | None = None
+) -> list[dict[str, Any]]:
+    params = {"dataset": dataset, "data_id": code, "start_date": start.isoformat()}
+    if end is not None:
+        params["end_date"] = end.isoformat()
+    body = _get(FINMIND_URL, params)
     data = body.get("data") if isinstance(body, dict) else None
     if (
         not isinstance(body, dict)
@@ -111,17 +113,26 @@ def _finmind(dataset: str, code: str, start: date) -> list[dict[str, Any]]:
     return _rows(data)
 
 
+def finmind_closes(
+    code: str, start: date, end: date | None = None
+) -> dict[date, Decimal]:
+    """FinMind's daily closes of a Taiwan code (a stock, an ETF, or TAIEX for the index) from
+    `start` to `end`. A code FinMind does not know gives none. Raises SourceError."""
+    closes: dict[date, Decimal] = {}
+    for row in _finmind("TaiwanStockPrice", code, start, end):
+        day, close = _iso_date(row.get("date")), _number(row.get("close"))
+        if day is not None and close is not None and close > 0:
+            closes[day] = close
+    return closes
+
+
 def finmind_history(symbol: str, today: date) -> History:
     """A month of FinMind's daily closes of a Taiwan series, and the reference price of each
     ex-dividend or ex-rights day in it. A code FinMind does not know gives an empty history.
     Raises SourceError."""
     start = today - timedelta(days=HISTORY_DAYS)
     code = code_of(symbol)
-    closes: dict[date, Decimal] = {}
-    for row in _finmind("TaiwanStockPrice", code, start):
-        day, close = _iso_date(row.get("date")), _number(row.get("close"))
-        if day is not None and close is not None and close > 0:
-            closes[day] = close
+    closes = finmind_closes(code, start)
     given: dict[date, Decimal] = {}
     for row in _finmind("TaiwanStockDividendResult", code, start):
         day, reference = _iso_date(row.get("date")), _number(row.get("reference_price"))

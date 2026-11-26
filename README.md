@@ -71,6 +71,37 @@ uv run chat-bridge ingest path/to/your-folder --replace
 - The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
 - Word and PDF files have no event date, so an answer from them says the data has no date.
 
+### Collect web pages and feeds
+
+Collect pages from the web, then add them to the knowledge base:
+
+```
+uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
+uv run chat-bridge ingest local_data/collected
+```
+
+- `collect` writes each page's main text as one Markdown file in `local_data/collected/` (another folder with `--into`), without menus, footers or scripts. Its front matter has the title, the address, the site, when it was collected, and `event_date` when the page shows its own publication date. That date is the page's, not a date the command made up; a page without one has no `event_date`. It is the date the page was first published: for a page that keeps changing, such as an encyclopedia article, that can be years ago.
+- An RSS or Atom feed is read item by item: each item's page is collected; an item whose page cannot be read is written from the feed's own title and summary, and the file says so.
+- What is collected decides what the knowledge base is about; the command does not depend on the subject. It does not follow links inside pages.
+- It reads each site's robots.txt and follows it, waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes.
+- An address that is a document, such as a PDF, is not collected: download it and run `ingest` on its folder.
+- Collecting an address again rewrites its file only when the text changed. The same article under two addresses (another tracking parameter) is collected twice.
+- The collected pages stay on your machine: `local_data/` is not tracked by git, and deleting `local_data/` deletes them too. Other people's pages have their own terms; collecting and keeping them is your responsibility.
+- Exit codes: `0` when everything was collected, `1` when an address or file was refused, `2` on an error.
+
+#### The market moves of a news file
+
+A news file in the format of `docs/truth_format.md` (the files in `data/truth`) has a section 當日與之後的行情 with the market moves on the day of the event and after. Give `collect` the file or its folder, and it writes that section from the daily closes:
+
+```
+uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
+```
+
+- The series and the markets are listed in `data/market_series.json`; change the list to follow others.
+- Day 0 of each market is the first trading session that closes at or after the file's `event_time` (when the event happened, with its time zone). A file without `event_time` is aligned by its date, as the earlier files are.
+- Closes come from Yahoo's daily data; a Taiwan day Yahoo lacks comes from FinMind. A day neither has is written 沒有資料, never estimated.
+- A file is rewritten only when its section changes; everything else in it stays as written.
+
 ### If you don't have uv
 
 From the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/):
@@ -201,6 +232,7 @@ Under its quotes, the panel names these sources in one line and links the licens
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
 - `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
 - `data/sample_questions.json`: the questions the chat page offers about the sample news, in both languages, while that news is stored.
+- `data/market_series.json`: the markets and daily series whose moves `collect` writes into a news file.
 
 ## Development
 
