@@ -69,7 +69,9 @@ def round_trip(front_text: str) -> str:
     return out.getvalue()
 
 
-def _moment(value: object, event_date: date) -> datetime | None:
+def event_moment(value: object, event_date: date) -> datetime | None:
+    """`event_time` as a moment, None when it is not given. Raises NewsFileError when it is not
+    an ISO 8601 time with an offset on the day of `event_date`."""
     if value is None:
         return None
     try:
@@ -111,7 +113,7 @@ def read(path: Path, listed: MarketSeries) -> NewsFile:
     market = listed.market(str(markets[0]))
     if market is None:
         raise NewsFileError(f"market {markets[0]} is not in the markets file")
-    event = Event(event_date, market, _moment(front.get("event_time"), event_date))
+    event = Event(event_date, market, event_moment(front.get("event_time"), event_date))
     # The front matter's own lines: after the opening "---", before the closing one.
     return NewsFile(path, lines, (begin + 1, end - 1), front, event)
 

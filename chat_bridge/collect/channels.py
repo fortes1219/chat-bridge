@@ -1,9 +1,11 @@
-"""The channels: the sites the person's own agent is sent to for new pages.
+"""The channels: the sites the person's own agent is sent to for events.
 
 The list is data (`data/channels.json`), with the fields a source list keeps (id, name, url,
-enabled, topics, note). The agent is asked once for the pages the enabled channels published on
-or after a date, and answers in a JSON shape; a page off the channels' sites is refused, and the
-rest are collected by the command as any address is.
+enabled, topics, note). The agent is asked once, with web search and web reading, for the events
+on the collection targets that the enabled channels reported in the asked dates, each with its
+source pages, and is told the events the folder already has. It answers in a JSON shape; a page
+off the site of the channel it names is refused, and an event left with no page, or dated outside
+the asked dates, is not used.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from functools import cache
@@ -23,37 +25,52 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.programs import AnsweringProgram, Program, ProgramError
-from chat_bridge.chat.service import PROGRAMS, choose_program
+from chat_bridge.collect.pages import Page
+from chat_bridge.collect.record import Window
+from chat_bridge.collect.rules import Rules
+from chat_bridge.collect.truth_files import FolderEvent
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.errors import LocalSetupError
-from chat_bridge.search.service import latest_event_date
 
 logger = logging.getLogger(__name__)
 
 CHANNELS_FILE = PROJECT_ROOT / "data" / "channels.json"
 PROMPT_FILE = Path(__file__).with_name("channels_prompt.md")
 WEB_SCHEMES = ("http", "https")
-# The shape the agent answers in: the pages it found, each with its channel. The title and date
-# written into a collected file are the page's own, read when it is collected.
-FOUND_SCHEMA: dict[str, Any] = {
+EVENTS_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "pages": {
+        "events": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string"},
-                    "channel": {"type": "string"},
+                    "event_date": {"type": "string"},
+                    "about": {"type": "string"},
+                    "pages": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "url": {"type": "string"},
+                                "channel": {"type": "string"},
+                            },
+                            "required": ["url", "channel"],
+                            "additionalProperties": False,
+                        },
+                    },
                 },
-                "required": ["url", "channel"],
+                "required": ["event_date", "about", "pages"],
                 "additionalProperties": False,
             },
         }
     },
-    "required": ["pages"],
+    "required": ["events"],
     "additionalProperties": False,
 }
+PROGRAM_NAMES = {Program.CLAUDE_CODE: "Claude Code", Program.CODEX: "Codex"}
+# The limit the chat gives one run of a program.
+TIME_LIMIT_SECONDS = claude_code.ANSWER_TIMEOUT_SECONDS
 
 
 class ChannelsFileError(LocalSetupError):
@@ -124,8 +141,21 @@ def prompt() -> str:
     return PROMPT_FILE.read_text(encoding="utf-8")
 
 
-def question(channels: tuple[Channel, ...], since: date | None) -> str:
-    """The agent's input: the channels as data, and from which date to look."""
+def _dates(window: Window) -> str:
+    if window.since is None and window.until is None:
+        return "Find the latest events."
+    since = window.since.isoformat() if window.since else "any date"
+    until = window.until.isoformat() if window.until else "today"
+    return f"Find the events from {since} to {until}."
+
+
+def question(
+    channels: tuple[Channel, ...],
+    rules: Rules,
+    window: Window,
+    existing: Sequence[FolderEvent],
+) -> str:
+    """The agent's input: the dates, the targets, the events the folder has, the channels."""
     listed = [
         {
             "id": one.id,
@@ -136,12 +166,16 @@ def question(channels: tuple[Channel, ...], since: date | None) -> str:
         }
         for one in channels
     ]
-    when = (
-        f"Find the articles published on or after {since.isoformat()}."
-        if since is not None
-        else "Find the latest articles."
+    targets = "\n".join(f"{number}. {text}" for number, text in rules.targets.items())
+    have = (
+        "\n".join(f"{one.event_date.isoformat()}  {one.title}" for one in existing)
+        or "(none)"
     )
-    return f"{when}\n\n<channels>\n{json.dumps(listed, ensure_ascii=False, indent=2)}\n</channels>\n"
+    return (
+        f"{_dates(window)}\n\n<targets>\n{targets}\n</targets>\n\n"
+        f"<events_already_collected>\n{have}\n</events_already_collected>\n\n"
+        f"<channels>\n{json.dumps(listed, ensure_ascii=False, indent=2)}\n</channels>\n"
+    )
 
 
 class _Page(_Strict):
@@ -149,16 +183,50 @@ class _Page(_Strict):
     channel: str
 
 
-class _Found(_Strict):
+class _Event(_Strict):
+    event_date: str
+    about: str
     pages: list[_Page]
+
+
+class _Events(_Strict):
+    events: list[_Event]
+
+
+@dataclass(frozen=True)
+class FoundEvent:
+    event_date: date
+    about: str
+    pages: tuple[str, ...]
+    # The site of each page's channel, by the page's address.
+    sites: dict[str, str]
+
+    def on_their_sites(
+        self, read: Sequence[Page]
+    ) -> tuple[tuple[Page, ...], tuple[tuple[str, str], ...]]:
+        """The pages read whose address after any redirect is still on their channel's site,
+        and the others with the reason."""
+        kept: list[Page] = []
+        moved: list[tuple[str, str]] = []
+        for page in read:
+            site = self.sites.get(page.asked, "")
+            if _on_site((urlsplit(page.url).hostname or "").lower(), site):
+                kept.append(page)
+            else:
+                moved.append(
+                    (
+                        page.asked,
+                        f"it moved to {page.url}, off its channel's site {site}",
+                    )
+                )
+        return tuple(kept), tuple(moved)
 
 
 @dataclass(frozen=True)
 class Found:
-    """The pages to collect, how many each channel had, and those refused with the reason."""
+    """The events to write, and what was refused (a page or an event) with the reason."""
 
-    pages: tuple[str, ...]
-    per_channel: dict[str, int]
+    events: tuple[FoundEvent, ...]
     refused: tuple[tuple[str, str], ...]
 
 
@@ -166,15 +234,12 @@ def _on_site(host: str, site: str) -> bool:
     return host == site or host.endswith(f".{site}")
 
 
-def read_found(reply: dict[str, Any], channels: tuple[Channel, ...]) -> Found:
-    """The agent's answer, each page checked against the site of the channel it names. Raises
-    ValidationError when the answer is not the shape."""
-    found = _Found.model_validate(reply)
-    by_id = {one.id: one for one in channels}
-    per_channel = dict.fromkeys(by_id, 0)
-    pages: list[str] = []
-    refused: list[tuple[str, str]] = []
-    for page in found.pages:
+def _event_pages(
+    event: _Event, by_id: dict[str, Channel], refused: list[tuple[str, str]]
+) -> dict[str, str]:
+    """Each page on the site of the channel it names, with that site."""
+    pages: dict[str, str] = {}
+    for page in event.pages:
         url = page.url.strip()
         host = (urlsplit(url).hostname or "").lower()
         channel = by_id.get(page.channel)
@@ -182,15 +247,36 @@ def read_found(reply: dict[str, Any], channels: tuple[Channel, ...]) -> Found:
             refused.append((url, f"it names no listed channel ({page.channel})"))
         elif not _on_site(host, channel.site):
             refused.append((url, f"it is not on the site of channel {channel.id}"))
-        elif url not in pages:
-            pages.append(url)
-            per_channel[channel.id] += 1
-    return Found(tuple(pages), per_channel, tuple(refused))
+        else:
+            pages.setdefault(url, channel.site)
+    return pages
 
 
-PROGRAM_NAMES = {Program.CLAUDE_CODE: "Claude Code", Program.CODEX: "Codex"}
-# The limit the chat gives one run of a program.
-TIME_LIMIT_SECONDS = claude_code.ANSWER_TIMEOUT_SECONDS
+def read_events(
+    reply: dict[str, Any], channels: tuple[Channel, ...], window: Window
+) -> Found:
+    """The agent's answer, each page checked against the site of the channel it names. Raises
+    ValidationError when the answer is not the shape."""
+    parsed = _Events.model_validate(reply)
+    by_id = {one.id: one for one in channels}
+    events: list[FoundEvent] = []
+    refused: list[tuple[str, str]] = []
+    for event in parsed.events:
+        about = event.about.strip()
+        try:
+            day = date.fromisoformat(event.event_date)
+        except ValueError:
+            refused.append((about, f"its date is not YYYY-MM-DD: {event.event_date}"))
+            continue
+        if not window.holds(day):
+            refused.append((about, f"its date {day} is outside the asked dates"))
+            continue
+        pages = _event_pages(event, by_id, refused)
+        if not pages:
+            refused.append((about, "none of its pages is on a channel's site"))
+            continue
+        events.append(FoundEvent(day, about, tuple(pages), pages))
+    return Found(tuple(events), tuple(refused))
 
 
 class SearchError(Exception):
@@ -198,42 +284,30 @@ class SearchError(Exception):
     shape."""
 
 
-@dataclass(frozen=True)
-class Search:
-    program: Program
-    since: date | None
-    found: Found
-
-
-async def search_channels(
+async def search_events(
     channels: Sequence[Channel],
+    rules: Rules,
+    window: Window,
+    existing: Sequence[FolderEvent],
+    program: AnsweringProgram,
+    name: str,
     progress: Callable[[str], None],
-    *,
-    programs: Mapping[Program, AnsweringProgram] = PROGRAMS,
-    choose: Callable[[None], Awaitable[Program]] = choose_program,
-    latest: Callable[[], Awaitable[date | None]] = latest_event_date,
-) -> Search:
-    """Ask the person's own logged-in program, chosen as the chat chooses it, for the pages the
-    channels published on or after the knowledge base's latest event date. Raises the chat's
-    NoLoginError when no program is logged in, and SearchError."""
+) -> Found:
+    """Ask the person's own program for the channels' events. Raises SearchError."""
     listed = tuple(channels)
     if not listed:
         # Asking about no channel would spend the person's subscription on nothing.
         raise SearchError(f"no channel is enabled in {CHANNELS_FILE.name}")
-    program = await choose(None)
-    since = await latest()
-    name = PROGRAM_NAMES[program]
-    when = f"on or after {since}" if since is not None else "lately"
     progress(
-        f"Asking {name} for the pages {len(listed)} channels published {when}. "
-        f"It searches the web and can take several minutes (at most {TIME_LIMIT_SECONDS} seconds)."
+        f"Asking {name} for the events {len(listed)} channels reported. It searches the web "
+        f"and can take several minutes (at most {TIME_LIMIT_SECONDS} seconds)."
     )
     try:
         reply = await asyncio.wait_for(
-            programs[program].web_reply_in_shape(
+            program.web_reply_in_shape(
                 prompt(),
-                question(listed, since),
-                FOUND_SCHEMA,
+                question(listed, rules, window, existing),
+                EVENTS_SCHEMA,
                 sorted({one.site for one in listed}),
                 on_start=lambda args: logger.debug("Started %s", args[0]),
             ),
@@ -241,12 +315,12 @@ async def search_channels(
         )
     except TimeoutError:
         raise SearchError(
-            f"{name} did not finish within {TIME_LIMIT_SECONDS} seconds"
+            f"{name} did not finish within {TIME_LIMIT_SECONDS} seconds. Ask for fewer days "
+            f"with --until, or turn some channels off in {CHANNELS_FILE.name}"
         ) from None
     except ProgramError as error:
         raise SearchError(str(error)) from error
     try:
-        found = read_found(reply, listed)
+        return read_events(reply, listed, window)
     except ValidationError:
         raise SearchError(f"{name}'s answer is not in the asked-for shape") from None
-    return Search(program, since, found)

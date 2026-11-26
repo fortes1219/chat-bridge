@@ -1,20 +1,16 @@
-"""Pages and feeds collected from saved answers, with no network."""
+"""Pages and feeds read from saved answers, with no network."""
 
 from collections.abc import Callable
 from configparser import ConfigParser
-from datetime import UTC, date, datetime
-from pathlib import Path
+from datetime import date
 
 import pytest
-import yaml
 
 from chat_bridge.collect import pages
-from chat_bridge.collect.pages import Pacing, collect_addresses, file_name
-from chat_bridge.ingest.sections import parse_markdown
+from chat_bridge.collect.pages import Pacing, Reader
 
 SITE = "https://news.example.com"
 ARTICLE = f"{SITE}/fed"
-COLLECTED = datetime(2026, 11, 26, 6, 0, tzinfo=UTC)
 HTML = """<!doctype html><html><head><title>Fed holds rates | Example News</title>
 <meta property="og:site_name" content="Example News">
 {date}</head><body><nav><a href="/">Home</a> | <a href="/markets">Markets menu</a></nav>
@@ -30,6 +26,7 @@ FEED = f"""<?xml version="1.0"?><rss version="2.0"><channel><title>Example</titl
 <item><title>Gone story</title><link>{SITE}/gone</link><description>The gone story in brief.</description>
 <pubDate>Wed, 18 Nov 2026 10:00:00 GMT</pubDate></item>
 </channel></rss>"""
+ALLOW_ALL = "User-agent: *\nAllow: /\n"
 
 
 def _answer(
@@ -55,95 +52,73 @@ def _fetch(
     return fetch
 
 
-def _collect(
-    urls: list[str], folder: Path, answers: Answers, asked: list[str] | None = None
-) -> list[pages.Outcome]:
+def _reader(
+    answers: Answers,
+    asked: list[str] | None = None,
+    told: list[str] | None = None,
+    robots: pages.Response | None = None,
+) -> Reader:
     calls = asked if asked is not None else []
-    robots = {f"{SITE}/robots.txt": _answer("User-agent: *\nAllow: /\n", "text/plain")}
-    return collect_addresses(
-        urls,
-        folder,
-        now=lambda: COLLECTED,
-        fetch=_fetch({**robots, **answers}, calls),
+    rules = {f"{SITE}/robots.txt": robots or _answer(ALLOW_ALL, "text/plain")}
+    return Reader(
+        fetch=_fetch({**rules, **answers}, calls),
         pacing=Pacing(wait=0.0, sleep=lambda seconds: None),
+        progress=(told.append if told is not None else lambda line: None),
     )
 
 
-def _front(path: Path) -> dict[str, object]:
-    loaded: dict[str, object] = yaml.safe_load(
-        path.read_text(encoding="utf-8").split("---\n")[1]
-    )
-    return loaded
-
-
-def test_a_page_is_written_with_its_main_text_and_ingest_reads_it(
-    tmp_path: Path,
-) -> None:
+def test_a_page_is_read_as_its_main_text_with_title_site_and_date() -> None:
     answers: Answers = {
         ARTICLE: _answer(
             HTML.format(date=DATED), "text/html; charset=utf-8", url=ARTICLE
         )
     }
 
-    outcomes = _collect([ARTICLE], tmp_path, answers)
+    read = _reader(answers).read_addresses([ARTICLE])
 
-    assert [outcome.kind for outcome in outcomes] == ["written"]
-    path = tmp_path / file_name(ARTICLE)
-    text = path.read_text(encoding="utf-8")
-    assert "kept its benchmark rate unchanged" in text
-    assert "Markets menu" not in text and "Privacy policy" not in text
-    assert _front(path) == {
-        "title": "Fed holds rates steady",
-        "url": ARTICLE,
-        "site": "Example News",
-        "collected": "2026-11-26T06:00:00+00:00",
-        "event_date": date(2026, 11, 19),
-    }
-    assert parse_markdown(text, "fallback").event_date == date(2026, 11, 19)
+    assert read.refused == ()
+    page = read.pages[0]
+    assert "kept its benchmark rate unchanged" in page.text
+    assert "Markets menu" not in page.text and "Privacy policy" not in page.text
+    assert (page.asked, page.url, page.title, page.site, page.published) == (
+        ARTICLE,
+        ARTICLE,
+        "Fed holds rates steady",
+        "Example News",
+        date(2026, 11, 19),
+    )
 
 
-def test_a_page_without_its_own_date_has_no_event_date(tmp_path: Path) -> None:
+def test_a_page_without_its_own_date_has_none() -> None:
     answers: Answers = {
         ARTICLE: _answer(HTML.format(date=""), "text/html", url=ARTICLE)
     }
 
-    _collect([ARTICLE], tmp_path, answers)
-
-    assert "event_date" not in _front(tmp_path / file_name(ARTICLE))
+    assert _reader(answers).read_addresses([ARTICLE]).pages[0].published is None
 
 
-def test_a_page_collected_again_unchanged_is_left_as_it_was(tmp_path: Path) -> None:
-    answers: Answers = {
-        ARTICLE: _answer(HTML.format(date=DATED), "text/html", url=ARTICLE)
-    }
-    _collect([ARTICLE], tmp_path, answers)
-    path = tmp_path / file_name(ARTICLE)
-    first = path.read_bytes()
-
-    outcomes = _collect([ARTICLE], tmp_path, answers)
-
-    assert [outcome.kind for outcome in outcomes] == ["unchanged"]
-    assert path.read_bytes() == first
-
-
-def test_a_feeds_items_are_collected_and_an_unreadable_one_from_its_summary(
-    tmp_path: Path,
-) -> None:
+def test_a_feeds_items_are_read_and_an_unreadable_one_is_refused_not_summarised() -> (
+    None
+):
     feed = f"{SITE}/rss.xml"
+    told: list[str] = []
     answers: Answers = {
         feed: _answer(FEED, "application/rss+xml"),
         ARTICLE: _answer(HTML.format(date=""), "text/html", url=ARTICLE),
         f"{SITE}/gone": _answer("missing", "text/html", status=404),
     }
 
-    outcomes = _collect([feed], tmp_path, answers)
+    read = _reader(answers, told=told).read_addresses([feed])
 
-    assert [outcome.kind for outcome in outcomes] == ["written", "written"]
-    article = _front(tmp_path / file_name(ARTICLE))
-    assert article["feed"] == feed and article["event_date"] == date(2026, 11, 19)
-    gone = (tmp_path / file_name(f"{SITE}/gone")).read_text(encoding="utf-8")
-    assert "This file holds the feed's summary of the item" in gone
-    assert "status 404" in gone and "The gone story in brief." in gone
+    assert [page.url for page in read.pages] == [ARTICLE]
+    assert read.refused == (
+        pages.Refusal(f"{SITE}/gone", "the site answered with status 404"),
+    )
+    assert told == [
+        f"    feed      {feed}: 2 items",
+        f"    read      {ARTICLE}",
+        f"    not read  {SITE}/gone: the site answered with status 404",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -157,89 +132,85 @@ def test_a_feeds_items_are_collected_and_an_unreadable_one_from_its_summary(
     ids=["disallowed", "no robots.txt", "unreachable", "server error"],
 )
 def test_robots_txt_is_followed_as_rfc_9309_reads_it(
-    tmp_path: Path, robots: pages.Response | None, allowed: bool
+    robots: pages.Response | None, allowed: bool
 ) -> None:
+    asked: list[str] = []
+    answers: Answers = {
+        f"{SITE}/robots.txt": robots,
+        ARTICLE: _answer(HTML.format(date=DATED), "text/html", url=ARTICLE),
+    }
+    reader = Reader(
+        fetch=_fetch(answers, asked),
+        pacing=Pacing(wait=0.0, sleep=lambda seconds: None),
+    )
+
+    read = reader.read_addresses([ARTICLE])
+
+    assert (ARTICLE in asked) is allowed
+    assert bool(read.pages) is allowed
+
+
+def test_a_redirect_to_another_site_is_read_only_when_its_robots_txt_allows_it() -> (
+    None
+):
+    elsewhere = "https://mirror.example.org/fed"
+    asked: list[str] = []
+    answers: Answers = {
+        ARTICLE: _answer(HTML.format(date=DATED), "text/html", url=elsewhere),
+        "https://mirror.example.org/robots.txt": _answer(
+            "User-agent: *\nDisallow: /\n", "text/plain"
+        ),
+    }
+
+    read = _reader(answers, asked).read_addresses([ARTICLE])
+
+    assert read.pages == ()
+    assert read.refused == (
+        pages.Refusal(
+            ARTICLE, f"it moved to {elsewhere}, whose robots.txt does not allow it"
+        ),
+    )
+    assert "https://mirror.example.org/robots.txt" in asked
+
+
+def test_robots_txt_is_read_once_for_the_events_of_a_run() -> None:
     asked: list[str] = []
     answers: Answers = {
         ARTICLE: _answer(HTML.format(date=DATED), "text/html", url=ARTICLE)
     }
+    reader = _reader(answers, asked)
 
-    outcomes = collect_addresses(
-        [ARTICLE],
-        tmp_path,
-        now=lambda: COLLECTED,
-        fetch=_fetch({f"{SITE}/robots.txt": robots, **answers}, asked),
-        pacing=Pacing(wait=0.0, sleep=lambda seconds: None),
-    )
+    reader.read_addresses([ARTICLE])
+    reader.read_addresses([ARTICLE])
 
-    assert (ARTICLE in asked) is allowed
-    assert outcomes[0].kind == ("written" if allowed else "refused")
+    assert asked.count(f"{SITE}/robots.txt") == 1
 
 
-def test_a_document_that_is_not_a_page_is_refused_with_what_to_do(
-    tmp_path: Path,
-) -> None:
+def test_a_document_that_is_not_a_page_is_refused_with_what_to_do() -> None:
     report = f"{SITE}/report.pdf"
     answers: Answers = {report: _answer(b"%PDF-1.7 ...", "application/pdf")}
 
-    outcomes = _collect([report], tmp_path, answers)
+    read = _reader(answers).read_addresses([report])
 
-    assert outcomes[0].kind == "refused"
-    assert (
-        "application/pdf" in outcomes[0].detail
-        and "ingest the file" in outcomes[0].detail
-    )
-    assert not list(tmp_path.iterdir())
+    assert read.pages == ()
+    assert "application/pdf" in read.refused[0].reason
+    assert "ingest the file" in read.refused[0].reason
 
 
-def test_an_address_that_could_not_be_read_is_named(tmp_path: Path) -> None:
-    outcomes = _collect([f"{SITE}/slow"], tmp_path, {f"{SITE}/slow": None})
+def test_an_address_that_could_not_be_read_is_named() -> None:
+    read = _reader({f"{SITE}/slow": None}).read_addresses([f"{SITE}/slow"])
 
-    assert (outcomes[0].kind, outcomes[0].detail) == ("refused", "it could not be read")
+    assert read.refused == (pages.Refusal(f"{SITE}/slow", "it could not be read"),)
 
 
-def test_an_address_with_a_user_name_or_password_is_refused(tmp_path: Path) -> None:
+def test_an_address_with_a_user_name_or_password_is_refused() -> None:
     asked: list[str] = []
     secret = "https://user:secret@news.example.com/fed"
 
-    outcomes = _collect([secret], tmp_path, {}, asked)
+    read = _reader({}, asked).read_addresses([secret])
 
-    assert (
-        outcomes[0].kind == "refused" and "user name or password" in outcomes[0].detail
-    )
-    assert asked == [] and not list(tmp_path.iterdir())
-
-
-def test_a_file_is_named_from_the_host_alone() -> None:
-    assert file_name("https://News.Example.com:8443/a").startswith(
-        "news.example.com_8443-"
-    )
-
-
-def test_each_outcome_is_told_as_it_happens(tmp_path: Path) -> None:
-    feed = f"{SITE}/rss.xml"
-    told: list[str] = []
-    robots = {f"{SITE}/robots.txt": _answer("User-agent: *\nAllow: /\n", "text/plain")}
-    answers: Answers = {
-        **robots,
-        feed: _answer(FEED, "application/rss+xml"),
-        ARTICLE: _answer(HTML.format(date=""), "text/html", url=ARTICLE),
-        f"{SITE}/gone": None,
-    }
-
-    collect_addresses(
-        [feed],
-        tmp_path,
-        now=lambda: COLLECTED,
-        fetch=_fetch(answers, []),
-        pacing=Pacing(wait=0.0, sleep=lambda seconds: None),
-        progress=told.append,
-    )
-
-    assert told[0] == f"  feed           {feed}: 2 items"
-    assert told[1].startswith(f"  written        {ARTICLE}  ->  ")
-    assert told[2].startswith(f"  written        {SITE}/gone  ->  ")
-    assert len(told) == 3
+    assert "user name or password" in read.refused[0].reason
+    assert asked == []
 
 
 def test_a_site_is_asked_again_only_after_the_wait() -> None:

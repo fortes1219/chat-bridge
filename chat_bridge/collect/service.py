@@ -3,19 +3,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from chat_bridge.collect import news_files
 from chat_bridge.collect.closes import Closes, read_closes
 from chat_bridge.collect.markets import MarketSeries, market_series
 from chat_bridge.collect.moves import section
 from chat_bridge.collect.news_files import NewsFile, NewsFileError
-from chat_bridge.collect.pages import Kind
 
 # Days read before the earliest and after the latest event, so day −2 and day +5 are in the span
 # across a long holiday.
 SPAN_DAYS = 21
+
+Kind = Literal["written", "unchanged", "refused"]
+
+
+def closes_for(
+    dates: list[date], now: datetime, listed: MarketSeries | None = None
+) -> Closes:
+    """The daily closes for the span of the given event dates, read once. Raises ClosesError."""
+    series = listed or market_series()
+    start = min(dates) - timedelta(days=SPAN_DAYS)
+    end = min(max(dates) + timedelta(days=SPAN_DAYS), now.date())
+    return read_closes(series.series, start, end, now)
 
 
 @dataclass(frozen=True)
@@ -55,11 +67,7 @@ def collect_market_moves(
     if not readable:
         return outcomes
     dates = [news.event.event_date for news in readable]
-    start = min(dates) - timedelta(days=SPAN_DAYS)
-    end = min(max(dates) + timedelta(days=SPAN_DAYS), moment.date())
-    found = (
-        closes if closes is not None else read_closes(series.series, start, end, moment)
-    )
+    found = closes if closes is not None else closes_for(dates, moment, series)
     symbols = [one.symbol for one in series.series]
     for news in readable:
         computed = section(news.event, series, found)

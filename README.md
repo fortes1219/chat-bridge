@@ -71,19 +71,24 @@ uv run chat-bridge ingest path/to/your-folder --replace
 - The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
 - Word and PDF files have no event date, so an answer from them says the data has no date.
 
-### Collect new material into the knowledge base
+### Collect new events, then add them to the knowledge base
 
-One command collects what is new and adds it to the knowledge base:
+Two commands: the first collects the new events as files in `data/truth`, the second adds them to
+the knowledge base.
 
 ```
 uv run chat-bridge collect
+uv run chat-bridge ingest data/truth
 ```
 
-- With nothing after it, your own logged-in Claude Code (or Codex, when Claude Code is not logged in) is sent to the channels listed in `data/channels.json`: it searches the web and names the pages those sites published on or after the latest date the knowledge base has. The command then collects each page and adds them to the knowledge base.
-- Claude Code gets web search and web reading only, and may read pages only on the channels' sites. Codex gets live web search with its command and file tools off; its search has no setting for sites. Neither runs a command or touches a file.
-- The agent names the pages, and the command reads them itself, because the agent's web reading answers with what another model read from a page, not the page. A page that is not on the site of the channel it is named for, or that cannot be read, is not collected, and the command says so. It also lists how many pages each channel had, so a channel that gave none shows up.
-- It uses your own Claude Code or Codex subscription. What it finds can differ from run to run, and a run takes several minutes.
-- Change `data/channels.json` to collect from other sites: each channel has an `id`, a `name`, a `url`, `enabled`, `topics` and a `note`.
+- With nothing after it, `collect` sends your own logged-in Claude Code (or Codex, when Claude Code is not logged in) to the channels listed in `data/channels.json`. It searches the web for the events those sites reported from the latest event date in `data/truth` to today (`--until 2026-11-25` stops at that day), on the collection targets of `docs/truth_format.md`, leaving out the events the folder already has. It names each event's pages; the command reads them itself.
+- Each event becomes one file in `data/truth` (another folder with `--into`), in the format of `docs/truth_format.md`, like the files already there: the front matter, the sections 事件發生, 影響股市證據, 相關標的, 當日與之後的行情 and 後續與不同說法, each item with the source it comes from. A story that bears on no collection target is not an event and no file is written for it.
+- How a file is made: the agent, with no tool, writes the event from the pages' text, each item with the words of its source it rests on. The command checks that those words are in the page, that each item is in its source's language, that the exposure words, targets and markets are the listed ones, and that no number is left written with 萬, 億, 兆 or 碼. A second run of the agent, which sees only each item and its words, says whether each item says only what its source says. A file that fails is written again once with the reasons, and is not written when it fails again; the command says why. The section 當日與之後的行情 is then computed from the daily closes, as below.
+- Number conversions (萬, 億, 兆, 成, 碼, 民國年) are added to `tests/data/number_conversions.md` when the files go to `data/truth`; into another folder they are shown in the terminal only.
+- Claude Code gets web search and web reading only for the search, and may read pages only on the channels' sites; it gets no tool when it writes or checks a file. Codex gets live web search for the search, with its command and file tools off. Neither runs a command or touches a file: the command writes the files.
+- It uses your own Claude Code or Codex subscription: one run to find the events, then two runs for each event (writing and checking), four when the first try fails. Each run may take up to 10 minutes. One page given as an address took 98 seconds with Claude Code, five runs in all because the first try failed the check. What it finds can differ from run to run.
+- `collect` does not add anything to the knowledge base; `ingest` does, when you run it.
+- Change `data/channels.json` to collect from other sites, and `docs/truth_format.md` and `docs/exposure_vocabulary.md` to collect on other subjects: the targets, sections and exposure words are read from them.
 
 You can also give it addresses of pages or feeds:
 
@@ -91,14 +96,12 @@ You can also give it addresses of pages or feeds:
 uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
 ```
 
-- Either way, `collect` writes each page's main text as one Markdown file in `local_data/collected/` (another folder with `--into`), without menus, footers or scripts, and then adds that folder to the knowledge base, as `uv run chat-bridge ingest local_data/collected` would. Its front matter has the title, the address, the site, when it was collected, and `event_date` when the page shows its own publication date. That date is the page's, not a date the command made up; a page without one has no `event_date`. It is the date the page was first published: for a page that keeps changing, such as an encyclopedia article, that can be years ago.
-- An RSS or Atom feed is read item by item: each item's page is collected; an item whose page cannot be read is written from the feed's own title and summary, and the file says so.
-- What is collected decides what the knowledge base is about; the command does not depend on the subject. It does not follow links inside pages.
+- Each page, or each item of a feed, is read; the agent sorts them into events and each event is written as above. A page that bears on no collection target is named and left out.
 - It reads each site's robots.txt and follows it, waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes.
-- An address that is a document, such as a PDF, is not collected: download it and run `ingest` on its folder.
-- Collecting an address again rewrites its file only when the text changed. The same article under two addresses (another tracking parameter) is collected twice.
-- The collected pages stay on your machine: `local_data/` is not tracked by git, and deleting `local_data/` deletes them too. Other people's pages have their own terms; collecting and keeping them is your responsibility.
-- Exit codes: `0` when everything was collected, `1` when an address or file was refused, `2` on an error.
+- An address that is a document, such as a PDF, is not read: download it and run `ingest` on its folder. A feed item whose page cannot be read is left out.
+- If you stop it part way (Ctrl+C), the files already written stay, no half file is left, and running it again does not write them a second time.
+- Other people's pages have their own terms; the files hold facts written from them with their sources, and collecting them is your responsibility.
+- Exit codes: `0` when every event found was written, `1` when a page or an event was left out, `2` on an error.
 
 #### The market moves of a news file
 

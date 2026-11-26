@@ -1,6 +1,6 @@
 # truth 檔格式說明
 
-> 給：寫導入指令、切塊、檢索程式的人。truth 檔是 `data/truth/` 底下的 Markdown，一個事件一檔。
+> 給：寫導入指令、切塊、檢索程式的人，以及 `uv run chat-bridge collect` 叫來寫新檔的 agent（這份與詞表就是它的規則，採集目標、段落、key 也由程式從這份讀出來）。truth 檔是 `data/truth/` 底下的 Markdown，一個事件一檔。
 > 相關檔：`docs/exposure_vocabulary.md`（分類詞表）、`tests/data/number_conversions.md`（數字轉換案例）。
 
 ## 一、檔名與 YAML
@@ -81,7 +81,7 @@
 
 > 對齊規則是設計上的選擇，可以更正。
 
-- 由指令產生：`uv run chat-bridge collect <新聞檔或資料夾>`。只有這一段的格子或註變了才改寫檔案，檔裡其他內容逐位元組不動。
+- 由指令產生：`uv run chat-bridge collect` 寫新檔時一併算好；已經有的檔用 `uv run chat-bridge collect <新聞檔或資料夾>` 重算。只有這一段的格子或註變了才改寫檔案，檔裡其他內容逐位元組不動。
 - 位置：「相關標的」之後、「後續與不同說法」之前。段落第一行寫明「由程式依日線收盤價計算」，數字不是新聞來源的話，不用 `[sN]` 標記；資料來源記在 sources 的 `d1`（Yahoo），用到 FinMind 補的日子時另有 `d2`。表格底下手寫的註留在原處。
 - 資料：Yahoo Finance 日線；序列與市場列在 `data/market_series.json`，範例是九個：^TWII、2330.TW、2308.TW、0050.TW、006208.TW、^GSPC、^IXIC、^DJI、^SOX。Yahoo 缺的台股日子由 FinMind 的日收盤補，註欄寫「YYYY-MM-DD 的收盤取自 FinMind」。
 - 兩種對齊，看檔裡有沒有 `event_time`：

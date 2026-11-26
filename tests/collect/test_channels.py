@@ -1,37 +1,47 @@
-"""Collecting from the channels: the list, the agent's question and answer, how each program is
-started, and one command from the channels to the knowledge base. No program is started."""
+"""Finding events on the channels: the list, the agent's question and answer, and how each program
+is started. No program is started."""
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import date
-from functools import partial
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from chat_bridge import cli
 from chat_bridge.chat import claude_code, codex
-from chat_bridge.chat.programs import Login, LoginStatus, Program, ProgramError
-from chat_bridge.chat.service import NoLoginError
-from chat_bridge.collect import channels, pages
-from chat_bridge.collect import cli as collect_cli
+from chat_bridge.chat.programs import ProgramError
+from chat_bridge.collect import channels
 from chat_bridge.collect.channels import (
-    FOUND_SCHEMA,
+    EVENTS_SCHEMA,
     Channel,
     ChannelsFileError,
     SearchError,
     enabled_channels,
     question,
-    read_found,
-    search_channels,
+    read_events,
+    search_events,
 )
+from chat_bridge.collect.record import Window
+from chat_bridge.collect.rules import read_rules
+from chat_bridge.collect.truth_files import FolderEvent
+from tests.collect.stand_ins import CNA as CNA_PAGE
 
 CNA = Channel("cna", "CNA", "https://www.cna.com.tw/list/afe.aspx", ("taiwan",), "")
 FED = Channel(
     "fed", "Fed", "https://www.federalreserve.gov/newsevents/pressreleases.htm", (), ""
 )
 LISTED = (CNA, FED)
+WINDOW = Window(date(2026, 11, 18), date(2026, 11, 25))
+HAVE = [
+    FolderEvent(
+        Path("2026-11-18-fomc-minutes.md"),
+        date(2026, 11, 18),
+        "聯準會公布會議紀錄",
+        frozenset(),
+    )
+]
 
 
 def _write_channels(tmp_path: Path, entries: list[dict[str, Any]]) -> Path:
@@ -76,36 +86,109 @@ def test_a_list_not_in_its_shape_is_refused(
         enabled_channels.__wrapped__(_write_channels(tmp_path, entries))
 
 
-def test_the_question_gives_the_date_and_the_channels_as_data() -> None:
-    text = question(LISTED, date(2026, 11, 25))
+def test_the_question_gives_the_dates_targets_events_held_and_channels() -> None:
+    text = question(LISTED, read_rules(), WINDOW, HAVE)
 
-    assert text.startswith("Find the articles published on or after 2026-11-25.")
+    assert text.startswith("Find the events from 2026-11-18 to 2026-11-25.")
+    assert "1. 2026 年 6 月起的台股與美股相關消息。" in text
+    assert "2026-11-18  聯準會公布會議紀錄" in text
     assert '"id": "cna"' in text and "<channels>" in text
-    assert question(LISTED, None).startswith("Find the latest articles.")
+    assert question(LISTED, read_rules(), Window(None, None), []).startswith(
+        "Find the latest events."
+    )
 
 
-def test_each_page_must_be_on_its_channels_site_and_each_channel_is_counted() -> None:
+def _page(url: str, channel: str) -> dict[str, str]:
+    return {"url": url, "channel": channel}
+
+
+def test_each_events_pages_must_be_on_their_channels_site() -> None:
     cna_page = "https://www.cna.com.tw/news/afe/202611250001.aspx"
     reply = {
-        "pages": [
-            {"url": cna_page, "channel": "cna"},
-            {"url": cna_page, "channel": "cna"},
-            {"url": "https://m.www.federalreserve.gov/a.htm", "channel": "fed"},
-            {"url": "https://made-up.example.org/fed", "channel": "fed"},
-            {"url": "https://www.cna.com.tw/news/2.aspx", "channel": "fed"},
-            {"url": "https://www.cna.com.tw/news/3.aspx", "channel": "bbc"},
+        "events": [
+            {
+                "event_date": "2026-11-24",
+                "about": "TAIEX rises",
+                "pages": [
+                    _page(cna_page, "cna"),
+                    _page(cna_page, "cna"),
+                    _page("https://m.www.federalreserve.gov/a.htm", "fed"),
+                    _page("https://made-up.example.org/fed", "fed"),
+                    _page("https://www.cna.com.tw/news/3.aspx", "bbc"),
+                ],
+            },
+            {
+                "event_date": "2026-11-20",
+                "about": "only off-site pages",
+                "pages": [_page("https://www.cna.com.tw/news/2.aspx", "fed")],
+            },
         ]
     }
 
-    found = read_found(reply, LISTED)
+    found = read_events(reply, LISTED, WINDOW)
 
-    assert found.pages == (cna_page, "https://m.www.federalreserve.gov/a.htm")
-    assert found.per_channel == {"cna": 1, "fed": 1}
+    assert [(one.about, one.pages) for one in found.events] == [
+        ("TAIEX rises", (cna_page, "https://m.www.federalreserve.gov/a.htm"))
+    ]
     assert found.refused == (
         ("https://made-up.example.org/fed", "it is not on the site of channel fed"),
-        ("https://www.cna.com.tw/news/2.aspx", "it is not on the site of channel fed"),
         ("https://www.cna.com.tw/news/3.aspx", "it names no listed channel (bbc)"),
+        ("https://www.cna.com.tw/news/2.aspx", "it is not on the site of channel fed"),
+        ("only off-site pages", "none of its pages is on a channel's site"),
     )
+
+
+def test_a_page_that_moved_off_its_channels_site_is_not_used() -> None:
+    asked = "https://www.cna.com.tw/news/afe/1.aspx"
+    reply = {
+        "events": [
+            {
+                "event_date": "2026-11-24",
+                "about": "TAIEX rises",
+                "pages": [_page(asked, "cna")],
+            }
+        ]
+    }
+    event = read_events(reply, LISTED, WINDOW).events[0]
+    same_site = replace(CNA_PAGE, asked=asked, url="https://www.cna.com.tw/news/2.aspx")
+    moved = replace(CNA_PAGE, asked=asked, url="https://elsewhere.example/news/1")
+
+    assert event.on_their_sites([same_site]) == ((same_site,), ())
+    kept, refused = event.on_their_sites([moved])
+    assert kept == ()
+    assert refused == (
+        (
+            asked,
+            "it moved to https://elsewhere.example/news/1, off its channel's site "
+            "www.cna.com.tw",
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("event_date", "reason"),
+    [
+        ("2026-11-17", "its date 2026-11-17 is outside the asked dates"),
+        ("2026-11-26", "its date 2026-11-26 is outside the asked dates"),
+        ("Nov 24", "its date is not YYYY-MM-DD: Nov 24"),
+    ],
+)
+def test_an_event_outside_the_asked_dates_is_not_used(
+    event_date: str, reason: str
+) -> None:
+    reply = {
+        "events": [
+            {
+                "event_date": event_date,
+                "about": "x",
+                "pages": [_page("https://www.cna.com.tw/n/1.aspx", "cna")],
+            }
+        ]
+    }
+
+    found = read_events(reply, LISTED, WINDOW)
+
+    assert found.events == () and found.refused == (("x", reason),)
 
 
 class _Program:
@@ -115,24 +198,16 @@ class _Program:
         self.web_reply_in_shape = finder
 
 
-def _search(
-    finder: Any,
-    since: date | None = date(2026, 11, 25),
-    listed: tuple[Channel, ...] = LISTED,
-) -> channels.Search:
-    async def choose(requested: None) -> Program:
-        return Program.CLAUDE_CODE
-
-    async def latest() -> date | None:
-        return since
-
+def _search(finder: Any, listed: tuple[Channel, ...] = LISTED) -> channels.Found:
     return asyncio.run(
-        search_channels(
+        search_events(
             listed,
+            read_rules(),
+            WINDOW,
+            HAVE,
+            _Program(finder),  # type: ignore[arg-type]
+            "Claude Code",
             lambda line: None,
-            programs={Program.CLAUDE_CODE: _Program(finder)},  # type: ignore[dict-item]
-            choose=choose,
-            latest=latest,
         )
     )
 
@@ -142,7 +217,7 @@ def test_with_no_channel_enabled_the_agent_is_not_asked() -> None:
 
     async def finder(*args: Any, **kwargs: Any) -> dict[str, Any]:
         asked.append(args)
-        return {"pages": []}
+        return {"events": []}
 
     with pytest.raises(SearchError, match="no channel is enabled"):
         _search(finder, listed=())
@@ -162,29 +237,33 @@ def test_the_agent_is_asked_once_with_the_channels_sites_and_the_schema() -> Non
     ) -> dict[str, Any]:
         asked.append((text, schema, sites))
         return {
-            "pages": [{"url": "https://www.cna.com.tw/news/1.aspx", "channel": "cna"}]
+            "events": [
+                {
+                    "event_date": "2026-11-24",
+                    "about": "TAIEX rises",
+                    "pages": [_page("https://www.cna.com.tw/news/1.aspx", "cna")],
+                }
+            ]
         }
 
-    search = _search(finder)
+    found = _search(finder)
 
     assert len(asked) == 1
     text, schema, sites = asked[0]
-    assert schema is FOUND_SCHEMA and sites == [
-        "www.cna.com.tw",
-        "www.federalreserve.gov",
-    ]
-    assert "on or after 2026-11-25" in text
-    assert search.found.pages == ("https://www.cna.com.tw/news/1.aspx",)
+    assert schema is EVENTS_SCHEMA
+    assert sites == ["www.cna.com.tw", "www.federalreserve.gov"]
+    assert "from 2026-11-18 to 2026-11-25" in text
+    assert found.events[0].pages == ("https://www.cna.com.tw/news/1.aspx",)
 
 
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
         (ProgramError("Claude Code exited with code 1"), "exited with code 1"),
-        ({"pages": "none"}, "not in the asked-for shape"),
+        ({"events": "none"}, "not in the asked-for shape"),
     ],
 )
-def test_a_failed_run_or_an_answer_in_another_shape_collects_nothing(
+def test_a_failed_run_or_an_answer_in_another_shape_finds_nothing(
     answer: Any, message: str
 ) -> None:
     async def finder(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -197,15 +276,18 @@ def test_a_failed_run_or_an_answer_in_another_shape_collects_nothing(
         _search(finder)
 
 
-def test_a_run_past_its_limit_collects_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_run_past_its_limit_says_what_to_do_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(channels, "TIME_LIMIT_SECONDS", 0.01)
 
     async def finder(*args: Any, **kwargs: Any) -> dict[str, Any]:
         await asyncio.sleep(1)
-        return {"pages": []}
+        return {"events": []}
 
-    with pytest.raises(SearchError, match="did not finish"):
+    with pytest.raises(SearchError, match="did not finish") as raised:
         _search(finder)
+    assert "--until" in str(raised.value) and "channels.json" in str(raised.value)
 
 
 def test_the_chats_own_claude_code_start_is_unchanged() -> None:
@@ -258,88 +340,3 @@ def test_codex_searching_turns_on_live_search_and_keeps_the_rest_off() -> None:
         arg for arg in chat if arg != "web_search='disabled'"
     ]
     assert search[search.index("--sandbox") + 1] == "read-only"
-
-
-PAGE = "https://www.cna.com.tw/news/1.aspx"
-
-
-def _stand_ins(
-    monkeypatch: pytest.MonkeyPatch, kind: pages.Kind, ingested: list[Path]
-) -> None:
-    async def search(listed: Any, progress: Any) -> channels.Search:
-        found = channels.Found((PAGE,), {"cna": 1, "fed": 0}, ())
-        return channels.Search(Program.CODEX, None, found)
-
-    def collect(urls: list[str], folder: Path, *, progress: Any) -> list[pages.Outcome]:
-        return [pages.Outcome(url, kind, "t", folder / "a.md") for url in urls]
-
-    async def ingest(root: Path, *, replace: bool = False) -> Any:
-        ingested.append(root)
-        return type("Report", (), {"written": [], "unchanged": [], "rejected": []})()
-
-    monkeypatch.setattr(channels, "search_channels", search)
-    monkeypatch.setattr(pages, "collect_addresses", collect)
-    monkeypatch.setattr(collect_cli.ingest_service, "ingest_folder", ingest)
-
-
-def test_one_command_collects_the_channels_pages_and_ingests_them(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    ingested: list[Path] = []
-    _stand_ins(monkeypatch, "written", ingested)
-
-    assert cli.main(["collect", "--into", str(tmp_path)]) == cli.EXIT_OK
-
-    assert ingested == [tmp_path.resolve()]
-    out = capsys.readouterr().out
-    assert "    1  cna\n" in out and "    0  fed\n" in out
-    assert "uv run chat-bridge ingest" not in out
-    assert f"Adding {tmp_path} to the knowledge base." in out
-
-
-def test_pages_collected_unchanged_are_still_ingested(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    # A run that stopped before its ingest left the pages; the next run adds them.
-    ingested: list[Path] = []
-    _stand_ins(monkeypatch, "unchanged", ingested)
-
-    assert cli.main(["collect", "--into", str(tmp_path)]) == cli.EXIT_OK
-    assert ingested == [tmp_path.resolve()]
-
-
-def test_with_no_program_logged_in_nothing_is_asked_or_collected(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    collected: list[object] = []
-
-    async def no_login(requested: None) -> Program:
-        raise NoLoginError(LoginStatus(Login.NOT_LOGGED_IN, "none"))
-
-    monkeypatch.setattr(
-        channels, "search_channels", partial(channels.search_channels, choose=no_login)
-    )
-    monkeypatch.setattr(
-        pages, "collect_addresses", lambda *args, **kwargs: collected.append(args)
-    )
-
-    assert cli.main(["collect", "--into", str(tmp_path)]) == cli.EXIT_ERROR
-    assert collected == []
-    assert "claude auth login" in capsys.readouterr().err
-
-
-def test_news_files_are_not_ingested(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    news = tmp_path / "news.md"
-    news.write_text("x", encoding="utf-8")
-    ingested: list[Path] = []
-
-    async def ingest(root: Path, *, replace: bool = False) -> Any:
-        ingested.append(root)
-
-    monkeypatch.setattr(collect_cli.ingest_service, "ingest_folder", ingest)
-    monkeypatch.setattr(collect_cli.service, "collect_market_moves", lambda files: [])
-
-    assert cli.main(["collect", str(news)]) == cli.EXIT_OK
-    assert ingested == []
