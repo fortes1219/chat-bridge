@@ -1,0 +1,28 @@
+{
+  "name": "chat-bridge-slides",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.3 <25"
+  },
+  "scripts": {
+    "dev": "slidev slides.zh-TW.md --bind 127.0.0.1",
+    "dev:en": "slidev slides.en.md --bind 127.0.0.1",
+    "check": "node scripts/check-decks.mjs",
+    "build": "npm run check && slidev build slides.zh-TW.md --base / --out dist --without-notes && slidev build slides.en.md --base /en/ --out dist/en --without-notes"
+  },
+  "dependencies": {
+    "@slidev/cli": "53.1.0",
+    "@slidev/parser": "53.1.0",
+    "@slidev/theme-default": "0.25.0",
+    "@tresjs/core": "5.12.0",
+    "three": "0.187.0",
+    "vue": "3.5.46"
+  },
+  "overrides": {
+    "dompurify": "3.5.0",
+    "pptxgenjs": {
+      "image-size": "2.1.0"
+    }
+  }
+}

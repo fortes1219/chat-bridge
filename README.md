@@ -71,6 +71,57 @@ uv run chat-bridge ingest path/to/your-folder --replace
 - The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
 - Word and PDF files have no event date, so an answer from them says the data has no date.
 
+### Collect new events, make them into files, add them to the knowledge base
+
+Three commands, one after the other:
+
+```
+uv run chat-bridge collect
+uv run chat-bridge truth
+uv run chat-bridge ingest data/truth
+```
+
+1. `collect` finds the new events and stores each one, with the text of its pages, in `local_data/collected/`: one folder per event, holding `event.json` and `s1.txt`, `s2.txt`, …. It writes no file in `data/truth`.
+2. `truth` makes each stored event into one file in `data/truth` (another folder with `--into`). Once an event is a file, or `data/truth` already has it, its folder in `local_data/collected/` is removed; when all are made, nothing is left there.
+3. `ingest` adds the files to the knowledge base.
+
+**`collect`**
+
+- With nothing after it, `collect` sends your own logged-in Claude Code (or Codex, when Claude Code is not logged in) to the channels listed in `data/channels.json`. It searches the web for the events those sites reported from the latest event date in `data/truth` to today (`--until 2026-11-25` stops at that day), on the collection targets of `docs/truth_format.md`, leaving out the events `data/truth` already has and those already stored. It names each event's pages; the command reads them itself, once.
+- Claude Code gets web search and web reading only, and may read pages only on the channels' sites. Codex gets live web search, with its command and file tools off. A page that moved off its channel's site is left out.
+- You can also give it addresses of pages or feeds: `uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml`. Each page, or each item of a feed, is read; the agent, with no tool, sorts them into events. A page that bears on no collection target is named and not stored.
+- It reads each site's robots.txt and follows it (and that of a site a page redirects to), waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes. An address that is a document, such as a PDF, is not read: download it and run `ingest` on its folder.
+- It uses one run of your Claude Code or Codex subscription: the search, or the sorting.
+
+**`truth`**
+
+- Each stored event becomes one file in the format of `docs/truth_format.md`, like the files already there: the front matter, the sections 事件發生, 影響股市證據, 相關標的, 當日與之後的行情 and 後續與不同說法, each item with the source it comes from. It reads no web page: only the stored text, and the daily closes for the section 當日與之後的行情.
+- How a file is made: the agent, with no tool, writes the event from its stored pages, each item with the words of its source it rests on. The command checks that those words are in the page, that each item is in its source's language, that the exposure words, targets and markets are the listed ones, and that no number is left written with 萬, 億, 兆 or 碼. A record that fails is written again once with the reasons. One that fails again is not written: it stays stored, is listed at the end, and is tried again by the next `truth`, which uses your subscription again each time.
+- It uses one run of your subscription per event, two when the first try fails, and at most 5 runs at once (`--workers 2` for fewer). Each run may take up to 10 minutes. `--limit 3` makes only the first three stored events, to try it first.
+- Number conversions (萬, 億, 兆, 成, 碼, 民國年) are added to `tests/data/number_conversions.md` when the files go to `data/truth`; into another folder they are shown in the terminal only. With `--into` another folder, the stored events are removed all the same: to make them for `data/truth` afterwards, run `collect` again.
+- If you stop it part way (Ctrl+C), every run under way stops, the files already written stay, no half file is left, and the events not finished stay stored for the next run.
+
+**Both**
+
+- Neither adds anything to the knowledge base; `ingest` does, when you run it.
+- What the agent finds can differ from run to run. Change `data/channels.json` to collect from other sites, and `docs/truth_format.md` and `docs/exposure_vocabulary.md` to collect on other subjects: the targets, sections and exposure words are read from them.
+- Other people's pages have their own terms; `local_data/` is not tracked by git, the files hold facts written from the pages with their sources, and collecting them is your responsibility.
+- Exit codes: `0` when everything was done, `1` when a page or an event was left out, `2` on an error.
+
+#### The market moves of a news file
+
+A news file in the format of `docs/truth_format.md` (the files in `data/truth`) has a section 當日與之後的行情 with the market moves on the day of the event and after. Give `collect` the file or its folder, and it writes that section from the daily closes:
+
+```
+uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
+```
+
+- The series and the markets are listed in `data/market_series.json`; change the list to follow others.
+- Day 0 of each market is the first trading session that closes at or after the file's `event_time` (when the event happened, with its time zone). A file without `event_time` is aligned by its date, as the earlier files are.
+- Closes come from Yahoo's daily data; a Taiwan day Yahoo lacks comes from FinMind. A day neither has is written 沒有資料, never estimated.
+- A file is rewritten only when its section changes; everything else in it stays as written.
+- News files are your own files, so this does not add them to the knowledge base: run `uv run chat-bridge ingest data/truth` when you want them there.
+
 ### If you don't have uv
 
 From the [official uv installation guide](https://docs.astral.sh/uv/getting-started/installation/):
@@ -201,6 +252,8 @@ Under its quotes, the panel names these sources in one line and links the licens
 - `data/truth/`: events from June to November 2026 covering Taiwan and US equities, the Federal Reserve and the AI industry. One file per event; every item links to its source, and each file includes market moves before and after the event. Titles and Chinese-source items are in Traditional Chinese; items from English sources stay in English. The format is described in `docs/truth_format.md` (Traditional Chinese).
 - `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
 - `data/sample_questions.json`: the questions the chat page offers about the sample news, in both languages, while that news is stored.
+- `data/market_series.json`: the markets and daily series whose moves `collect` writes into a news file.
+- `data/channels.json`: the channels `collect` sends your own agent to, the sites the sample news was collected from.
 
 ## Development
 

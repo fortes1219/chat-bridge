@@ -1,0 +1,18 @@
+{
+  "about": "The markets and daily series whose moves `chat-bridge collect` writes into a news file's section 當日與之後的行情. The first line of the section names the markets in this order; the table lists the series in this order. A series with a backup takes a day its Yahoo series lacks from that source.",
+  "markets": [
+    {"code": "US", "label": "美股", "zone": "America/New_York", "opens": "09:30", "closes": "16:00"},
+    {"code": "TW", "label": "台股", "zone": "Asia/Taipei", "opens": "09:00", "closes": "13:30"}
+  ],
+  "series": [
+    {"symbol": "^TWII", "name": "加權指數", "market": "TW", "backup": {"source": "finmind", "id": "TAIEX"}},
+    {"symbol": "2330.TW", "name": "台積電 2330", "market": "TW", "backup": {"source": "finmind", "id": "2330"}},
+    {"symbol": "2308.TW", "name": "台達電 2308", "market": "TW", "backup": {"source": "finmind", "id": "2308"}},
+    {"symbol": "0050.TW", "name": "元大台灣50 0050", "market": "TW", "backup": {"source": "finmind", "id": "0050"}},
+    {"symbol": "006208.TW", "name": "富邦台50 006208", "market": "TW", "backup": {"source": "finmind", "id": "006208"}},
+    {"symbol": "^GSPC", "name": "S&P 500", "market": "US"},
+    {"symbol": "^IXIC", "name": "Nasdaq Composite", "market": "US"},
+    {"symbol": "^DJI", "name": "Dow Jones Industrial Average", "market": "US"},
+    {"symbol": "^SOX", "name": "費城半導體指數", "market": "US"}
+  ]
+}

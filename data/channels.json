@@ -1,0 +1,18 @@
+{
+  "about": "The channels `uv run chat-bridge collect` sends the person's own agent to: the sites the sample news was collected from. Only pages on these sites, or their subdomains, are collected. Change the list to collect from other sites.",
+  "channels": [
+    {"id": "cna-finance", "name": "Central News Agency, finance", "url": "https://www.cna.com.tw/list/afe.aspx", "enabled": true, "topics": ["taiwan stocks", "economy"], "note": "CNA's RSS terms allow personal, non-commercial use and give the title, lead and link only; cite CNA."},
+    {"id": "focus-taiwan-business", "name": "Focus Taiwan, business", "url": "https://focustaiwan.tw/business", "enabled": true, "topics": ["taiwan stocks", "tsmc and its suppliers"], "note": "CNA's English service; the same terms as CNA."},
+    {"id": "udn-money", "name": "Economic Daily News", "url": "https://money.udn.com/money/index", "enabled": true, "topics": ["taiwan stocks", "tsmc and its suppliers"], "note": "Also carries CNA stories, which are cited as CNA."},
+    {"id": "ltn-ec", "name": "Liberty Times, finance", "url": "https://ec.ltn.com.tw/", "enabled": true, "topics": ["taiwan stocks"], "note": ""},
+    {"id": "cnyes-tw-stock", "name": "cnyes, Taiwan stocks", "url": "https://news.cnyes.com/news/cat/tw_stock", "enabled": true, "topics": ["taiwan stocks"], "note": ""},
+    {"id": "cnbc-markets", "name": "CNBC, markets", "url": "https://www.cnbc.com/markets/", "enabled": true, "topics": ["us stocks", "ai spending and debt", "trade"], "note": ""},
+    {"id": "aljazeera-economy", "name": "Al Jazeera, economy", "url": "https://www.aljazeera.com/economy/", "enabled": true, "topics": ["trade", "us and china"], "note": ""},
+    {"id": "star-advertiser-business", "name": "Honolulu Star-Advertiser, business", "url": "https://www.staradvertiser.com/category/business/", "enabled": true, "topics": ["us stocks", "federal reserve"], "note": "Carries Reuters stories; Reuters' own site is not read."},
+    {"id": "federal-reserve", "name": "Federal Reserve, press releases", "url": "https://www.federalreserve.gov/newsevents/pressreleases.htm", "enabled": true, "topics": ["federal reserve"], "note": "A US government site; its releases are in the public domain."},
+    {"id": "new-york-fed", "name": "Federal Reserve Bank of New York, news", "url": "https://www.newyorkfed.org/newsevents/news", "enabled": true, "topics": ["federal reserve"], "note": ""},
+    {"id": "bea", "name": "Bureau of Economic Analysis, releases", "url": "https://www.bea.gov/news/current-releases", "enabled": true, "topics": ["us economy"], "note": "A US government site; its releases are in the public domain."},
+    {"id": "ustr", "name": "Office of the US Trade Representative, press releases", "url": "https://ustr.gov/about-us/policy-offices/press-office/press-releases", "enabled": true, "topics": ["trade", "tariffs"], "note": ""},
+    {"id": "nvidia-newsroom", "name": "NVIDIA newsroom", "url": "https://nvidianews.nvidia.com/", "enabled": true, "topics": ["nvidia", "ai spending and debt"], "note": "The company's own press releases."}
+  ]
+}

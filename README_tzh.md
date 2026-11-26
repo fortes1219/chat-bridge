@@ -71,6 +71,57 @@ uv run chat-bridge ingest 你的資料夾路徑 --replace
 - 範例新聞只有在知識庫清空時才會回來，例如刪掉 `local_data/pgdata`：服務發現什麼都沒導入過，就會導入它。
 - Word 與 PDF 檔沒有事件日期，所以從它們來的回答會寫資料都沒有日期。
 
+### 收新的事件、做成檔、加進知識庫
+
+三個指令，依序跑：
+
+```
+uv run chat-bridge collect
+uv run chat-bridge truth
+uv run chat-bridge ingest data/truth
+```
+
+1. `collect` 找出新的事件，把每個事件連同它頁面的正文存進 `local_data/collected/`：一個事件一個資料夾，裡面是 `event.json` 與 `s1.txt`、`s2.txt`…。它不會在 `data/truth` 寫任何檔。
+2. `truth` 把每個存起來的事件做成 `data/truth`（用 `--into` 可以換資料夾）裡的一個檔。一個事件做成檔、或 `data/truth` 已經有它之後，它在 `local_data/collected/` 的資料夾就刪掉；全部做完時那裡什麼都不留。
+3. `ingest` 把這些檔加進知識庫。
+
+**`collect`**
+
+- 後面什麼都不帶時，會叫你自己登入的 Claude Code（Claude Code 沒登入時改用 Codex）到 `data/channels.json` 列的管道去：它上網搜尋這些網站報導的事件，從 `data/truth` 裡最新的事件日到今天（加 `--until 2026-11-25` 就停在那一天），只找和 `docs/truth_format.md` 採集目標有關的，`data/truth` 已經有的、已經存起來的都不再找。它交出每個事件的頁面網址，頁面由指令自己讀，只讀一次。
+- Claude Code 只有上網搜尋與讀網頁兩樣工具，讀網頁也只限管道的網站；Codex 開即時搜尋，跑指令、碰檔案的工具都關掉。頁面轉址到管道網站以外的不收。
+- 也可以直接給頁面或訂閱源的網址：`uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml`。每一頁（訂閱源就是每一項）都會讀，agent 不帶任何工具把它們分成事件；和任何採集目標都無關的頁面會列出來，不存。
+- 每個網站先讀它的 robots.txt 並照著做（頁面轉址到別的網站時，也讀那個網站的）；同一個網站兩次請求之間等 5 秒；本機與內網的網址一律拒絕；驗不過的憑證不接受；超過 20 MB 的下載會停掉。一個不回應的網站，大約會讓指令卡一到兩分鐘。網址是 PDF 這類文件時不讀：請下載下來，對它的資料夾跑 `ingest`。
+- 用你自己的 Claude Code 或 Codex 訂閱額度一次：找事件，或分事件。
+
+**`truth`**
+
+- 每個存起來的事件寫成一個檔，照 `docs/truth_format.md` 的格式，和資料夾裡原有的檔一樣：檔頭，以及「事件發生」「影響股市證據」「相關標的」「當日與之後的行情」「後續與不同說法」各段，每一條標出它出自哪個來源。它不讀任何網頁：只讀存下來的正文，以及算「當日與之後的行情」要用的日線收盤價。
+- 一個檔怎麼做出來：agent 不帶任何工具，從存下來的頁面寫出這個事件，每一條附上它所根據的來源原文。指令檢查：這段原文真的在頁面裡；每一條用它來源的語言寫；exposure 詞、採集目標、市場都在清單裡；沒有留下「萬、億、兆、碼」寫的數量。不過的帶著原因重寫一次；再不過就不寫，事件留著、在結尾列出來，下次跑 `truth` 會再試，每次再試都會再用你的額度。
+- 每個事件用一次額度，第一次不過時兩次；最多同時跑 5 個（加 `--workers 2` 就少一點）。每一次最多 10 分鐘。加 `--limit 3` 只做前三個存起來的事件，先試試看。
+- 數字轉換（萬、億、兆、成、碼、民國年）在檔寫進 `data/truth` 時會加進 `tests/data/number_conversions.md`；寫進別的資料夾時只顯示在終端機上。用 `--into` 寫到別的資料夾時，存起來的事件一樣會刪掉：之後要寫進 `data/truth`，得重新跑 `collect`。
+- 中途停掉（Ctrl+C）時，正在跑的全部停下，已經寫好的檔留著，不會留下寫一半的檔，還沒做完的事件留著等下次。
+
+**兩個都是**
+
+- 都不會把任何東西加進知識庫；要等你跑 `ingest` 才會。
+- agent 每次找到的不一定一樣。要收別的網站，改 `data/channels.json`；要收別的主題，改 `docs/truth_format.md` 與 `docs/exposure_vocabulary.md`：採集目標、段落、exposure 詞都是從這兩份讀的。
+- 別人的網頁有它自己的使用條款；`local_data/` 不進 git，檔裡是照來源寫的事實並附來源，收下是你自己的責任。
+- 結束代碼：全部做完是 `0`；有頁面或事件沒收、沒寫是 `1`；發生錯誤是 `2`。
+
+#### 新聞檔的行情段
+
+照 `docs/truth_format.md` 格式寫的新聞檔（`data/truth` 裡的檔）有「當日與之後的行情」一段，記事件當天與之後的行情。把檔或它的資料夾交給 `collect`，它會依日線收盤價寫出這一段：
+
+```
+uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
+```
+
+- 要算哪些序列、哪些市場，列在 `data/market_series.json`；改這份清單就能換。
+- 每個市場的 D0，是收盤時刻在檔裡 `event_time`（事件發生的時刻，附時區）當下或之後的第一個交易時段。沒有 `event_time` 的檔照日期對齊，和先前的檔一樣。
+- 收盤價取自 Yahoo 的日線；Yahoo 缺的台股日子由 FinMind 補。兩邊都沒有的日子寫「沒有資料」，不估算。
+- 只有行情段變了才改寫檔案，其他內容一個字都不動。
+- 新聞檔是你自己的檔，所以這一步不會把它們加進知識庫；要加的時候跑 `uv run chat-bridge ingest data/truth`。
+
 ### 還沒有 uv
 
 照 [uv 官方安裝說明](https://docs.astral.sh/uv/getting-started/installation/)：
@@ -185,6 +236,8 @@ uv run chat-bridge
 - `data/truth/`：2026 年 6 月到 11 月的台股、美股、聯準會與 AI 產業事件，一個事件一檔，每一條附來源連結，並附事件前後的行情。格式見 `docs/truth_format.md`。
 - `data/synonyms.txt`：意思相同的名稱，一行一組，用 Solr 的同義詞格式。檔案開頭的註解列出哪些刻意不放、為什麼。
 - `data/sample_questions.json`：聊天畫面針對範例新聞提供的問題，兩種語言，只在範例新聞還在庫裡時顯示。
+- `data/market_series.json`：`collect` 寫進新聞檔行情段的市場與日線序列。
+- `data/channels.json`：`collect` 叫你自己的 agent 去的管道，就是範例新聞採集時用的那些網站。
 
 ## 開發
 

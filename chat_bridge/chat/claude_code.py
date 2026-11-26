@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 from asyncio.subprocess import Process
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -34,13 +34,12 @@ from chat_bridge.chat.programs import (
 # Nothing from the user's own Claude Code setup (settings, hooks, MCP servers), no built-in
 # tools, and no session saved to disk. With no tools the model can only write text, and the
 # user's setup cannot give it any.
-ISOLATION_ARGS = (
-    "--restricted",
-    "--strict-mcp-config",
-    "--tools",
-    "",
-    "--no-session-persistence",
-)
+SETUP_ARGS = ("--restricted", "--strict-mcp-config")
+NO_TOOLS = ("--tools", "")
+SESSION_ARGS = ("--no-session-persistence",)
+ISOLATION_ARGS = (*SETUP_ARGS, *NO_TOOLS, *SESSION_ARGS)
+# Web search and web reading, the only tools a search of the web is given.
+WEB_TOOLS = "WebSearch,WebFetch"
 # One JSON message per line, partial messages included, so pieces of the answer can be passed
 # on before the answer ends.
 STREAM_ARGS = (
@@ -79,6 +78,7 @@ __all__ = [
     "login_status",
     "reply_in_shape",
     "stream_answer",
+    "web_reply_in_shape",
 ]
 
 
@@ -198,6 +198,38 @@ def _failure(
     return None
 
 
+def web_tool_args(sites: Sequence[str]) -> tuple[str, ...]:
+    """Web search, and web reading only on `sites` and their subdomains.
+
+    `--tools` limits which tools there are; `--allowedTools` lets them run without a prompt, which
+    a `-p` run otherwise denies. A web reading rule matches its host only, so each site has a rule
+    for its subdomains too (Claude Code's permissions documentation).
+    """
+    rules = [
+        rule
+        for site in sites
+        for rule in (f"WebFetch(domain:{site})", f"WebFetch(domain:*.{site})")
+    ]
+    return ("--tools", WEB_TOOLS, "--allowedTools", ",".join(["WebSearch", *rules]))
+
+
+def shaped_command_line(
+    executable: str, schema: dict[str, Any], prompt_file: str, tool_args: Sequence[str]
+) -> list[str]:
+    """How Claude Code is started for a reply in the given shape, with the given tools."""
+    return [
+        executable,
+        "-p",
+        *SETUP_ARGS,
+        *tool_args,
+        *SESSION_ARGS,
+        *SHAPED_ARGS,
+        json.dumps(schema, separators=(",", ":")),
+        "--system-prompt-file",
+        prompt_file,
+    ]
+
+
 async def reply_in_shape(
     system_prompt: str,
     input_text: str,
@@ -205,23 +237,41 @@ async def reply_in_shape(
     *,
     on_start: Callable[[list[str]], None],
 ) -> dict[str, Any]:
-    """Run Claude Code once for a reply in the given JSON shape, and return it.
+    """Run Claude Code once, with no tools, for a reply in the given JSON shape, and return it.
+    Raises ClaudeCodeError when the run fails or ends without a reply in that shape."""
+    return await _reply_in_shape(system_prompt, input_text, schema, NO_TOOLS, on_start)
 
-    The schema is fixed text, so it may be on the command line; the input goes on standard
-    input. Raises ClaudeCodeError when the run fails or ends without a reply in that shape.
-    """
+
+async def web_reply_in_shape(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    sites: Sequence[str],
+    *,
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """Run Claude Code once, with web search and with web reading on `sites`, for a reply in the
+    given JSON shape. Raises ClaudeCodeError as `reply_in_shape` does."""
+    return await _reply_in_shape(
+        system_prompt, input_text, schema, web_tool_args(sites), on_start
+    )
+
+
+async def _reply_in_shape(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    tool_args: Sequence[str],
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """The schema is fixed text, so it may be on the command line; the input goes on standard
+    input."""
     with tempfile.TemporaryDirectory(prefix="chat-bridge-") as folder:
         prompt_file = Path(folder) / "system_prompt.md"
         prompt_file.write_text(system_prompt, encoding="utf-8")
-        args = [
-            find_executable(),
-            "-p",
-            *ISOLATION_ARGS,
-            *SHAPED_ARGS,
-            json.dumps(schema, separators=(",", ":")),
-            "--system-prompt-file",
-            str(prompt_file),
-        ]
+        args = shaped_command_line(
+            find_executable(), schema, str(prompt_file), tool_args
+        )
         on_start(args)
         process = await _start(args, with_input=True)
         try:

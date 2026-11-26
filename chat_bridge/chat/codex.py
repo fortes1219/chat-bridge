@@ -24,7 +24,7 @@ import subprocess
 import sys
 import tempfile
 from asyncio.subprocess import Process
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -49,11 +49,14 @@ DISABLED_FEATURES = (
 )
 # Options that come before `exec`. Web search goes online; the single quotes make the value a
 # TOML string that a Windows launcher passes through unchanged.
-GLOBAL_ARGS = (
-    *(arg for feature in DISABLED_FEATURES for arg in ("--disable", feature)),
-    "-c",
-    "web_search='disabled'",
+DISABLED_ARGS = tuple(
+    arg for feature in DISABLED_FEATURES for arg in ("--disable", feature)
 )
+GLOBAL_ARGS = (*DISABLED_ARGS, "-c", "web_search='disabled'")
+# A search of the web keeps every other tool off and turns live web search on: `exec` has no
+# `--search` option, so the setting does it ("live" for live retrieval, Codex's configuration
+# reference).
+WEB_GLOBAL_ARGS = (*DISABLED_ARGS, "-c", "web_search='live'")
 # One JSON event per line. No session is kept; the user's own configuration file is left out,
 # because the servers, hooks and notify program set there could run commands, while the login
 # is still read; and the sandbox is read-only, so the patch tool cannot write.
@@ -231,11 +234,16 @@ def _failure(
     return None
 
 
-def shaped_command_line(executable: str, folder: str, schema_file: str) -> list[str]:
+def shaped_command_line(
+    executable: str,
+    folder: str,
+    schema_file: str,
+    global_args: Sequence[str] = GLOBAL_ARGS,
+) -> list[str]:
     """How Codex is started for a reply in the shape the schema file gives, working in `folder`."""
     return [
         executable,
-        *GLOBAL_ARGS,
+        *global_args,
         *EXEC_ARGS,
         "--output-schema",
         schema_file,
@@ -252,19 +260,47 @@ async def reply_in_shape(
     *,
     on_start: Callable[[list[str]], None],
 ) -> dict[str, Any]:
-    """Run Codex once for a reply in the given JSON shape, and return it.
+    """Run Codex once, with no tools, for a reply in the given JSON shape, and return it.
+    Raises CodexError when the run fails or its final message is not a JSON object."""
+    return await _reply_in_shape(
+        system_prompt, input_text, schema, GLOBAL_ARGS, on_start
+    )
 
-    The schema goes in a file of its own folder, so the working folder stays empty and the
-    command line holds only the file's path. Raises CodexError when the run fails or its final
-    message is not a JSON object.
-    """
+
+async def web_reply_in_shape(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    sites: Sequence[str],
+    *,
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """Run Codex once, with live web search, for a reply in the given JSON shape. Codex's web
+    search has no setting for sites, so `sites` limits nothing here; the caller checks what
+    comes back. Raises CodexError as `reply_in_shape` does."""
+    return await _reply_in_shape(
+        system_prompt, input_text, schema, WEB_GLOBAL_ARGS, on_start
+    )
+
+
+async def _reply_in_shape(
+    system_prompt: str,
+    input_text: str,
+    schema: dict[str, Any],
+    global_args: Sequence[str],
+    on_start: Callable[[list[str]], None],
+) -> dict[str, Any]:
+    """The schema goes in a file of its own folder, so the working folder stays empty and the
+    command line holds only the file's path."""
     with (
         tempfile.TemporaryDirectory(prefix="chat-bridge-codex-") as folder,
         tempfile.TemporaryDirectory(prefix="chat-bridge-schema-") as schema_folder,
     ):
         schema_file = Path(schema_folder) / "schema.json"
         schema_file.write_text(json.dumps(schema), encoding="utf-8")
-        args = shaped_command_line(find_executable(), folder, str(schema_file))
+        args = shaped_command_line(
+            find_executable(), folder, str(schema_file), global_args
+        )
         on_start(args)
         process = await _start(args, with_input=True)
         try:
