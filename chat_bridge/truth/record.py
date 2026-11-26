@@ -24,8 +24,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from chat_bridge.collect.news_files import NewsFileError, event_moment
 from chat_bridge.collect.pages import Page
-from chat_bridge.collect.rules import Rules
-from chat_bridge.collect.truth_files import (
+from chat_bridge.truth.rules import Rules
+from chat_bridge.truth.truth_files import (
     Conversion,
     FolderEvent,
     Item,

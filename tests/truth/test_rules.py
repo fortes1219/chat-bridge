@@ -2,8 +2,8 @@
 
 import pytest
 
-from chat_bridge.collect.record import record_schema
-from chat_bridge.collect.rules import FORMAT_FILE, RulesError, read_rules, rules_from
+from chat_bridge.truth.record import record_schema
+from chat_bridge.truth.rules import FORMAT_FILE, RulesError, read_rules, rules_from
 
 MARKETS = ("US", "TW")
 

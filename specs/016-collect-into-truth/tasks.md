@@ -26,5 +26,19 @@ One commit the maintainer makes, after the checks.
 - [x] T010 [P] Tests: SC-001 and SC-002 with saved pages and stand-in records; the command with stand-ins from the channels and from addresses.
 - [x] T011 `README.md`, `README_tzh.md`, `docs/truth_format.md` section 7 (FR-007).
 - [x] T012 Checks (ruff, ruff format, mypy, fast suite), `git ls-files --eol`; hand the work to the reviewer.
-- [x] T013 Ask the maintainer for consent, then the smallest real run (SC-003) through `uv run chat-bridge collect <one article address> --into <a copy of data/truth>`; keep the terminal output and the seconds, set the file beside an earlier one section by section, record it in research.md and the README's time and cost.
-- [ ] T014 The file list and one commit message to the maintainer, saying what feature 013's collected pages and feature 015's ingest became.
+- [x] T013 (first version) Ask the maintainer for consent, then the smallest real run (SC-003) through `uv run chat-bridge collect <one article address> --into <a copy of data/truth>`; keep the terminal output and the seconds, set the file beside an earlier one section by section, record it in research.md and the README's time and cost.
+- [x] T014 The file list and one commit message to the maintainer, saying what feature 013's collected pages and feature 015's ingest became.
+
+## Second version: two steps (after the maintainer's first full run)
+
+One fix commit the maintainer makes, after the checks.
+
+- [x] T015 `chat_bridge/collect/store.py`: an event's folder named from its date and pages, `event.json` and the pages' text written whole, read back, the stored events from a date, removed only when it is a stored event of the collected folder (FR-010, User Story 3 scenario 4, SC-005).
+- [x] T016 `chat_bridge/collect/cli.py`, `channels.py`: `collect` stores each event it finds or sorts, reads each page once, tells the search the stored events too, writes no truth file, ends with the `truth` command (User Stories 1 and 2).
+- [x] T017 Move the making of files into `chat_bridge/truth/` (`maker.py`, `record.py`, `rules.py`, `truth_files.py`, `writing_prompt.md`); remove the second reader (`collect/checking.py`, `checking_prompt.md`) (FR-008).
+- [x] T018 `chat_bridge/truth/cli.py`: `truth` with `--into`, `--limit`, `--workers`; the stored events, the closes read once, at most `--workers` events at once, the stored folder removed once the event is done, the events not written listed at the end, the ingest line when a file was written (User Story 3).
+- [x] T019 [P] Tests: SC-001 to SC-005 with stand-ins (stored pages, stand-in runs that wait, a stop while two runs are under way).
+- [x] T020 `README.md`, `README_tzh.md`, `docs/truth_format.md`: the three commands in order, where events are stored and that they are removed once made, the model runs and how many at once, the retries' cost (FR-007).
+- [x] T021 Checks (ruff, ruff format, mypy, fast suite), `git ls-files --eol`; hand the work to the reviewer.
+- [ ] T022 Ask the maintainer for consent, then the smallest real run (SC-006) in a separate local data folder and into a copy of `data/truth`: `collect <three article addresses>`, then `truth --limit 3`; keep the terminal output and the seconds of each command; check `local_data/collected/` is empty; record it in research.md and the README.
+- [ ] T023 The file list and one commit message to the maintainer, with what was removed and what is not shown yet.

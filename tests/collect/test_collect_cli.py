@@ -1,5 +1,6 @@
-"""`chat-bridge collect` from the channels and from addresses, with a stand-in agent, stand-in pages
-and fixed closes: one command from the events to truth files, and no ingest."""
+"""`chat-bridge collect` from the channels and from addresses, with a stand-in agent and stand-in
+pages: the events found are read once and stored for `truth`; no truth file is written and no
+model writes a record."""
 
 import asyncio
 from collections.abc import Iterable
@@ -12,23 +13,23 @@ import pytest
 from chat_bridge import cli
 from chat_bridge.chat.programs import Login, LoginStatus, Program
 from chat_bridge.chat.service import NoLoginError
-from chat_bridge.collect import channels, pages, service
+from chat_bridge.collect import channels, pages, service, store
 from chat_bridge.collect import cli as collect_cli
 from chat_bridge.collect.channels import Channel
 from chat_bridge.collect.pages import Read
-from tests.collect import stand_ins
-from tests.collect.stand_ins import CNA, FED, PAGES, checks_all, record
-from tests.collect.test_moves import LISTED
+from tests.truth import stand_ins
+from tests.truth.stand_ins import CNA, FED, FOUND_DATE, PAGES
 
 CHANNELS = (
     Channel("fed", "Fed", "https://www.federalreserve.gov/newsevents/", (), ""),
     Channel("cna", "CNA", "https://www.cna.com.tw/list/afe.aspx", (), ""),
 )
+ABOUT = "The Fed holds rates; the TAIEX rises"
 FOUND = {
     "events": [
         {
             "event_date": "2026-11-24",
-            "about": "The Fed holds rates; the TAIEX rises",
+            "about": ABOUT,
             "pages": [
                 {"url": FED.url, "channel": "fed"},
                 {"url": CNA.url, "channel": "cna"},
@@ -42,12 +43,13 @@ FOUND = {
 class _Reader:
     """Stand-in pages: each address asked gives its saved page."""
 
+    pages: tuple[Any, ...] = PAGES
     asked: list[str] = field(default_factory=list)
 
     def read_addresses(self, urls: Iterable[str]) -> Read:
         wanted = list(urls)
         self.asked += wanted
-        return Read(tuple(page for page in PAGES if page.asked in wanted), ())
+        return Read(tuple(page for page in self.pages if page.asked in wanted), ())
 
 
 @dataclass
@@ -66,57 +68,99 @@ class _Agent(stand_ins.Program):
         return result
 
 
-def _stand_ins(monkeypatch: pytest.MonkeyPatch, agent: _Agent, reader: _Reader) -> None:
+@dataclass
+class _Places:
+    truth: Path
+    collected: Path
+
+
+def _stand_ins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, agent: _Agent, reader: _Reader
+) -> _Places:
     async def choose(requested: None) -> Program:
         return Program.CLAUDE_CODE
 
-    monkeypatch.setattr(collect_cli, "choose_program", choose)
-    monkeypatch.setattr(collect_cli, "PROGRAMS", {Program.CLAUDE_CODE: agent})
-    monkeypatch.setattr(channels, "enabled_channels", lambda: CHANNELS)
-    monkeypatch.setattr(pages, "Reader", lambda **kwargs: reader)
-    monkeypatch.setattr(collect_cli, "market_series", lambda: LISTED)
-    monkeypatch.setattr(
-        service, "closes_for", lambda dates, now, listed: stand_ins.closes()
-    )
-
-
-def _folder(tmp_path: Path) -> Path:
-    folder = tmp_path / "truth"
-    folder.mkdir()
-    # The folder's latest event: the search starts from its date.
-    (folder / "2026-11-18-fomc-minutes.md").write_text(
+    truth = tmp_path / "truth"
+    truth.mkdir()
+    # The truth folder's latest event: the search starts from its date.
+    (truth / "2026-11-18-fomc-minutes.md").write_text(
         "---\ntitle: 聯準會公布會議紀錄\nsources: []\n---\n", encoding="utf-8"
     )
-    return folder
+    collected = tmp_path / "collected"
+    monkeypatch.setattr(collect_cli, "choose_program", choose)
+    monkeypatch.setattr(collect_cli, "PROGRAMS", {Program.CLAUDE_CODE: agent})
+    monkeypatch.setattr(collect_cli, "TRUTH_FOLDER", truth)
+    monkeypatch.setattr(channels, "enabled_channels", lambda: CHANNELS)
+    monkeypatch.setattr(pages, "Reader", lambda **kwargs: reader)
+    monkeypatch.setattr(store, "collected_dir", lambda: collected)
+    return _Places(truth, collected)
 
 
-def test_one_command_makes_the_channels_events_into_files_and_ingests_nothing(
+def test_the_channels_events_are_read_once_and_stored_and_no_file_is_written(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    folder = _folder(tmp_path)
-    agent = _Agent([record(), checks_all], found=FOUND)
+    agent = _Agent([], found=FOUND)
     reader = _Reader()
-    _stand_ins(monkeypatch, agent, reader)
+    places = _stand_ins(monkeypatch, tmp_path, agent, reader)
 
-    code = cli.main(["collect", "--into", str(folder), "--until", "2026-11-25"])
+    code = cli.main(["collect", "--until", "2026-11-25"])
 
     assert code == cli.EXIT_OK
-    assert (folder / "2026-11-24-fed-holds-taiex-rises.md").is_file()
+    (event,) = store.stored_events(places.collected)
+    assert (event.event_date, event.about) == (FOUND_DATE, ABOUT)
+    assert event.read_pages() == PAGES
+    assert [path.name for path in places.truth.iterdir()] == [
+        "2026-11-18-fomc-minutes.md"
+    ]
+    # One search; no model run writes anything.
+    assert len(agent.searched) == 1 and agent.asked == []
     assert "from 2026-11-18 to 2026-11-25" in agent.searched[0]
     assert "2026-11-18  聯準會公布會議紀錄" in agent.searched[0]
     assert reader.asked == [FED.url, CNA.url]
     out = capsys.readouterr().out
-    assert "Event 1 of 1: 2026-11-24  The Fed holds rates; the TAIEX rises" in out
-    assert "    conversion  新台幣1兆2129.57億元 -> NT$1.212957 trillion" in out
-    assert out.rstrip().endswith(
-        f"Add them to the knowledge base: uv run chat-bridge ingest {folder}"
+    assert f"Event 1 of 1: 2026-11-24  {ABOUT}" in out
+    assert out.rstrip().endswith("Make them into truth files: uv run chat-bridge truth")
+
+
+def test_an_event_stored_already_is_not_read_again_and_the_search_is_told(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    agent = _Agent([], found=FOUND)
+    reader = _Reader()
+    places = _stand_ins(monkeypatch, tmp_path, agent, reader)
+    cli.main(["collect", "--until", "2026-11-25"])
+    reader.asked.clear()
+
+    cli.main(["collect", "--until", "2026-11-25"])
+
+    assert reader.asked == []
+    assert f"2026-11-24  {ABOUT}" in agent.searched[1]
+    assert len(store.stored_events(places.collected)) == 1
+    assert f"  already stored  {ABOUT}" in capsys.readouterr().out
+
+
+def test_a_page_that_moved_off_its_channels_site_is_not_stored(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    moved = replace(CNA, url="https://elsewhere.example/news/1")
+    places = _stand_ins(
+        monkeypatch, tmp_path, _Agent([], found=FOUND), _Reader(pages=(FED, moved))
+    )
+
+    code = cli.main(["collect", "--until", "2026-11-25"])
+
+    assert code == cli.EXIT_NOT_ALL
+    (event,) = store.stored_events(places.collected)
+    assert event.read_pages() == (FED,)
+    assert (
+        f"    not used  {CNA.url}: it moved to https://elsewhere.example/news/1"
+        in capsys.readouterr().out
     )
 
 
-def test_addresses_are_read_and_sorted_into_events(
+def test_addresses_are_read_sorted_into_events_and_stored(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    folder = _folder(tmp_path)
     groups = {
         "events": [
             {
@@ -127,84 +171,30 @@ def test_addresses_are_read_and_sorted_into_events(
         ],
         "not_events": [],
     }
-    agent = _Agent([groups, record(), checks_all])
-    _stand_ins(monkeypatch, agent, _Reader())
+    agent = _Agent([groups])
+    places = _stand_ins(monkeypatch, tmp_path, agent, _Reader())
 
-    code = cli.main(["collect", FED.url, CNA.url, "--into", str(folder)])
+    code = cli.main(["collect", FED.url, CNA.url])
 
     assert code == cli.EXIT_OK
-    assert (folder / "2026-11-24-fed-holds-taiex-rises.md").is_file()
-    assert agent.searched == []
+    (event,) = store.stored_events(places.collected)
+    assert event.about == "Fed and TAIEX" and event.read_pages() == PAGES
+    assert agent.searched == [] and len(agent.asked) == 1
     assert '<page id="p2"' in agent.asked[0][1]
-    assert "Found 1 events." in capsys.readouterr().out
-
-
-def test_a_page_that_moved_off_its_channels_site_is_not_used(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    folder = _folder(tmp_path)
-    moved = replace(CNA, url="https://elsewhere.example/news/1")
-
-    @dataclass
-    class _Moving(_Reader):
-        def read_addresses(self, urls: Iterable[str]) -> Read:
-            read = super().read_addresses(urls)
-            return Read(
-                tuple(moved if page is CNA else page for page in read.pages), ()
-            )
-
-    def fed_only(made: dict[str, Any]) -> None:
-        for section in made["sections"]:
-            section["items"] = [
-                item for item in section["items"] if item["source"] == "s1"
-            ]
-            section["notes"] = [] if section["items"] else ["本檔讀過的來源沒有記載。"]
-        made["sources"] = made["sources"][:1]
-        made["conversions"] = []
-        made["title"] = "聯準會利率維持不變"
-
-    agent = _Agent([record(fed_only), checks_all], found=FOUND)
-    _stand_ins(monkeypatch, agent, _Moving())
-
-    code = cli.main(["collect", "--into", str(folder), "--until", "2026-11-25"])
-
-    out = capsys.readouterr().out
-    assert code == cli.EXIT_NOT_ALL
-    assert (
-        f"    not used  {CNA.url}: it moved to https://elsewhere.example/news/1" in out
-    )
-    # The writing run got the Fed page only.
-    assert 'id="s2"' not in agent.asked[0][1]
-
-
-def test_no_file_written_gives_no_ingest_line(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    def no_date(made: dict[str, Any]) -> None:
-        made["event_date"] = "someday"
-
-    agent = _Agent([record(no_date), record(no_date)], found=FOUND)
-    _stand_ins(monkeypatch, agent, _Reader())
-
-    code = cli.main(
-        ["collect", "--into", str(_folder(tmp_path)), "--until", "2026-11-25"]
-    )
-
-    out = capsys.readouterr().out
-    assert code == cli.EXIT_NOT_ALL
-    assert "Files: 0 written" in out and "uv run chat-bridge ingest" not in out
+    assert "Stored 1 events in" in capsys.readouterr().out
 
 
 def test_a_search_past_its_limit_says_to_ask_for_fewer_days(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _stand_ins(monkeypatch, _Agent([]), _Reader())
+    places = _stand_ins(monkeypatch, tmp_path, _Agent([]), _Reader())
     monkeypatch.setattr(channels, "TIME_LIMIT_SECONDS", 0.01)
 
-    code = cli.main(["collect", "--into", str(_folder(tmp_path))])
+    code = cli.main(["collect"])
 
     assert code == cli.EXIT_ERROR
     assert "--until" in capsys.readouterr().err
+    assert not places.collected.exists()
 
 
 def test_with_no_program_logged_in_nothing_is_asked_or_read(
@@ -212,19 +202,19 @@ def test_with_no_program_logged_in_nothing_is_asked_or_read(
 ) -> None:
     agent = _Agent([], found=FOUND)
     reader = _Reader()
-    _stand_ins(monkeypatch, agent, reader)
+    _stand_ins(monkeypatch, tmp_path, agent, reader)
 
     async def no_login(requested: None) -> Program:
         raise NoLoginError(LoginStatus(Login.NOT_LOGGED_IN, "none"))
 
     monkeypatch.setattr(collect_cli, "choose_program", no_login)
 
-    assert cli.main(["collect", "--into", str(_folder(tmp_path))]) == cli.EXIT_ERROR
+    assert cli.main(["collect"]) == cli.EXIT_ERROR
     assert agent.searched == [] and reader.asked == []
     assert "claude auth login" in capsys.readouterr().err
 
 
-def test_news_files_get_their_market_moves_and_are_not_ingested(
+def test_news_files_get_their_market_moves_as_before(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     news = tmp_path / "news.md"

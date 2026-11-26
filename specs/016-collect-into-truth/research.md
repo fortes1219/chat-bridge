@@ -210,9 +210,122 @@ requests and their dependencies were queried for feature 013 the same day: none.
 - **Rationale**: The 71 files do so without exception: 166 items with no space, all ending with
   。; 344 with one space, ending with `.` or `…`. A test writes all 510 lines back as they are.
 
+## Decisions after the first full run
+
+Both lookups were made again from the start (2026-11-26); every line below was opened at the commit
+given. These replace decision 3 (the second reader), and the parts of decisions 10 and 11 that
+assumed one run searched, read and wrote with the events kept in memory.
+
+### 15. Collecting and making truth files are two steps, with stored material between
+
+- **Decision**: `collect` finds the events and reads their pages, and stores each event in
+  `local_data/collected/`; `truth` reads only stored events and makes the files. `truth` reads no
+  web page; the daily closes for the market section are the one request it makes.
+- **Rationale**: Pipelines that fetch and then hand material to a model keep the two as separate
+  stages with files between them:
+  - karpathy/hn-time-capsule@ca02ebb: stages run "individually or all at once" (`README.md:33`):
+    `fetch`, `prompt`, `analyze`, `parse`, `render` (`:46-50`), one folder per article holding
+    `article.txt`, `prompt.md`, `response.md` (`:59-71`); `analyze` reads the stored prompt only
+    (`pipeline.py:607-617`). It has no license file: its shape is cited, no code is taken.
+  - grbtm/news-briefing-generator@e487450 (MIT): `fetch_content`, then `summarize_articles` with
+    `depends_on: [fetch_content]` (`configs/workflow_configs.yaml:28-39`); the summaries are made
+    from the stored `feed["scraped_text"]` (`src/news_briefing_generator/tasks/article_summarization.py:155`).
+- **What it fixes**: the first version read an event's pages, asked the model, then read the next
+  event's pages; the events found were kept in memory, so a stopped run searched again.
+
+### 16. One model run per event, from its stored pages
+
+- **Decision**: `truth` runs the model once per event with that event's stored pages; the agent is
+  not given the whole store at once.
+- **Rationale**: For many short documents the map shape is the one documented as effective: "Note
+  that map-reduce is especially effective when understanding of a sub-document does not rely on
+  preceding context. For example, when summarizing a corpus of many, shorter documents."
+  (langchain-ai/langchain@9971fd8 `docs/docs/tutorials/summarization.ipynb:125-131`).
+  hn-time-capsule makes one request per article (`pipeline.py:625-634`); news-briefing-generator
+  one per article (`article_summarization.py:152-157`); "Each article is summarised individually,
+  in a separate call, from the scraped text only." (picnet.com.au/blog/building-a-daily-ai-digest-of-global-health-news).
+  Claude Code's own example of headless work over many files is one run per file, "Try it on three
+  files first" (code.claude.com/docs best-practices.md:554-562).
+- **Against one call for all**: the projects that give everything in one call pick headlines or
+  write one summary, not one record per item; and a single pass was seen to drop items: "the LLM
+  becomes lost towards the end and consistently excludes the last two stories"
+  (blog.gdeltproject.org, Claude 2 on a whole broadcast transcript); "They dump all their fetched
+  items into a prompt that says "summarize these." … and buries what matters." (dev.to/alanwest).
+  No project was found that gives an agent a folder of stored articles and gets many structured
+  files back in one run.
+
+### 17. What was collected is removed once its event is done
+
+- **Decision**: Once an event is a file, or the folder already has it, its folder in
+  `local_data/collected/` is removed, and the collected folder too when it is left empty. An event
+  that fails twice stays stored and is tried again by the next `truth`. Only a folder directly
+  under the collected folder, named as `store.py` names event folders and holding an `event.json`,
+  is ever removed. With `--into` another folder the events are removed the same way.
+- **Rationale**: The maintainer asked for it: what was collected is cleared once the truth files
+  are made, so nothing is left in the project. With nothing kept for done events, the store itself
+  says what is left to do, as hn-time-capsule's stages skip an article whose output exists
+  (`pipeline.py:610`) and write no output for a failed one, so it is tried again (`:639-640`).
+
+### 18. At most five model runs at once, `--workers` to change it
+
+- **Decision**: `truth` keeps at most `--workers` model runs under way at once, 5 by default.
+- **Rationale**: 5 is the default of news-briefing-generator (`DEFAULT_MAX_CONCURRENT: int = 5`,
+  `article_summarization.py:57`, with `asyncio.Semaphore(max_concurrent)` at `:135`), of NeMo
+  Curator's LLM client (`max_concurrent_requests: int = 5`,
+  NVIDIA-NeMo/Curator@5a78138 `nemo_curator/models/client/llm_client.py:85`, its semaphore at
+  `:152-155`) and of hn-time-capsule's analyze stage (`max_workers: int = 5`, `pipeline.py:591`),
+  whose command line names the option `--workers` (`:1453`). Each run uses the person's own
+  subscription, so the README says how many run at once.
+- **Events of one date**: they are made one after another (one lock per date), because an event
+  is shown the folder's files of its date to say whether it is one of them (decision 11), and two
+  events of one date made at once could not see each other's file. Events of different dates
+  never share those files, so they run at once.
+- **Events that end together**: naming the file, writing it, adding it to the list of the folder's
+  events, adding its conversions and removing what was collected happen with no wait between them,
+  so in the one event loop no other event runs in the middle. A stop cancels every run, and each
+  run ends its process tree in its `finally` (`chat_bridge/chat/claude_code.py` `_reply_in_shape`).
+
+### 19. `--limit N`
+
+- **Decision**: `truth --limit N` makes only the first N stored events.
+- **Rationale**: hn-time-capsule's `--limit` "Limit number of articles (for testing)"
+  (`pipeline.py:1451`; it applies it when fetching, `:502-503`); Claude Code's "Try it on three
+  files first" (best-practices.md:562).
+
+### 20. The second model run is removed
+
+- **Decision**: No second model run checks the items; the program's checks and the one more ask
+  with the reasons stay.
+- **Rationale**: Neither lookup found a news collector that checks its items with a second model
+  run; the validator read checks form only ("No network or semantic fact checking",
+  draco-agent/tech-news-digest@c3aeafb `scripts/validate-digest.py:4-5`). It made every event two
+  model runs, four when sent back. In the one real run, the item it sent back held a fact the page
+  had, outside the passage cited. For the 71 files the items were checked against their sources by
+  another person after they were written; the reviewer does that before a commit.
+
+### 21. What is stored for an event
+
+- **Decision**: `event.json` holds the event's date and line, the dates it was asked for, when it
+  was collected, and for each page its id, the address asked, the address read, title, site and
+  date; `s1.txt`, `s2.txt`, … hold each page's text as it is given to the model, the same text the
+  passages are looked for in. An event folder is written beside its name and renamed onto it.
+- **Rationale**: hn-time-capsule keeps `meta.json` and `article.txt` per article (`README.md:64-66`).
+  The input to one run stays far below Claude Code's 10 MB cap on standard input ("Piped stdin is
+  capped at 10MB", headless.md:140).
+
+### 22. The search is told what is stored too
+
+- **Decision**: `collect` from the channels tells the agent the events of `data/truth` and the
+  events stored in `local_data/collected/` from the start date; an event with the same pages is
+  not stored again.
+- **Rationale**: Without it a second `collect` before `truth` finds and reads the same events again;
+  the folder of an event is named from its pages, so the same pages give the same folder.
+
 ## Not verified
 
 - langextract issue 289 and the AWS post were reported by lookups and not reopened here.
+- Whether several `claude -p` or `codex exec` runs at once meet the subscription's rate limits: a
+  lookup reported a blog post and an issue that hit limits at three to five; not reopened.
 - No project read combines a fixed target list, quote checks and an agent CLI; the combination is
   this feature's.
 
@@ -240,3 +353,12 @@ with the maintainer's logged-in Claude Code, 16:34:54 to 16:36:32, 98 seconds, e
   (`"2026-11-24T14:00:00-05:00"`), as a value YAML would read as a time.
 - The working tree did not change: no conversion, nothing in the repository written.
 - Not run: the search for events on the channels; Codex.
+
+### The maintainer's run of the first version (2026-11-26, about 17:00 to 17:35)
+
+`uv run chat-bridge collect`, from the channels into `data/truth`, as reported by the reviewer from
+the terminal the maintainer pasted: the search finished within its limit and found 30 events; after
+about half an hour the run was at "Event 3 of 30", and two files of 2026-11-17 had been written
+(17:32:27 and 17:33:19). Each event read its pages, then waited for its model runs, before the next
+event began; this run is why the two steps were separated (decisions 15 to 22). The search for
+events is not run again for the second version: this run showed it working.

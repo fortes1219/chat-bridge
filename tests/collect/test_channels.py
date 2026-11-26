@@ -23,10 +23,11 @@ from chat_bridge.collect.channels import (
     read_events,
     search_events,
 )
-from chat_bridge.collect.record import Window
-from chat_bridge.collect.rules import read_rules
-from chat_bridge.collect.truth_files import FolderEvent
-from tests.collect.stand_ins import CNA as CNA_PAGE
+from chat_bridge.collect.store import StoredEvent
+from chat_bridge.truth.record import Window
+from chat_bridge.truth.rules import read_rules
+from chat_bridge.truth.truth_files import FolderEvent
+from tests.truth.stand_ins import CNA as CNA_PAGE
 
 CNA = Channel("cna", "CNA", "https://www.cna.com.tw/list/afe.aspx", ("taiwan",), "")
 FED = Channel(
@@ -34,14 +35,25 @@ FED = Channel(
 )
 LISTED = (CNA, FED)
 WINDOW = Window(date(2026, 11, 18), date(2026, 11, 25))
-HAVE = [
-    FolderEvent(
-        Path("2026-11-18-fomc-minutes.md"),
-        date(2026, 11, 18),
-        "聯準會公布會議紀錄",
-        frozenset(),
-    )
-]
+HAVE = channels.held_events(
+    [
+        FolderEvent(
+            Path("2026-11-19-fomc-minutes.md"),
+            date(2026, 11, 19),
+            "聯準會公布會議紀錄",
+            frozenset(),
+        )
+    ],
+    [
+        StoredEvent(
+            Path("2026-11-18-0123456789ab"),
+            date(2026, 11, 18),
+            "Stored, not yet a file",
+            date(2026, 11, 17),
+            None,
+        )
+    ],
+)
 
 
 def _write_channels(tmp_path: Path, entries: list[dict[str, Any]]) -> Path:
@@ -91,7 +103,8 @@ def test_the_question_gives_the_dates_targets_events_held_and_channels() -> None
 
     assert text.startswith("Find the events from 2026-11-18 to 2026-11-25.")
     assert "1. 2026 年 6 月起的台股與美股相關消息。" in text
-    assert "2026-11-18  聯準會公布會議紀錄" in text
+    # The truth folder's events and the stored ones, by date.
+    assert "2026-11-18  Stored, not yet a file\n2026-11-19  聯準會公布會議紀錄" in text
     assert '"id": "cna"' in text and "<channels>" in text
     assert question(LISTED, read_rules(), Window(None, None), []).startswith(
         "Find the latest events."

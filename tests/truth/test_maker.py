@@ -1,5 +1,6 @@
-"""An event made into a truth file with a stand-in agent, saved pages and fixed closes (spec SC-001,
-SC-002): the file section by section, each refusal, the second asking, a run stopped part way."""
+"""An event made into a truth file with a stand-in agent, stored pages and fixed closes (spec
+SC-001, SC-002): the file section by section, each refusal, the second asking, a run stopped part
+way."""
 
 import asyncio
 from dataclasses import replace
@@ -10,24 +11,26 @@ import pytest
 import yaml
 
 from chat_bridge.chat.programs import ProgramError
-from chat_bridge.collect.truth import EventOutcome
-from chat_bridge.collect.truth_files import PART_SUFFIX, folder_events
-from tests.collect.stand_ins import (
+from chat_bridge.truth.maker import EventOutcome
+from chat_bridge.truth.truth_files import PART_SUFFIX, folder_events
+from tests.truth.stand_ins import (
     CNA,
     FED,
-    FOUND_DATE,
-    PAGES,
     Program,
-    checks_all,
+    make,
     maker,
     record,
 )
 
-ABOUT = "The Fed holds rates; the TAIEX rises"
 
-
-def _make(folder: Path, program: Program, **kwargs: Any) -> EventOutcome:
-    return asyncio.run(maker(folder, program, **kwargs).make(ABOUT, FOUND_DATE, PAGES))
+def _make(
+    folder: Path,
+    program: Program,
+    conversions: Path | None = None,
+    told: list[str] | None = None,
+) -> EventOutcome:
+    built = maker(folder, program, conversions=conversions)
+    return asyncio.run(make(built, told=told))
 
 
 def _sections(text: str) -> list[str]:
@@ -41,7 +44,12 @@ def test_a_two_source_event_becomes_one_file_in_the_format(tmp_path: Path) -> No
     )
     folder = tmp_path / "truth"
 
-    outcome = _make(folder, Program([record(), checks_all]), conversions=conversions)
+    program = Program([record()])
+
+    outcome = _make(folder, program, conversions=conversions)
+
+    # One run of the program for the event: no second reader.
+    assert len(program.asked) == 1
 
     assert outcome.kind == "written"
     path = folder / "2026-11-24-fed-holds-taiex-rises.md"
@@ -106,7 +114,7 @@ def test_an_empty_section_has_its_note_and_an_uncited_source_is_left_out(
         made["title"] = "聯準會利率維持不變"
         made["conversions"] = []
 
-    outcome = _make(tmp_path, Program([record(only_the_fed), checks_all]))
+    outcome = _make(tmp_path, Program([record(only_the_fed)]))
 
     assert outcome.path is not None
     text = outcome.path.read_text(encoding="utf-8")
@@ -166,7 +174,7 @@ def test_a_record_that_breaks_a_rule_twice_is_not_written(
     assert outcome.kind == "refused"
     assert not list(tmp_path.iterdir())
     assert sum(reason in line for line in told) == 2
-    # Asked once more with the reasons, and never checked by the second reader.
+    # Asked once more with the reasons.
     assert len(program.asked) == 2
     assert reason in program.asked[1][1] and "<earlier_record>" in program.asked[1][1]
 
@@ -177,41 +185,14 @@ def test_a_name_such_as_兆豐金_is_not_a_quantity(tmp_path: Path) -> None:
             {"text": "兆豐金也走高。", "source": "s2", "passage": "兆豐金也走高"}
         )
 
-    assert _make(tmp_path, Program([record(name), checks_all])).kind == "written"
+    assert _make(tmp_path, Program([record(name)])).kind == "written"
 
 
 def test_a_record_refused_once_is_written_when_asked_again(tmp_path: Path) -> None:
-    program = Program([record(_unknown_word), record(), checks_all])
+    program = Program([record(_unknown_word), record()])
 
     assert _make(tmp_path, program).kind == "written"
-
-
-def test_an_item_the_second_reader_rejects_twice_refuses_the_event(
-    tmp_path: Path,
-) -> None:
-    def reject_one(input_text: str) -> dict[str, Any]:
-        # Statement 1 is the title, 2 the first item of 事件發生.
-        answer = checks_all(input_text)
-        answer["verdicts"][1]["supported"] = False
-        answer["verdicts"][1]["reason"] = "the passage says nothing about Wednesday"
-        return answer
-
-    told: list[str] = []
-    program = Program([record(), reject_one, record(), reject_one])
-
-    outcome = _make(tmp_path, program, told=told)
-
-    assert outcome.kind == "refused"
-    assert not list(tmp_path.iterdir())
-    rejection = (
-        "事件發生 item 1 is not supported by its passage: the passage says nothing about "
-        "Wednesday"
-    )
-    assert rejection in program.asked[2][1]
-    # The second reader gets the statements and passages, not the writing run's instructions.
-    assert (
-        "<statements>" in program.asked[1][1] and "<format>" not in program.asked[1][0]
-    )
+    assert len(program.asked) == 2
 
 
 def test_a_failed_run_refuses_the_event_and_names_why(tmp_path: Path) -> None:
@@ -237,13 +218,11 @@ def test_a_run_stopped_part_way_leaves_no_half_file_and_resumes_without_doubles(
     def stop(input_text: str) -> dict[str, Any]:
         raise KeyboardInterrupt
 
-    first_run = maker(
-        folder, Program([record(), checks_all, stop]), conversions=conversions
-    )
+    first_run = maker(folder, Program([record(), stop]), conversions=conversions)
 
     async def run_both() -> None:
-        await first_run.make(ABOUT, FOUND_DATE, PAGES)
-        await first_run.make("The Fed again", FOUND_DATE, second)
+        await make(first_run)
+        await make(first_run, second, "The Fed again")
 
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(run_both())
@@ -254,7 +233,7 @@ def test_a_run_stopped_part_way_leaves_no_half_file_and_resumes_without_doubles(
 
     again = maker(folder, Program([]), conversions=conversions)
     again.existing = folder_events(folder, None)
-    outcome = asyncio.run(again.make(ABOUT, FOUND_DATE, PAGES))
+    outcome = asyncio.run(make(again))
 
     assert (outcome.kind, outcome.detail) == (
         "unchanged",
@@ -279,7 +258,7 @@ def test_an_event_the_folder_has_under_other_pages_is_not_written_again(
     built = maker(tmp_path, program)
     built.existing = folder_events(tmp_path, None)
 
-    outcome = asyncio.run(built.make(ABOUT, FOUND_DATE, PAGES))
+    outcome = asyncio.run(make(built))
 
     assert (outcome.kind, outcome.detail) == (
         "unchanged",
@@ -296,7 +275,7 @@ def test_an_event_the_folder_has_under_other_pages_is_not_written_again(
 def test_a_taken_name_gets_a_number(tmp_path: Path) -> None:
     (tmp_path / "2026-11-24-fed-holds-taiex-rises.md").write_text("x", encoding="utf-8")
 
-    outcome = _make(tmp_path, Program([record(), checks_all]))
+    outcome = _make(tmp_path, Program([record()]))
 
     assert outcome.path == tmp_path / "2026-11-24-fed-holds-taiex-rises-2.md"
 

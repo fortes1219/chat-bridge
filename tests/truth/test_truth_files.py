@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from chat_bridge.collect.truth_files import (
+from chat_bridge.truth.truth_files import (
     TRUTH_FOLDER,
     Item,
     Section,

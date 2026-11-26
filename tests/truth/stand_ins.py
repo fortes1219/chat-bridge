@@ -12,14 +12,16 @@ from typing import Any
 
 from chat_bridge.collect.closes import SeriesCloses
 from chat_bridge.collect.pages import Page
-from chat_bridge.collect.record import Window
-from chat_bridge.collect.rules import read_rules
-from chat_bridge.collect.truth import Maker
+from chat_bridge.truth.maker import EventOutcome, Maker
+from chat_bridge.truth.record import Window
+from chat_bridge.truth.rules import read_rules
 from tests.collect.test_moves import LISTED, SP500_CLOSES, TAIEX_CLOSES
 
 NOW = datetime(2026, 11, 26, 6, 0, tzinfo=UTC)
-# The date the search or the sorting gave the event.
+# The date the search or the sorting gave the event, and the dates it was asked for.
 FOUND_DATE = date(2026, 11, 24)
+WINDOW = Window(date(2026, 11, 18), date(2026, 11, 25))
+ABOUT = "The Fed holds rates; the TAIEX rises"
 FED = Page(
     asked="https://www.federalreserve.gov/newsevents/a.htm",
     url="https://www.federalreserve.gov/newsevents/a.htm",
@@ -123,15 +125,6 @@ def record(change: Callable[[dict[str, Any]], None] | None = None) -> dict[str, 
     return made
 
 
-def supported(count: int) -> dict[str, Any]:
-    return {
-        "verdicts": [
-            {"number": number, "supported": True, "reason": ""}
-            for number in range(1, count + 1)
-        ]
-    }
-
-
 @dataclass
 class Program:
     """A stand-in program: each run answers with the next of `answers`; a function answer is
@@ -159,11 +152,6 @@ class Program:
         return made
 
 
-def checks_all(input_text: str) -> dict[str, Any]:
-    """The second reader finding every statement it is given supported."""
-    return supported(input_text.count('"number":'))
-
-
 def closes() -> dict[str, SeriesCloses]:
     return {
         "^TWII": SeriesCloses(
@@ -175,24 +163,31 @@ def closes() -> dict[str, SeriesCloses]:
     }
 
 
-def maker(
-    folder: Path,
-    program: Program,
-    *,
-    conversions: Path | None = None,
-    told: list[str] | None = None,
-    window: Window = Window(date(2026, 11, 18), date(2026, 11, 25)),
-) -> Maker:
+def maker(folder: Path, program: Program, *, conversions: Path | None = None) -> Maker:
     return Maker(
         rules=read_rules(),
         folder=folder,
         program=program,  # type: ignore[arg-type]
         name="Claude Code",
-        window=window,
         closes=closes(),
         listed=LISTED,
         now=NOW,
         example=None,
         conversions_file=conversions,
-        progress=(told.append if told is not None else lambda line: None),
+    )
+
+
+async def make(
+    built: Maker,
+    pages: tuple[Page, ...] = PAGES,
+    about: str = ABOUT,
+    told: list[str] | None = None,
+) -> EventOutcome:
+    """The event of FOUND_DATE made with `built`, what it tells going to `told`."""
+    return await built.make(
+        about,
+        FOUND_DATE,
+        pages,
+        WINDOW,
+        told.append if told is not None else lambda line: None,
     )

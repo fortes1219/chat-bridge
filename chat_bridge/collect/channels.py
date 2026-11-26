@@ -26,11 +26,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.programs import AnsweringProgram, Program, ProgramError
 from chat_bridge.collect.pages import Page
-from chat_bridge.collect.record import Window
-from chat_bridge.collect.rules import Rules
-from chat_bridge.collect.truth_files import FolderEvent
+from chat_bridge.collect.store import StoredEvent
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.errors import LocalSetupError
+from chat_bridge.truth.record import Window
+from chat_bridge.truth.rules import Rules
+from chat_bridge.truth.truth_files import FolderEvent
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +150,24 @@ def _dates(window: Window) -> str:
     return f"Find the events from {since} to {until}."
 
 
+def held_events(
+    existing: Sequence[FolderEvent], stored: Sequence[StoredEvent]
+) -> list[tuple[date, str]]:
+    """The events already collected: the truth folder's files and the events stored for `truth`,
+    by date."""
+    return sorted(
+        [(one.event_date, one.title) for one in existing]
+        + [(one.event_date, one.about) for one in stored]
+    )
+
+
 def question(
     channels: tuple[Channel, ...],
     rules: Rules,
     window: Window,
-    existing: Sequence[FolderEvent],
+    held: Sequence[tuple[date, str]],
 ) -> str:
-    """The agent's input: the dates, the targets, the events the folder has, the channels."""
+    """The agent's input: the dates, the targets, the events already collected, the channels."""
     listed = [
         {
             "id": one.id,
@@ -167,10 +179,7 @@ def question(
         for one in channels
     ]
     targets = "\n".join(f"{number}. {text}" for number, text in rules.targets.items())
-    have = (
-        "\n".join(f"{one.event_date.isoformat()}  {one.title}" for one in existing)
-        or "(none)"
-    )
+    have = "\n".join(f"{day.isoformat()}  {title}" for day, title in held) or "(none)"
     return (
         f"{_dates(window)}\n\n<targets>\n{targets}\n</targets>\n\n"
         f"<events_already_collected>\n{have}\n</events_already_collected>\n\n"
@@ -288,7 +297,7 @@ async def search_events(
     channels: Sequence[Channel],
     rules: Rules,
     window: Window,
-    existing: Sequence[FolderEvent],
+    held: Sequence[tuple[date, str]],
     program: AnsweringProgram,
     name: str,
     progress: Callable[[str], None],
@@ -306,7 +315,7 @@ async def search_events(
         reply = await asyncio.wait_for(
             program.web_reply_in_shape(
                 prompt(),
-                question(listed, rules, window, existing),
+                question(listed, rules, window, held),
                 EVENTS_SCHEMA,
                 sorted({one.site for one in listed}),
                 on_start=lambda args: logger.debug("Started %s", args[0]),

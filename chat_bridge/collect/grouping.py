@@ -17,8 +17,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from chat_bridge.collect.pages import Page
-from chat_bridge.collect.record import Window
-from chat_bridge.collect.rules import Rules
+from chat_bridge.truth.record import Window
+from chat_bridge.truth.rules import Rules
 
 PROMPT_FILE = Path(__file__).with_name("grouping_prompt.md")
 

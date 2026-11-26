@@ -1,10 +1,11 @@
-"""One event, from its pages to a truth file in the folder.
+"""One stored event, from its pages to a truth file in the folder.
 
-The agent with no tool writes a record from the pages; the program checks it; a second run of the
-agent judges each statement against its passage. A record that fails goes back to the writing run
-once with the reasons. The file is then made in a temporary folder, feature 013's market section
-is added from the closes read once for the run, and only then does it go into the folder; its
-number conversions are added to the record of conversions after it.
+The agent with no tool writes a record from the event's stored pages; the program checks it, and a
+record that fails goes back to the agent once with the reasons. The file is then made in a
+temporary folder, feature 013's market section is added from the closes read once for the run,
+and only then does it go into the folder; its number conversions are added to the record of
+conversions after it. Naming the file, writing it, and adding it to the list of the folder's
+events happen with no wait between them, so events made at the same time never share a name.
 """
 
 from __future__ import annotations
@@ -18,16 +19,17 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from chat_bridge.chat import claude_code
 from chat_bridge.chat.programs import AnsweringProgram, ProgramError
-from chat_bridge.collect import checking, record, service
-from chat_bridge.collect.channels import TIME_LIMIT_SECONDS
+from chat_bridge.collect import service
 from chat_bridge.collect.closes import Closes
 from chat_bridge.collect.markets import MarketSeries
 from chat_bridge.collect.pages import Page
-from chat_bridge.collect.record import Again, Record, Source, Window
-from chat_bridge.collect.rules import Rules
 from chat_bridge.collect.service import Kind
-from chat_bridge.collect.truth_files import (
+from chat_bridge.truth import record
+from chat_bridge.truth.record import Again, Record, Source, Window
+from chat_bridge.truth.rules import Rules
+from chat_bridge.truth.truth_files import (
     FolderEvent,
     add_conversions,
     free_path,
@@ -36,7 +38,9 @@ from chat_bridge.collect.truth_files import (
 )
 
 logger = logging.getLogger(__name__)
-# The writing run is asked once more with the reasons, as instructor re-asks once by default.
+# The limit the chat gives one run of a program.
+TIME_LIMIT_SECONDS = claude_code.ANSWER_TIMEOUT_SECONDS
+# The record is asked for once more with the reasons, as instructor re-asks once by default.
 ATTEMPTS = 2
 
 
@@ -65,7 +69,7 @@ async def ask(
     what: str,
 ) -> dict[str, Any]:
     """One run of the person's program with no tool, for a reply in the schema, within the
-    chat's limit. Raises RunError."""
+    chat's limit. A cancelled run ends with every process it started. Raises RunError."""
     try:
         return await asyncio.wait_for(
             program.reply_in_shape(
@@ -92,17 +96,15 @@ class Maker:
     folder: Path
     program: AnsweringProgram
     name: str
-    window: Window
     closes: Closes
     listed: MarketSeries
     now: datetime
     example: str | None
     # Where the number conversions are recorded; None to record none.
     conversions_file: Path | None
-    progress: Callable[[str], None]
     existing: list[FolderEvent] = field(default_factory=list)
 
-    def _held(self, pages: tuple[Page, ...]) -> FolderEvent | None:
+    def held(self, pages: tuple[Page, ...]) -> FolderEvent | None:
         """The folder's file that already cites every page of the event."""
         return next(
             (
@@ -113,30 +115,13 @@ class Maker:
             None,
         )
 
-    async def _ask(
-        self, prompt: str, text: str, schema: dict[str, Any], what: str
-    ) -> dict[str, Any]:
-        try:
-            return await ask(self.program, self.name, prompt, text, schema, what)
-        except RunError as error:
-            raise _Refused(str(error)) from error
-
-    async def _second_reader(self, made: Record) -> tuple[str, ...]:
-        listed = checking.statements(made)
-        self.progress(f"    checking {len(listed)} statements against their passages")
-        reply = await self._ask(
-            checking.prompt(),
-            checking.question(listed),
-            checking.CHECK_SCHEMA,
-            "the check",
-        )
-        try:
-            return checking.rejections(reply, listed)
-        except checking.CheckError as error:
-            raise _Refused(str(error)) from error
-
     async def _record(
-        self, about: str, sources: tuple[Source, ...], held: list[FolderEvent]
+        self,
+        about: str,
+        sources: tuple[Source, ...],
+        window: Window,
+        held: list[FolderEvent],
+        tell: Callable[[str], None],
     ) -> Record | FolderEvent:
         """The checked record, or the folder's file the agent says the event already is."""
         prompt = record.system_prompt(self.rules, self.example)
@@ -147,28 +132,31 @@ class Maker:
         )
         again: Again | None = None
         for attempt in range(1, ATTEMPTS + 1):
-            self.progress(
-                f"    writing with {self.name}"
+            tell(
+                f"writing with {self.name}"
                 + ("" if again is None else ", again with the reasons")
             )
-            reply = await self._ask(
-                prompt,
-                record.question(about, sources, self.window, held, again),
-                schema,
-                "the writing",
-            )
+            try:
+                reply = await ask(
+                    self.program,
+                    self.name,
+                    prompt,
+                    record.question(about, sources, window, held, again),
+                    schema,
+                    "the writing",
+                )
+            except RunError as error:
+                raise _Refused(str(error)) from error
             same = record.same_as(reply, held)
             if same is not None:
                 return same
             made, reasons = record.check_record(
-                reply, sources, self.rules, self.window, self.now.date()
+                reply, sources, self.rules, window, self.now.date()
             )
             if made is not None:
-                reasons = await self._second_reader(made)
-                if not reasons:
-                    return made
+                return made
             for reason in reasons:
-                self.progress(f"      {reason}")
+                tell(f"  {reason}")
             if attempt == ATTEMPTS:
                 raise _Refused(f"{len(reasons)} reasons, listed above")
             again = Again(reply, reasons)
@@ -189,13 +177,19 @@ class Maker:
             return staged.read_text(encoding="utf-8")
 
     async def make(
-        self, about: str, event_date: date, pages: tuple[Page, ...]
+        self,
+        about: str,
+        event_date: date,
+        pages: tuple[Page, ...],
+        window: Window,
+        tell: Callable[[str], None] = lambda line: None,
     ) -> EventOutcome:
-        """Write the event found for `event_date` from its pages, unless the folder has it:
-        a file citing all its pages, or a file of that date the agent says it is."""
+        """Write the event of `event_date` from its pages, unless the folder has it: a file
+        citing all its pages, or a file of that date the agent says it is. `tell` is told what
+        happens to this event."""
         if not pages:
-            return EventOutcome(about, "refused", "none of its pages could be read")
-        held = self._held(pages)
+            return EventOutcome(about, "refused", "it has no page")
+        held = self.held(pages)
         if held is not None:
             return EventOutcome(
                 about, "unchanged", f"the folder has it: {held.path.name}"
@@ -205,11 +199,12 @@ class Maker:
         )
         same_day = [one for one in self.existing if one.event_date == event_date]
         try:
-            made = await self._record(about, sources, same_day)
+            made = await self._record(about, sources, window, same_day, tell)
             if isinstance(made, FolderEvent):
                 return EventOutcome(
                     about, "unchanged", f"the folder has it: {made.path.name}"
                 )
+            # From here to the end nothing waits, so no other event runs in between.
             path = free_path(self.folder, made.file.event_date, made.slug)
             text = self._with_market_section(render(made.file), path.name)
         except _Refused as error:
@@ -220,7 +215,7 @@ class Maker:
         else:
             # Into another folder than the sample's, the conversions are shown, not recorded.
             for one in made.conversions:
-                self.progress(f"    conversion  {one.original} -> {one.converted}")
+                tell(f"conversion  {one.original} -> {one.converted}")
         self.existing.append(
             FolderEvent(
                 path,

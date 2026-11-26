@@ -3,9 +3,9 @@
 from datetime import date
 
 from chat_bridge.collect.grouping import groups_schema, numbered, question, read_groups
-from chat_bridge.collect.record import Window
-from chat_bridge.collect.rules import read_rules
-from tests.collect.stand_ins import CNA, FED
+from chat_bridge.truth.record import Window
+from chat_bridge.truth.rules import read_rules
+from tests.truth.stand_ins import CNA, FED
 
 PAGES = numbered((FED, CNA))
 WINDOW = Window(None, date(2026, 11, 25))

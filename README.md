@@ -71,37 +71,42 @@ uv run chat-bridge ingest path/to/your-folder --replace
 - The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
 - Word and PDF files have no event date, so an answer from them says the data has no date.
 
-### Collect new events, then add them to the knowledge base
+### Collect new events, make them into files, add them to the knowledge base
 
-Two commands: the first collects the new events as files in `data/truth`, the second adds them to
-the knowledge base.
+Three commands, one after the other:
 
 ```
 uv run chat-bridge collect
+uv run chat-bridge truth
 uv run chat-bridge ingest data/truth
 ```
 
-- With nothing after it, `collect` sends your own logged-in Claude Code (or Codex, when Claude Code is not logged in) to the channels listed in `data/channels.json`. It searches the web for the events those sites reported from the latest event date in `data/truth` to today (`--until 2026-11-25` stops at that day), on the collection targets of `docs/truth_format.md`, leaving out the events the folder already has. It names each event's pages; the command reads them itself.
-- Each event becomes one file in `data/truth` (another folder with `--into`), in the format of `docs/truth_format.md`, like the files already there: the front matter, the sections 事件發生, 影響股市證據, 相關標的, 當日與之後的行情 and 後續與不同說法, each item with the source it comes from. A story that bears on no collection target is not an event and no file is written for it.
-- How a file is made: the agent, with no tool, writes the event from the pages' text, each item with the words of its source it rests on. The command checks that those words are in the page, that each item is in its source's language, that the exposure words, targets and markets are the listed ones, and that no number is left written with 萬, 億, 兆 or 碼. A second run of the agent, which sees only each item and its words, says whether each item says only what its source says. A file that fails is written again once with the reasons, and is not written when it fails again; the command says why. The section 當日與之後的行情 is then computed from the daily closes, as below.
-- Number conversions (萬, 億, 兆, 成, 碼, 民國年) are added to `tests/data/number_conversions.md` when the files go to `data/truth`; into another folder they are shown in the terminal only.
-- Claude Code gets web search and web reading only for the search, and may read pages only on the channels' sites; it gets no tool when it writes or checks a file. Codex gets live web search for the search, with its command and file tools off. Neither runs a command or touches a file: the command writes the files.
-- It uses your own Claude Code or Codex subscription: one run to find the events, then two runs for each event (writing and checking), four when the first try fails. Each run may take up to 10 minutes. One page given as an address took 98 seconds with Claude Code, five runs in all because the first try failed the check. What it finds can differ from run to run.
-- `collect` does not add anything to the knowledge base; `ingest` does, when you run it.
-- Change `data/channels.json` to collect from other sites, and `docs/truth_format.md` and `docs/exposure_vocabulary.md` to collect on other subjects: the targets, sections and exposure words are read from them.
+1. `collect` finds the new events and stores each one, with the text of its pages, in `local_data/collected/`: one folder per event, holding `event.json` and `s1.txt`, `s2.txt`, …. It writes no file in `data/truth`.
+2. `truth` makes each stored event into one file in `data/truth` (another folder with `--into`). Once an event is a file, or `data/truth` already has it, its folder in `local_data/collected/` is removed; when all are made, nothing is left there.
+3. `ingest` adds the files to the knowledge base.
 
-You can also give it addresses of pages or feeds:
+**`collect`**
 
-```
-uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
-```
+- With nothing after it, `collect` sends your own logged-in Claude Code (or Codex, when Claude Code is not logged in) to the channels listed in `data/channels.json`. It searches the web for the events those sites reported from the latest event date in `data/truth` to today (`--until 2026-11-25` stops at that day), on the collection targets of `docs/truth_format.md`, leaving out the events `data/truth` already has and those already stored. It names each event's pages; the command reads them itself, once.
+- Claude Code gets web search and web reading only, and may read pages only on the channels' sites. Codex gets live web search, with its command and file tools off. A page that moved off its channel's site is left out.
+- You can also give it addresses of pages or feeds: `uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml`. Each page, or each item of a feed, is read; the agent, with no tool, sorts them into events. A page that bears on no collection target is named and not stored.
+- It reads each site's robots.txt and follows it (and that of a site a page redirects to), waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes. An address that is a document, such as a PDF, is not read: download it and run `ingest` on its folder.
+- It uses one run of your Claude Code or Codex subscription: the search, or the sorting.
 
-- Each page, or each item of a feed, is read; the agent sorts them into events and each event is written as above. A page that bears on no collection target is named and left out.
-- It reads each site's robots.txt and follows it, waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes.
-- An address that is a document, such as a PDF, is not read: download it and run `ingest` on its folder. A feed item whose page cannot be read is left out.
-- If you stop it part way (Ctrl+C), the files already written stay, no half file is left, and running it again does not write them a second time.
-- Other people's pages have their own terms; the files hold facts written from them with their sources, and collecting them is your responsibility.
-- Exit codes: `0` when every event found was written, `1` when a page or an event was left out, `2` on an error.
+**`truth`**
+
+- Each stored event becomes one file in the format of `docs/truth_format.md`, like the files already there: the front matter, the sections 事件發生, 影響股市證據, 相關標的, 當日與之後的行情 and 後續與不同說法, each item with the source it comes from. It reads no web page: only the stored text, and the daily closes for the section 當日與之後的行情.
+- How a file is made: the agent, with no tool, writes the event from its stored pages, each item with the words of its source it rests on. The command checks that those words are in the page, that each item is in its source's language, that the exposure words, targets and markets are the listed ones, and that no number is left written with 萬, 億, 兆 or 碼. A record that fails is written again once with the reasons. One that fails again is not written: it stays stored, is listed at the end, and is tried again by the next `truth`, which uses your subscription again each time.
+- It uses one run of your subscription per event, two when the first try fails, and at most 5 runs at once (`--workers 2` for fewer). Each run may take up to 10 minutes. `--limit 3` makes only the first three stored events, to try it first.
+- Number conversions (萬, 億, 兆, 成, 碼, 民國年) are added to `tests/data/number_conversions.md` when the files go to `data/truth`; into another folder they are shown in the terminal only. With `--into` another folder, the stored events are removed all the same: to make them for `data/truth` afterwards, run `collect` again.
+- If you stop it part way (Ctrl+C), every run under way stops, the files already written stay, no half file is left, and the events not finished stay stored for the next run.
+
+**Both**
+
+- Neither adds anything to the knowledge base; `ingest` does, when you run it.
+- What the agent finds can differ from run to run. Change `data/channels.json` to collect from other sites, and `docs/truth_format.md` and `docs/exposure_vocabulary.md` to collect on other subjects: the targets, sections and exposure words are read from them.
+- Other people's pages have their own terms; `local_data/` is not tracked by git, the files hold facts written from the pages with their sources, and collecting them is your responsibility.
+- Exit codes: `0` when everything was done, `1` when a page or an event was left out, `2` on an error.
 
 #### The market moves of a news file
 
