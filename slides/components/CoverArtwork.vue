@@ -7,5 +7,6 @@ defineProps<{ still: boolean }>()
 <template>
   <figure class="cover-art" :class="{ 'cover-still': still }" aria-hidden="true">
     <img :src="portfolioArtwork" alt="" draggable="false">
+    <span v-if="!still" class="cover-reflection"></span>
   </figure>
 </template>

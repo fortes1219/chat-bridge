@@ -14,5 +14,6 @@
 - The effect pass exercised all six new timelines by keyboard in both locales, including reverse steps. It also verified direct controls, the shared 3D baseline and recovery states, the Socket.IO marker's movement, and complete print and reduced-motion content.
 - The contract check rejected an inline click override and an unrecognized retrieval view.
 - The cover pass checked the full-bleed illustration, bilingual heading layout, and start links in Chrome. Both print covers displayed the illustration with the animation and start control suppressed. The 32 slide views also passed the regression pass.
+- The light sweep pass built both decks and verified movement on the artwork, highlighted title, and start control in Chrome. Both covers stayed steady under reduced motion and in print. All 32 slide views passed again.
 - `npm audit --audit-level=low` reported zero advisories after resolving the indirect dependencies recorded in the research.
 - GitHub Actions dispatch and the public endpoint remain unverified. The maintainer owns the commit and publish decision.
