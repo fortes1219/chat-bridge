@@ -25,7 +25,13 @@ import { clickCountFor, effectFor } from '../effects/strategies.ts'
       class="research-main"
       :class="{ 'research-with-effect': effectFor($frontmatter.slideId)?.effect !== 'none' }"
     >
-      <div class="research-copy"><slot /></div>
+      <div class="research-copy">
+        <slot />
+        <a v-if="$frontmatter.composition === 'cover' && $renderContext === 'slide'" class="cover-start" href="#/2">
+          {{ $frontmatter.locale === 'en' ? 'Start presentation' : '開始簡報' }}
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
       <aside v-if="effectFor($frontmatter.slideId)?.effect !== 'none'" class="research-aside">
         <span
           v-if="clickCountFor($frontmatter.slideId)"

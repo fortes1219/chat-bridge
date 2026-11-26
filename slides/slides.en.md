@@ -13,7 +13,7 @@ appearance: ink
 composition: cover
 ---
 
-# Which market news matters to my holdings?
+# Which market news<br>matters to <span class="cover-accent">my holdings?</span>
 
 <p class="lead">Ask about Taiwan and US markets, check the sources, and see how a proposed allocation change would affect your weights.</p>
 

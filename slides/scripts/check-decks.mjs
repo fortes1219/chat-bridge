@@ -8,7 +8,7 @@ import { effectFor, effectsBySlide, effectSteps } from '../effects/strategies.ts
 function validateExample(strategy, id) {
   switch (strategy.effect) {
     case 'none':
-    case 'layered-cover':
+    case 'cover-artwork':
     case 'document-chunks':
     case 'rank-fusion':
     case 'evaluation-recall':

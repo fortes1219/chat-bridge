@@ -13,7 +13,7 @@ appearance: ink
 composition: cover
 ---
 
-# 哪些市場消息<br>跟我的持股有關？
+# 哪些市場消息<br><span class="cover-accent">跟我的持股有關？</span>
 
 <p class="lead">用自然語言查台美股事件。沿著引用核對資料，再看調整配置會差多少。</p>
 

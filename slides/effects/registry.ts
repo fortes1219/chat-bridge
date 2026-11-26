@@ -3,7 +3,7 @@ import type { SlideEffectKey } from './strategies.ts'
 
 export const effectComponents = {
   none: null,
-  'layered-cover': defineAsyncComponent(() => import('../components/LayeredCover.vue')),
+  'cover-artwork': defineAsyncComponent(() => import('../components/CoverArtwork.vue')),
   'document-chunks': defineAsyncComponent(() => import('../components/DocumentChunks.vue')),
   'rank-fusion': defineAsyncComponent(() => import('../components/RankFusion.vue')),
   'retrieval-3d': defineAsyncComponent(() => import('../components/RetrievalEffect.vue')),

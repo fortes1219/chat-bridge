@@ -2,7 +2,7 @@ import type { allocationExamples, retrievalExamples } from './data.ts'
 
 interface StrategyByEffect {
   none: { effect: 'none' }
-  'layered-cover': { effect: 'layered-cover' }
+  'cover-artwork': { effect: 'cover-artwork' }
   'document-chunks': { effect: 'document-chunks' }
   'rank-fusion': { effect: 'rank-fusion' }
   'retrieval-3d': {
@@ -21,7 +21,7 @@ export type SlideEffectKey = keyof StrategyByEffect
 
 export const effectSteps = {
   none: 0,
-  'layered-cover': 0,
+  'cover-artwork': 0,
   'document-chunks': 2,
   'rank-fusion': 2,
   'retrieval-3d': 1,
@@ -32,7 +32,7 @@ export const effectSteps = {
 } satisfies Record<SlideEffectKey, number>
 
 export const effectsBySlide = {
-  cover: { effect: 'layered-cover' },
+  cover: { effect: 'cover-artwork' },
   workflow: { effect: 'none' },
   corpus: { effect: 'none' },
   normalization: { effect: 'none' },
