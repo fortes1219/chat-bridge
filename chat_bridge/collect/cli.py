@@ -1,15 +1,18 @@
 """The `chat-bridge collect <address or path> …` subcommand."""
 
 import argparse
+import asyncio
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
+from chat_bridge.chat.service import NoLoginError
 from chat_bridge.cli import EXIT_NOT_ALL, EXIT_OK, Commands, print_error
-from chat_bridge.collect import pages, service
+from chat_bridge.collect import channels, pages, service
 from chat_bridge.collect.closes import ClosesError
 from chat_bridge.config import local_data_dir
 from chat_bridge.errors import LocalSetupError
+from chat_bridge.ingest import service as ingest_service
 
 WEB_SCHEMES = ("http://", "https://")
 # Each line is shown as it happens: collecting waits between requests to a site, so a person
@@ -37,10 +40,6 @@ def _collect_pages(addresses: list[str], folder: Path) -> list[pages.Outcome]:
         f"{_count(outcomes, 'unchanged')} unchanged, "
         f"{_count(outcomes, 'refused')} not collected."
     )
-    if _count(outcomes, "written"):
-        progress(
-            f"To add them to the knowledge base: uv run chat-bridge ingest {folder}"
-        )
     return outcomes
 
 
@@ -60,6 +59,33 @@ def _collect_market_moves(paths: list[Path]) -> list[service.FileOutcome]:
     return outcomes
 
 
+def _search_channels() -> tuple[list[str], int]:
+    """The pages the person's own agent found on the channels, and how many it named off them."""
+    found = asyncio.run(
+        channels.search_channels(channels.enabled_channels(), progress)
+    ).found
+    progress(f"Found {len(found.pages)} pages:")
+    # Each channel, those with no page included: the channel list is what the person can change.
+    for channel_id, count in found.per_channel.items():
+        progress(f"  {count:>3}  {channel_id}")
+    for url, reason in found.refused:
+        progress(f"  not collected  {url}: {reason}")
+    return list(found.pages), len(found.refused)
+
+
+def _ingest(folder: Path) -> int:
+    """Add the collected folder to the knowledge base; the number of files it rejected."""
+    progress(f"Adding {folder} to the knowledge base.")
+    report = asyncio.run(ingest_service.ingest_folder(folder.resolve()))
+    progress(
+        f"Knowledge base: {len(report.written)} files written, "
+        f"{len(report.unchanged)} unchanged, {len(report.rejected)} rejected."
+    )
+    for rejection in report.rejected:
+        progress(f"  rejected  {rejection.source_path}: {rejection.reason}")
+    return len(report.rejected)
+
+
 def _run(args: argparse.Namespace) -> int:
     targets: list[str] = args.targets
     addresses = [target for target in targets if target.startswith(WEB_SCHEMES)]
@@ -71,33 +97,49 @@ def _run(args: argparse.Namespace) -> int:
             + ", ".join(str(path) for path in missing)
         )
     folder: Path = args.into or default_folder()
-    page_outcomes = _collect_pages(addresses, folder) if addresses else []
+    refused = 0
     try:
+        if not targets:
+            addresses, refused = _search_channels()
+        page_outcomes = _collect_pages(addresses, folder) if addresses else []
+        refused += _count(page_outcomes, "refused")
+        # Collecting from the web ends in the knowledge base, unchanged pages included, so a run
+        # after one stopped before its ingest still adds them; `ingest` skips what it has.
+        # News files are the person's own, which they ingest themselves.
+        if _count(page_outcomes, "written") or _count(page_outcomes, "unchanged"):
+            refused += _ingest(folder)
         file_outcomes = _collect_market_moves(paths) if paths else []
+    except NoLoginError as error:
+        return print_error(str(error))
+    except channels.SearchError as error:
+        return print_error(f"nothing was collected from the channels: {error}")
     except ClosesError as error:
         return print_error(
             f"the daily closes could not be read, so no news file was changed: {error}"
         )
     except LocalSetupError as error:
         return print_error(str(error))
-    refused = _count(page_outcomes, "refused") + _count(file_outcomes, "refused")
+    refused += _count(file_outcomes, "refused")
     return EXIT_NOT_ALL if refused else EXIT_OK
 
 
 def register(commands: Commands) -> None:
     collect = commands.add_parser(
         "collect",
-        help="collect web pages and feeds into a folder for `ingest`, and the market moves of "
-        "news files",
-        description="Web addresses are collected as pages, or as feeds when they are feeds, into "
-        "local_data/collected/ (or --into). Paths are news files, or folders of them, whose "
-        "section of market moves is written from the daily closes.",
+        help="collect from the channels with your own logged-in agent, or from web addresses, "
+        "into the knowledge base; or write the market moves of news files",
+        description="With nothing after it, your own logged-in Claude Code or Codex finds the "
+        "new pages of the channels in data/channels.json. Web addresses are collected as pages, "
+        "or as feeds when they are feeds. Either way the pages go to local_data/collected/ (or "
+        "--into) and are added to the knowledge base. Paths are news files, or folders of them, "
+        "whose section of market moves is written from the daily closes; ingest them yourself.",
     )
     collect.add_argument(
         "targets",
-        nargs="+",
+        nargs="*",
         metavar="address-or-path",
-        help="a web address (http or https), or a news file or folder",
+        help="a web address (http or https), or a news file or folder; none collects from the "
+        "channels",
     )
     collect.add_argument(
         "--into",

@@ -1,14 +1,14 @@
 """What the two answering programs share: their names, their login states, their errors, and how
 they are stopped.
 
-Each program is a module with the same three functions, `login_status()`, `reply_in_shape()` and
-`stream_answer()`, so the service picks one from a table and nothing else changes with the
-program.
+Each program is a module with the same four functions, `login_status()`, `reply_in_shape()`,
+`web_reply_in_shape()` and `stream_answer()`, so the service picks one from a table and nothing
+else changes with the program.
 """
 
 import asyncio
 from asyncio.subprocess import Process
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
@@ -90,6 +90,16 @@ class AnsweringProgram(Protocol):
         system_prompt: str,
         input_text: str,
         schema: dict[str, Any],
+        *,
+        on_start: Callable[[list[str]], None],
+    ) -> dict[str, Any]: ...
+
+    async def web_reply_in_shape(
+        self,
+        system_prompt: str,
+        input_text: str,
+        schema: dict[str, Any],
+        sites: Sequence[str],
         *,
         on_start: Callable[[list[str]], None],
     ) -> dict[str, Any]: ...

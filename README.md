@@ -71,16 +71,27 @@ uv run chat-bridge ingest path/to/your-folder --replace
 - The sample news comes back only if the knowledge base is emptied, for example by deleting `local_data/pgdata`: the service ingests it when it finds nothing ingested.
 - Word and PDF files have no event date, so an answer from them says the data has no date.
 
-### Collect web pages and feeds
+### Collect new material into the knowledge base
 
-Collect pages from the web, then add them to the knowledge base:
+One command collects what is new and adds it to the knowledge base:
+
+```
+uv run chat-bridge collect
+```
+
+- With nothing after it, your own logged-in Claude Code (or Codex, when Claude Code is not logged in) is sent to the channels listed in `data/channels.json`: it searches the web and names the pages those sites published on or after the latest date the knowledge base has. The command then collects each page and adds them to the knowledge base.
+- Claude Code gets web search and web reading only, and may read pages only on the channels' sites. Codex gets live web search with its command and file tools off; its search has no setting for sites. Neither runs a command or touches a file.
+- The agent names the pages, and the command reads them itself, because the agent's web reading answers with what another model read from a page, not the page. A page that is not on the site of the channel it is named for, or that cannot be read, is not collected, and the command says so. It also lists how many pages each channel had, so a channel that gave none shows up.
+- It uses your own Claude Code or Codex subscription. What it finds can differ from run to run, and a run takes several minutes.
+- Change `data/channels.json` to collect from other sites: each channel has an `id`, a `name`, a `url`, `enabled`, `topics` and a `note`.
+
+You can also give it addresses of pages or feeds:
 
 ```
 uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
-uv run chat-bridge ingest local_data/collected
 ```
 
-- `collect` writes each page's main text as one Markdown file in `local_data/collected/` (another folder with `--into`), without menus, footers or scripts. Its front matter has the title, the address, the site, when it was collected, and `event_date` when the page shows its own publication date. That date is the page's, not a date the command made up; a page without one has no `event_date`. It is the date the page was first published: for a page that keeps changing, such as an encyclopedia article, that can be years ago.
+- Either way, `collect` writes each page's main text as one Markdown file in `local_data/collected/` (another folder with `--into`), without menus, footers or scripts, and then adds that folder to the knowledge base, as `uv run chat-bridge ingest local_data/collected` would. Its front matter has the title, the address, the site, when it was collected, and `event_date` when the page shows its own publication date. That date is the page's, not a date the command made up; a page without one has no `event_date`. It is the date the page was first published: for a page that keeps changing, such as an encyclopedia article, that can be years ago.
 - An RSS or Atom feed is read item by item: each item's page is collected; an item whose page cannot be read is written from the feed's own title and summary, and the file says so.
 - What is collected decides what the knowledge base is about; the command does not depend on the subject. It does not follow links inside pages.
 - It reads each site's robots.txt and follows it, waits 5 seconds between two requests to one site, refuses addresses on this machine or its private network, does not accept a certificate it cannot check, and stops a download over 20 MB. A site that does not answer holds the command for one to two minutes.
@@ -101,6 +112,7 @@ uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
 - Day 0 of each market is the first trading session that closes at or after the file's `event_time` (when the event happened, with its time zone). A file without `event_time` is aligned by its date, as the earlier files are.
 - Closes come from Yahoo's daily data; a Taiwan day Yahoo lacks comes from FinMind. A day neither has is written 沒有資料, never estimated.
 - A file is rewritten only when its section changes; everything else in it stays as written.
+- News files are your own files, so this does not add them to the knowledge base: run `uv run chat-bridge ingest data/truth` when you want them there.
 
 ### If you don't have uv
 
@@ -233,6 +245,7 @@ Under its quotes, the panel names these sources in one line and links the licens
 - `data/synonyms.txt`: names that mean the same thing, one group per line, in the Solr synonyms format. The comments at the top list what is left out on purpose and why.
 - `data/sample_questions.json`: the questions the chat page offers about the sample news, in both languages, while that news is stored.
 - `data/market_series.json`: the markets and daily series whose moves `collect` writes into a news file.
+- `data/channels.json`: the channels `collect` sends your own agent to, the sites the sample news was collected from.
 
 ## Development
 

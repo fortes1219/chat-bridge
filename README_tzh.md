@@ -71,16 +71,27 @@ uv run chat-bridge ingest 你的資料夾路徑 --replace
 - 範例新聞只有在知識庫清空時才會回來，例如刪掉 `local_data/pgdata`：服務發現什麼都沒導入過，就會導入它。
 - Word 與 PDF 檔沒有事件日期，所以從它們來的回答會寫資料都沒有日期。
 
-### 收網頁與訂閱源
+### 收新的資料進知識庫
 
-從網路收頁面，再加進知識庫：
+一個指令，把新的東西收回來並加進知識庫：
+
+```
+uv run chat-bridge collect
+```
+
+- 後面什麼都不帶時，會叫你自己登入的 Claude Code（Claude Code 沒登入時改用 Codex）到 `data/channels.json` 列的管道去：它上網搜尋，找出這些網站在知識庫最新那一天當天或之後發的頁面。指令接著把每一頁收回來，加進知識庫。
+- Claude Code 只有上網搜尋與讀網頁兩樣工具，讀網頁也只限管道的網站。Codex 開的是即時搜尋，跑指令、碰檔案的工具都關掉；它的搜尋沒有限定網站的設定。兩者都不跑指令、不碰檔案。
+- agent 只交出網址，頁面由指令自己讀，因為 agent 讀網頁時拿到的是另一個模型讀過之後的回答，不是原文。頁面不在它所屬管道的網站上、或讀不到，都不收，指令會說明。指令也會列出每個管道各找到幾頁，一頁都沒有的管道看得出來。
+- 用的是你自己的 Claude Code 或 Codex 訂閱額度。每次找到的不一定一樣，跑一次要幾分鐘。
+- 要收別的網站，就改 `data/channels.json`：每個管道有 `id`、`name`、`url`、`enabled`、`topics`、`note`。
+
+也可以直接給頁面或訂閱源的網址：
 
 ```
 uv run chat-bridge collect https://example.com/an-article https://example.com/feed.xml
-uv run chat-bridge ingest local_data/collected
 ```
 
-- `collect` 把每一頁的正文寫成一個 Markdown 檔，放在 `local_data/collected/`（用 `--into` 可以換資料夾），選單、頁尾、程式碼都不留。檔頭有標題、網址、網站、收的時間；頁面自己標了發表日期時，另有 `event_date`。這個日期是頁面標的，不是指令自己定的；頁面沒有標，就沒有 `event_date`。它是頁面第一次發表的日期：一直在更新的頁面（例如百科條目）可能是好幾年前。
+- 不論哪一種，`collect` 都把每一頁的正文寫成一個 Markdown 檔，放在 `local_data/collected/`（用 `--into` 可以換資料夾），選單、頁尾、程式碼都不留，接著把這個資料夾加進知識庫，等於跑了 `uv run chat-bridge ingest local_data/collected`。檔頭有標題、網址、網站、收的時間；頁面自己標了發表日期時，另有 `event_date`。這個日期是頁面標的，不是指令自己定的；頁面沒有標，就沒有 `event_date`。它是頁面第一次發表的日期：一直在更新的頁面（例如百科條目）可能是好幾年前。
 - RSS 或 Atom 訂閱源會一項一項讀：每一項的頁面照樣收；某一項的頁面讀不到時，改寫成訂閱源自己的標題與摘要，檔裡會寫明。
 - 收進什麼，知識庫就是什麼用途；指令不認主題，也不會沿著頁面裡的連結往下爬。
 - 每個網站先讀它的 robots.txt 並照著做；同一個網站兩次請求之間等 5 秒；本機與內網的網址一律拒絕；驗不過的憑證不接受；超過 20 MB 的下載會停掉。一個不回應的網站，大約會讓指令卡一到兩分鐘。
@@ -101,6 +112,7 @@ uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
 - 每個市場的 D0，是收盤時刻在檔裡 `event_time`（事件發生的時刻，附時區）當下或之後的第一個交易時段。沒有 `event_time` 的檔照日期對齊，和先前的檔一樣。
 - 收盤價取自 Yahoo 的日線；Yahoo 缺的台股日子由 FinMind 補。兩邊都沒有的日子寫「沒有資料」，不估算。
 - 只有行情段變了才改寫檔案，其他內容一個字都不動。
+- 新聞檔是你自己的檔，所以這一步不會把它們加進知識庫；要加的時候跑 `uv run chat-bridge ingest data/truth`。
 
 ### 還沒有 uv
 
@@ -217,6 +229,7 @@ uv run chat-bridge
 - `data/synonyms.txt`：意思相同的名稱，一行一組，用 Solr 的同義詞格式。檔案開頭的註解列出哪些刻意不放、為什麼。
 - `data/sample_questions.json`：聊天畫面針對範例新聞提供的問題，兩種語言，只在範例新聞還在庫裡時顯示。
 - `data/market_series.json`：`collect` 寫進新聞檔行情段的市場與日線序列。
+- `data/channels.json`：`collect` 叫你自己的 agent 去的管道，就是範例新聞採集時用的那些網站。
 
 ## 開發
 
