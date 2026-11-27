@@ -90,12 +90,23 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
       :title="t(`errors.${errorKey}.title`)"
       :description="t(`errors.${errorKey}.description`)"
     />
-    <!-- Under the answer, only what it cites, as numbered in its text. -->
+    <!-- Under the answer, only what it cites, as numbered in its text, folded as the list of all
+         the sources is. -->
     <section v-if="sources.length" data-test="sources" class="text-sm">
-      <template v-if="cited.length">
-        <p class="font-medium">{{ t('chat.citedSources') }}</p>
-        <SourceList :sources="cited" data-test="cited-sources" />
-      </template>
+      <UCollapsible v-if="cited.length" data-test="cited">
+        <UButton
+          data-test="cited-sources-toggle"
+          variant="link"
+          color="neutral"
+          size="sm"
+          class="px-0 font-medium"
+          trailing-icon="i-lucide-chevron-down"
+          :label="t('chat.citedSources', { count: cited.length }, cited.length)"
+        />
+        <template #content>
+          <SourceList :sources="cited" class="mt-1" data-test="cited-sources" />
+        </template>
+      </UCollapsible>
       <p v-else-if="answerDone" class="text-muted" data-test="none-cited">{{ t('chat.noneCited') }}</p>
       <p class="text-muted mt-1" data-test="latest-date">
         {{

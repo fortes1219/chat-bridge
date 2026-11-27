@@ -223,6 +223,11 @@ describe('asking a question', () => {
     answer.send(textEvent('cut rates [1].'));
     await flushPromises();
     expect(page.find('[data-test="answer-text"]').text()).toBe('The Fed cut rates [1].');
+    // Folded under its count, as the list of all the sources is.
+    expect(page.find('[data-test="cited-sources-toggle"]').text()).toBe('The answer cites one source');
+    expect(page.find('[data-test="cited-sources"]').exists()).toBe(false);
+    await page.find('[data-test="cited-sources-toggle"]').trigger('click');
+    await flushPromises();
     expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
       'source-1'
     ]);
@@ -257,12 +262,15 @@ describe('asking a question', () => {
     answer.end();
     await flushPromises();
     await vi.waitFor(() =>
-      expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
-        'source-3',
-        'source-7',
-        'source-41'
-      ])
+      expect(page.find('[data-test="cited-sources-toggle"]').text()).toBe('The answer cites 3 sources')
     );
+    await page.find('[data-test="cited-sources-toggle"]').trigger('click');
+    await flushPromises();
+    expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
+      'source-3',
+      'source-7',
+      'source-41'
+    ]);
 
     await page.find('[data-test="all-sources-toggle"]').trigger('click');
     await flushPromises();
@@ -281,7 +289,7 @@ describe('asking a question', () => {
     await flushPromises();
 
     await vi.waitFor(() => expect(page.find('[data-test="none-cited"]').text()).toBe('答案沒有引用任何出處。'));
-    expect(page.find('[data-test="cited-sources"]').exists()).toBe(false);
+    expect(page.find('[data-test="cited-sources-toggle"]').exists()).toBe(false);
     expect(page.find('[data-test="all-sources-toggle"]').text()).toBe('找到 2 個出處');
   });
 

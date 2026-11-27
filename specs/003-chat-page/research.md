@@ -293,6 +293,17 @@ so by name when the installed Node.js is older (decision 3).
   without them Tailwind's reset leaves lists with no markers and paragraphs with no space between
   them.
 
+### 5a. Both lists of sources are folded until opened
+
+- **Decision**: The sources the answer cites are folded under one line, as all the sources found
+  already are: `UCollapsible`, closed until the user opens it, with the count in the line. The
+  latest date, the split notice and the fixed notice stay open.
+- **Rationale**: Nuxt UI's chat template puts a search's sources in a `UChatTool` that is folded
+  (`nuxt-ui-templates/chat-vue@ce4ef47:src/components/chat/message/MessageContent.vue:53-61`); in
+  `nuxt/ui` 4.13.0 that component starts closed (`dist/runtime/components/ChatTool.vue:48`,
+  `ref(props.defaultOpen ?? false)`). In the real runs of 2026-11-25 an answer about the Fed cited
+  22 to 30 sources, a list longer than the answer on a phone.
+
 ### 6. Texts and address
 
 - **Decision**: page texts live in `vue-i18n` messages for `zh-TW` and `en`, keys at most three

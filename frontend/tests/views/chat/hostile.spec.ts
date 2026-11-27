@@ -100,6 +100,13 @@ async function askHostile(): Promise<VueWrapper> {
   return wrapper;
 }
 
+/** Open the folded list of the sources the answer cites, once the answer has cited one. */
+async function openCited(page: VueWrapper): Promise<void> {
+  await vi.waitFor(() => expect(page.find('[data-test="cited-sources-toggle"]').exists()).toBe(true));
+  await page.find('[data-test="cited-sources-toggle"]').trigger('click');
+  await flushPromises();
+}
+
 /** Every attribute name in a subtree, for the event handler check. */
 function attributeNames(root: DOMWrapper<Element>): string[] {
   return [root.element, ...root.element.querySelectorAll('*')].flatMap(element => element.getAttributeNames());
@@ -111,10 +118,12 @@ describe('hostile content in an answer and its sources', () => {
 
     await page.find('[data-test="all-sources-toggle"]').trigger('click');
     await flushPromises();
+    await openCited(page);
 
     expect(alertSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    for (const part of ['answer-text', 'all-sources-list', 'sources', 'notice']) {
+    // The lists themselves: the lines that fold them carry the page's own icon.
+    for (const part of ['answer-text', 'all-sources-list', 'cited-sources', 'latest-date', 'notice']) {
       const area = page.find(`[data-test="${part}"]`);
       expect(area.exists()).toBe(true);
       expect(area.findAll(EXECUTABLE_OR_LOADING)).toHaveLength(0);
@@ -133,6 +142,7 @@ describe('hostile content in an answer and its sources', () => {
 
   it('shows the hostile HTML of the sources and the notice as text', async () => {
     const page = await askHostile();
+    await openCited(page);
 
     expect(page.find('[data-test="source-1"]').text()).toBe(
       `[1] data/truth/<b>x</b>.md · <img src=x onerror="alert('heading')"> · No date`

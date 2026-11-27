@@ -42,7 +42,7 @@ export default {
     noLatestDate: 'None of the data has a date.',
     splitFailed: 'This question could not be split into parts, so it was searched as a whole.',
     allSources: 'Found one source | Found {count} sources',
-    citedSources: 'Sources the answer cites',
+    citedSources: 'The answer cites one source | The answer cites {count} sources',
     noneCited: 'The answer cites none of the sources.',
     stopped: 'Stopped.',
     searching: 'Searching the news…',
