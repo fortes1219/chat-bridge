@@ -4,7 +4,7 @@ import type { Router } from 'vue-router';
 import { CanceledError } from 'axios';
 import type { ProgramState } from '@/service/api/programs';
 import type { ChatEvent, ChatRequest } from '@/service/api/chat';
-import { CONTEXT_EVENT, textEvent } from '../../helpers/sse';
+import { CONTEXT_EVENT, completedEvent, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
 import { getSampleQuestionsMock } from '../../helpers/samples';
 
@@ -25,6 +25,7 @@ vi.mock('@/service/api/chat', () => ({
 }));
 
 import ChatPage from '@/views/chat/ChatPage.vue';
+import EffortPicker from '@/views/chat/components/EffortPicker.vue';
 
 const CODEX_ONLY: ProgramState[] = [
   { program: 'claude-code', state: 'not logged in' },
@@ -155,7 +156,10 @@ describe('asking a question', () => {
     await box.trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    expect(askMock).toHaveBeenCalledWith({ question: 'Fed?', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'Fed?', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
     expect(page.find('[data-test="not-sent"]').exists()).toBe(false);
   });
 
@@ -192,7 +196,10 @@ describe('asking a question', () => {
     const page = await open(CODEX_ONLY);
 
     await typeAndSend(page, 'Fed?');
-    expect(askMock).toHaveBeenCalledWith({ question: 'Fed?', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'Fed?', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
 
     answer.send(CONTEXT_EVENT);
     await flushPromises();
@@ -216,6 +223,11 @@ describe('asking a question', () => {
     answer.send(textEvent('cut rates [1].'));
     await flushPromises();
     expect(page.find('[data-test="answer-text"]').text()).toBe('The Fed cut rates [1].');
+    // Folded under its count, as the list of all the sources is.
+    expect(page.find('[data-test="cited-sources-toggle"]').text()).toBe('The answer cites one source');
+    expect(page.find('[data-test="cited-sources"]').exists()).toBe(false);
+    await page.find('[data-test="cited-sources-toggle"]').trigger('click');
+    await flushPromises();
     expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
       'source-1'
     ]);
@@ -250,12 +262,15 @@ describe('asking a question', () => {
     answer.end();
     await flushPromises();
     await vi.waitFor(() =>
-      expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
-        'source-3',
-        'source-7',
-        'source-41'
-      ])
+      expect(page.find('[data-test="cited-sources-toggle"]').text()).toBe('The answer cites 3 sources')
     );
+    await page.find('[data-test="cited-sources-toggle"]').trigger('click');
+    await flushPromises();
+    expect(page.findAll('[data-test="cited-sources"] li').map(item => item.attributes('data-test'))).toEqual([
+      'source-3',
+      'source-7',
+      'source-41'
+    ]);
 
     await page.find('[data-test="all-sources-toggle"]').trigger('click');
     await flushPromises();
@@ -274,7 +289,7 @@ describe('asking a question', () => {
     await flushPromises();
 
     await vi.waitFor(() => expect(page.find('[data-test="none-cited"]').text()).toBe('答案沒有引用任何出處。'));
-    expect(page.find('[data-test="cited-sources"]').exists()).toBe(false);
+    expect(page.find('[data-test="cited-sources-toggle"]').exists()).toBe(false);
     expect(page.find('[data-test="all-sources-toggle"]').text()).toBe('找到 2 個出處');
   });
 
@@ -316,7 +331,10 @@ describe('asking a question', () => {
     const second = controlledAnswer();
     askMock.mockImplementationOnce(second.events);
     await typeAndSend(page, 'second');
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('stops an answer being written and is ready for another question', async () => {
@@ -337,7 +355,10 @@ describe('asking a question', () => {
     const second = controlledAnswer();
     askMock.mockImplementationOnce(second.events);
     await typeAndSend(page, 'second');
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('keeps the text so far and shows the error under it when the answer breaks off', async () => {
@@ -437,7 +458,10 @@ describe('asking a question', () => {
     second.end();
     await flushPromises();
 
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
     expect(page.findAll('[data-test="answer-text"]').map(text => text.text())).toEqual(['one', 'two']);
   });
 });
@@ -462,12 +486,112 @@ describe('which program answers', () => {
     await flushPromises();
     await typeAndSend(page, 'q');
 
-    expect(askMock).toHaveBeenCalledWith({ question: 'q', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'q', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('corrects an address naming a program that is not logged in', async () => {
     await open(CODEX_ONLY, '/?lang=en&program=claude-code');
     expect(router.currentRoute.value.query.program).toBe('codex');
+  });
+});
+
+describe('the tokens a question used', () => {
+  async function answered(lang: string, ...events: ChatEvent[]): Promise<VueWrapper> {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY, `/?lang=${lang}`);
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    for (const event of events) answer.send(event);
+    answer.end();
+    await flushPromises();
+    return page;
+  }
+
+  it('says them under the answer once it has ended, after the sources and the date', async () => {
+    const page = await answered('en', textEvent('Rates rose [1].'), completedEvent());
+
+    await vi.waitFor(() =>
+      expect(page.find('[data-test="usage"]').text()).toBe('This question used 95,050 tokens (93,000 in, 2,050 out)')
+    );
+    expect(page.find('[data-test="usage-incomplete"]').exists()).toBe(false);
+    const block = page.find('[data-test="sources"]').html();
+    expect(block.indexOf('data-test="latest-date"')).toBeLessThan(block.indexOf('data-test="usage"'));
+  });
+
+  it('says them in Traditional Chinese, and that a run reporting none is not counted', async () => {
+    const page = await answered('zh-TW', textEvent('利率上升 [1]。'), completedEvent({ unreported_runs: 1 }));
+
+    await vi.waitFor(() =>
+      expect(page.find('[data-test="usage"]').text()).toBe('這一題用了 95,050 個 token（輸入 93,000、輸出 2,050）')
+    );
+    expect(page.find('[data-test="usage-incomplete"]').text()).toBe('有 1 次執行沒有回報用量，數字不含那幾次。');
+  });
+
+  it('says nothing about tokens for an answer that broke off', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    answer.send(textEvent('Rates'));
+    answer.fail(new Error('broke off'));
+    await flushPromises();
+
+    expect(page.find('[data-test="usage"]').exists()).toBe(false);
+  });
+});
+
+describe('how hard the program thinks', () => {
+  function effortSelect(page: VueWrapper) {
+    return page.findComponent(EffortPicker).findComponent({ name: 'Select' });
+  }
+
+  function labels(page: VueWrapper): string[] {
+    return (effortSelect(page).props('items') as { label: string }[]).map(item => item.label);
+  }
+
+  it('offers Fast, Default and Precise under the question box, with Default chosen and in the address', async () => {
+    const page = await open(CODEX_ONLY);
+
+    expect(page.find('[data-slot="footer"] [data-test="effort"]').exists()).toBe(true);
+    expect(labels(page)).toEqual(['Fast', 'Default', 'Precise']);
+    expect(effortSelect(page).props('modelValue')).toBe('medium');
+    expect(router.currentRoute.value.query.effort).toBe('medium');
+  });
+
+  it('names the levels in Traditional Chinese on the Chinese page', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
+    expect(labels(page)).toEqual(['快速', '預設', '精準']);
+  });
+
+  it('sends a question at the level chosen and keeps the choice in the address', async () => {
+    askMock.mockImplementation(controlledAnswer().events);
+    const page = await open(CODEX_ONLY);
+
+    effortSelect(page).vm.$emit('update:modelValue', 'low');
+    await flushPromises();
+    await typeAndSend(page, 'q');
+
+    expect(router.currentRoute.value.query.effort).toBe('low');
+    expect(askMock).toHaveBeenCalledWith({ question: 'q', program: 'codex', effort: 'low' }, expect.any(AbortSignal));
+  });
+
+  it('opens at the level the address names', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=en&effort=high');
+
+    expect(effortSelect(page).props('modelValue')).toBe('high');
+  });
+
+  it('chooses Default for a level the page does not offer and corrects the address', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=en&effort=max');
+
+    expect(effortSelect(page).props('modelValue')).toBe('medium');
+    expect(router.currentRoute.value.query.effort).toBe('medium');
   });
 });
 

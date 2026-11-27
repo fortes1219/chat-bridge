@@ -37,6 +37,7 @@ class _Program:
     def __init__(self, reply: Any) -> None:
         self.reply = reply
         self.split_inputs: list[str] = []
+        self.efforts: list[object] = []
 
     async def reply_in_shape(
         self,
@@ -45,9 +46,12 @@ class _Program:
         schema: dict[str, Any],
         *,
         on_start: Callable[[list[str]], None],
+        effort: object = None,
+        on_usage: object = None,
     ) -> dict[str, Any]:
         on_start(["program", "split"])
         self.split_inputs.append(input_text)
+        self.efforts.append(effort)
         if isinstance(self.reply, BaseException):
             raise self.reply
         if callable(self.reply):
@@ -334,7 +338,12 @@ def answering(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return LoginStatus(Login.LOGGED_IN, "claude.ai")
 
     async def answer(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         seen["system_prompt"] = system_prompt
         seen["input_text"] = input_text
@@ -360,7 +369,11 @@ def _ask_with_split(
     monkeypatch: pytest.MonkeyPatch, outcome: split.SplitOutcome
 ) -> list[ChatDelta]:
     async def split_question(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> split.SplitOutcome:
         return outcome
 
@@ -381,7 +394,7 @@ def test_a_failed_split_says_so_and_answers_from_the_questions_own_sections(
         error="Claude Code ended without a reply in the asked-for shape"
     )
 
-    context, piece = _ask_with_split(monkeypatch, failed)
+    context, piece, _ = _ask_with_split(monkeypatch, failed)
 
     assert context.context is not None
     assert context.context.split_failed is True
@@ -397,7 +410,7 @@ def test_a_split_that_worked_is_not_reported_as_failed_and_its_sections_reach_th
 ) -> None:
     worked = split.SplitOutcome(parts=["利率政策", "0050"])
 
-    context, _ = _ask_with_split(monkeypatch, worked)
+    context, _, _ = _ask_with_split(monkeypatch, worked)
 
     assert context.context is not None
     assert context.context.split_failed is False
@@ -429,7 +442,7 @@ def test_a_part_is_only_ever_search_text(
 def test_the_date_the_data_reaches_is_the_knowledge_bases_not_the_sources(
     monkeypatch: pytest.MonkeyPatch, answering: dict[str, Any]
 ) -> None:
-    context, _ = _ask_with_split(monkeypatch, split.SplitOutcome())
+    context, _, _ = _ask_with_split(monkeypatch, split.SplitOutcome())
 
     assert context.context is not None
     assert context.context.data_latest_date == LATEST_EVENT_DATE

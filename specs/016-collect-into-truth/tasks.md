@@ -40,5 +40,8 @@ One fix commit the maintainer makes, after the checks.
 - [x] T019 [P] Tests: SC-001 to SC-005 with stand-ins (stored pages, stand-in runs that wait, a stop while two runs are under way).
 - [x] T020 `README.md`, `README_tzh.md`, `docs/truth_format.md`: the three commands in order, where events are stored and that they are removed once made, the model runs and how many at once, the retries' cost (FR-007).
 - [x] T021 Checks (ruff, ruff format, mypy, fast suite), `git ls-files --eol`; hand the work to the reviewer.
-- [ ] T022 Ask the maintainer for consent, then the smallest real run (SC-006) in a separate local data folder and into a copy of `data/truth`: `collect <three article addresses>`, then `truth --limit 3`; keep the terminal output and the seconds of each command; check `local_data/collected/` is empty; record it in research.md and the README.
-- [ ] T023 The file list and one commit message to the maintainer, with what was removed and what is not shown yet.
+- [x] T022 Ask the maintainer for consent, then the smallest real run (SC-006) in a separate local data folder and into a copy of `data/truth`: `collect <three article addresses>`, then `truth --limit 3`; keep the terminal output and the seconds of each command; check `local_data/collected/` is empty; record it in research.md (2026-11-27; the README already says what the run showed).
+- [x] T024 `chat_bridge/truth/record.py`: an item ending with its full stop inside a closing quotation mark is refused with that reason (research decision 23); tests.
+- [x] T025 `chat_bridge/truth/writing_prompt.md`, `record.py`: `event_time` as the format's table of keys says, with each market's close given from `data/market_series.json` (decision 24); a test.
+- [x] T026 research.md: a keyword group holding two things is left to the reviewer (decision 25).
+- [x] T023 Checks (ruff, ruff format, mypy, fast suite), `git ls-files --eol`; the file list and one commit message to the maintainer.

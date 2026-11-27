@@ -149,6 +149,16 @@ def _unconverted(made: dict[str, Any]) -> None:
     made["sections"][1]["items"][0]["text"] = "成交值新台幣1兆2129.57億元。"
 
 
+def _stop_inside_quote(made: dict[str, Any]) -> None:
+    made["sections"][0]["items"][0]["text"] = (
+        'The Fed: "The Federal Reserve kept its benchmark rate at 3.75% to 4% on Wednesday."'
+    )
+
+
+def _stop_inside_chinese_quote(made: dict[str, Any]) -> None:
+    made["sections"][2]["items"][0]["text"] = "中央社：「台積電上漲3%。」"
+
+
 @pytest.mark.parametrize(
     ("change", "reason"),
     [
@@ -160,6 +170,14 @@ def _unconverted(made: dict[str, Any]) -> None:
         (
             _unconverted,
             "影響股市證據 item 1 still writes a quantity with 萬, 億, 兆 or 碼",
+        ),
+        (
+            _stop_inside_quote,
+            "事件發生 item 1 ends with its full stop inside the quotation marks",
+        ),
+        (
+            _stop_inside_chinese_quote,
+            "相關標的 item 1 ends with its full stop inside the quotation marks",
         ),
     ],
 )
@@ -186,6 +204,31 @@ def test_a_name_such_as_兆豐金_is_not_a_quantity(tmp_path: Path) -> None:
         )
 
     assert _make(tmp_path, Program([record(name)])).kind == "written"
+
+
+def test_a_quotation_with_its_full_stop_outside_is_written(tmp_path: Path) -> None:
+    def quoted(made: dict[str, Any]) -> None:
+        made["sections"][0]["items"][0]["text"] = (
+            'The Fed: "The Federal Reserve kept its benchmark rate at 3.75% to 4% on '
+            'Wednesday".'
+        )
+        made["sections"][2]["items"][0]["text"] = "中央社：「台積電上漲3%」。"
+
+    outcome = _make(tmp_path, Program([record(quoted)]))
+
+    assert outcome.path is not None
+    text = outcome.path.read_text(encoding="utf-8")
+    assert 'on Wednesday". [s1]\n' in text and "「台積電上漲3%」。[s2]\n" in text
+
+
+def test_the_agent_is_given_each_markets_close_for_event_time(tmp_path: Path) -> None:
+    program = Program([record()])
+
+    _make(tmp_path, program)
+
+    system_prompt = program.asked[0][0]
+    assert "<markets>\nUS 美股: closes 16:00 America/New_York\n" in system_prompt
+    assert "TW 台股: closes 13:30 Asia/Taipei\n</markets>" in system_prompt
 
 
 def test_a_record_refused_once_is_written_when_asked_again(tmp_path: Path) -> None:

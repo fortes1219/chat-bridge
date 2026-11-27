@@ -1,7 +1,7 @@
 import { computed, markRaw, onScopeDispose, reactive, ref, type ComputedRef, type Ref } from 'vue';
 import { useAskMutation } from '@/queries/use-ask-mutation';
 import { isAppError, isCancellation, type AppError } from '@/service/error';
-import type { ChatContext, ChatEvent, ProposalOutcome } from '@/service/api/chat';
+import type { ChatContext, ChatEvent, Effort, ProposalOutcome, QuestionUsage } from '@/service/api/chat';
 import type { Proposal } from '@/service/api/strategy';
 import type { Program } from '@/service/api/programs';
 
@@ -13,6 +13,8 @@ export interface Exchange {
   context: ChatContext | null;
   /** What came of a revision question's proposal; null until its event arrives, or for any other question. */
   proposal: ProposalOutcome | null;
+  /** The tokens the question used; null until the answer has ended, and for one that did not. */
+  usage: QuestionUsage | null;
   error: AppError | null;
   stopped: boolean;
 }
@@ -39,6 +41,9 @@ const APPLY_EVENT: { [T in ChatEvent['type']]: (exchange: Exchange, event: Event
   },
   'response.proposal': (exchange, event) => {
     exchange.proposal = event.proposal;
+  },
+  'response.completed': (exchange, event) => {
+    exchange.usage = event.usage;
   }
 };
 
@@ -56,10 +61,15 @@ export interface UseAskOptions {
 }
 
 /**
- * Asking and stopping. Each question is one exchange kept for the visit; the answer grows as its
- * pieces arrive. Leaving the page stops an answer that is still being written.
+ * Asking and stopping. Each question is one exchange kept for the visit, sent with the program and
+ * the level chosen when it is sent; the answer grows as its pieces arrive. Leaving the page stops an
+ * answer that is still being written.
  */
-export function useAsk(program: Ref<Program | null>, { onLoggedOut, onProposal }: UseAskOptions): UseAsk {
+export function useAsk(
+  program: Ref<Program | null>,
+  effort: Ref<Effort>,
+  { onLoggedOut, onProposal }: UseAskOptions
+): UseAsk {
   const mutation = useAskMutation();
   const exchanges = ref<Exchange[]>([]);
   let controller: AbortController | null = null;
@@ -78,6 +88,7 @@ export function useAsk(program: Ref<Program | null>, { onLoggedOut, onProposal }
       answer: '',
       context: null,
       proposal: null,
+      usage: null,
       error: null,
       stopped: false
     });
@@ -85,7 +96,7 @@ export function useAsk(program: Ref<Program | null>, { onLoggedOut, onProposal }
     controller = new AbortController();
     try {
       await mutation.mutateAsync({
-        input: { question, program: program.value ?? undefined },
+        input: { question, program: program.value ?? undefined, effort: effort.value },
         signal: controller.signal,
         onEvent: event => {
           applyEvent(exchange, event);

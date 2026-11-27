@@ -49,6 +49,8 @@ def _logins(
             input_text: str,
             *,
             on_start: Callable[[list[str]], None],
+            effort: object = None,
+            on_usage: object = None,
         ) -> AsyncIterator[str]:
             on_start([name])
             yield name
@@ -203,7 +205,12 @@ def test_an_unexpected_error_still_leaves_the_question_on_record(
     written = _logins(monkeypatch, Login.LOGGED_IN, Login.LOGGED_IN)
 
     async def cannot_start(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         raise OSError("the program was moved")
         yield ""  # pragma: no cover - makes this an async generator

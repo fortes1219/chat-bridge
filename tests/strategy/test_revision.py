@@ -12,7 +12,7 @@ import pytest
 
 from chat_bridge.chat import claude_code, service
 from chat_bridge.chat.claude_code import Login, LoginStatus
-from chat_bridge.chat.programs import Program
+from chat_bridge.chat.programs import Effort, Program
 from chat_bridge.chat.schemas import ChatDelta, Source
 from chat_bridge.chat.split import SplitOutcome
 from chat_bridge.strategy import store
@@ -78,6 +78,10 @@ class Run:
     def __init__(self) -> None:
         self.inputs: list[str] = []
         self.schemas: list[dict[str, Any]] = []
+        # The level each shaped run was started at.
+        self.efforts: list[object] = []
+        # The level the split was asked at.
+        self.split_effort: object = None
         self.records: list[dict[str, Any]] = []
         self.saved: list[CheckedProposal] = []
         self.streamed = False
@@ -93,9 +97,14 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
     seen = Run()
 
     async def revise(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> SplitOutcome:
         seen.split_holdings = holdings
+        seen.split_effort = effort
         return SplitOutcome(revise=True)
 
     async def logged_in() -> LoginStatus:
@@ -125,7 +134,12 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
         )
 
     async def streamed(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         seen.streamed = True
         seen.streamed_input = input_text
@@ -147,10 +161,13 @@ def _reply_with(seen: Run, monkeypatch: pytest.MonkeyPatch, reply: Any) -> None:
         schema: dict[str, Any],
         *,
         on_start: Callable[[list[str]], None],
+        effort: object = None,
+        on_usage: object = None,
     ) -> dict[str, Any]:
         on_start(COMMAND)
         seen.inputs.append(input_text)
         seen.schemas.append(schema)
+        seen.efforts.append(effort)
         return reply  # type: ignore[no-any-return]
 
     monkeypatch.setattr(claude_code, "reply_in_shape", shaped)
@@ -174,12 +191,27 @@ def test_the_split_is_given_the_holdings_but_cash_before_the_search(
     assert run.split_holdings == ["2330.TW: 2330.TW", "NVDA: NVDA"]
 
 
+def test_a_revision_question_is_split_and_answered_at_its_level(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": None})
+
+    async def collect() -> None:
+        async for _ in service.answer_stream(QUESTION, [SECTION], effort=Effort.HIGH):
+            pass
+
+    asyncio.run(collect())
+
+    assert run.split_effort is Effort.HIGH
+    assert run.efforts == [Effort.HIGH]
+
+
 def test_a_revision_answer_comes_whole_then_the_checked_proposal(
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": GOOD_PROPOSAL})
 
-    context, text, proposal = _read()
+    context, text, proposal, completed = _read()
 
     assert context.context is not None
     assert context.context.proposal_expected
@@ -192,6 +224,11 @@ def test_a_revision_answer_comes_whole_then_the_checked_proposal(
     [saved] = run.saved
     assert saved.targets == {"2330.TW": 45, "NVDA": 25, "CASH": 30}
     assert not run.streamed
+    # The stand-ins report no tokens: the split's run and the answer's both count as unreported.
+    assert completed.type == "response.completed"
+    assert completed.usage is not None
+    assert completed.usage.unreported_runs == 2
+    assert completed.usage.total_tokens == 0
 
 
 def test_the_program_gets_the_profile_as_data_between_the_sources_and_the_question(
@@ -302,7 +339,7 @@ def test_a_proposal_that_fails_a_check_is_refused_with_its_reason_and_not_kept(
     }
     _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": not_100})
 
-    _, text, proposal = _read()
+    _, text, proposal, _ = _read()
 
     assert text.delta == ANSWER
     assert proposal.proposal is not None
@@ -323,7 +360,7 @@ def test_a_proposal_not_in_its_shape_still_shows_the_answer_and_says_why_it_was_
     }
     _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": unsourced})
 
-    _, text, proposal = _read()
+    _, text, proposal, _ = _read()
 
     assert text.delta == ANSWER
     assert proposal.proposal is not None
@@ -341,7 +378,7 @@ def test_no_proposal_is_said_as_neither_a_proposal_nor_a_refusal(
 ) -> None:
     _reply_with(run, monkeypatch, {"answer": "資料不足以修正。", "proposal": None})
 
-    _, _, proposal = _read()
+    _, _, proposal, _ = _read()
 
     assert proposal.proposal is not None
     assert proposal.proposal.proposal is None
@@ -362,7 +399,7 @@ def test_the_current_targets_handed_back_are_said_as_no_proposal_and_not_kept(
     }
     _reply_with(run, monkeypatch, {"answer": "不需要調整。[1]", "proposal": same})
 
-    _, text, proposal = _read()
+    _, text, proposal, _ = _read()
 
     assert text.delta == "不需要調整。[1]"
     assert proposal.proposal is not None
@@ -394,7 +431,11 @@ def test_a_question_that_asks_for_no_revision_streams_with_the_holdings_and_no_p
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def no_revision(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> SplitOutcome:
         return SplitOutcome()
 
@@ -406,6 +447,7 @@ def test_a_question_that_asks_for_no_revision_streams_with_the_holdings_and_no_p
     assert [delta.type for delta in deltas] == [
         "response.context",
         "response.output_text.delta",
+        "response.completed",
     ]
     assert deltas[0].context is not None
     assert not deltas[0].context.proposal_expected
@@ -434,4 +476,7 @@ def test_without_a_profile_a_revision_question_is_answered_as_any_other(
     assert deltas[0].context is not None
     assert not deltas[0].context.proposal_expected
     assert run.streamed
-    assert [delta.type for delta in deltas][-1] == "response.output_text.delta"
+    assert [delta.type for delta in deltas][-2:] == [
+        "response.output_text.delta",
+        "response.completed",
+    ]

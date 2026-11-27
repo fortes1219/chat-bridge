@@ -37,7 +37,7 @@ describe('StrategySchema', () => {
 
 describe('the proposal event of the chat stream', () => {
   it('accepts a kept proposal, a refusal, and neither', () => {
-    const event = { type: 'response.proposal', delta: null, context: null };
+    const event = { type: 'response.proposal', delta: null, context: null, usage: null };
     expect(ChatEventSchema.parse({ ...event, proposal: { proposal: PROPOSAL, refused: null } }).type).toBe(
       'response.proposal'
     );
@@ -53,6 +53,7 @@ describe('the proposal event of the chat stream', () => {
         type: 'response.proposal',
         delta: null,
         context: null,
+        usage: null,
         proposal: { proposal: null, refused: { code: 'too_risky', message: 'm' } }
       })
     ).toThrow();

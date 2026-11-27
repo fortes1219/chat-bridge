@@ -30,14 +30,22 @@ const zhTW: typeof en = {
   chat: {
     placeholder: '問問知識庫裡的文件……',
     answerWith: '回答的程式',
+    effortLabel: '回答的強度',
+    effort: {
+      fast: '快速',
+      default: '預設',
+      precise: '精準'
+    },
     samplesTitle: '可以從這幾題開始',
     sources: '出處',
     noDate: '無日期',
     latestDate: '資料最新到 {date}。',
     noLatestDate: '資料都沒有日期。',
     splitFailed: '這個問題沒能拆成幾個部分，所以整句一起查。',
+    usage: '這一題用了 {total} 個 token（輸入 {input}、輸出 {output}）',
+    usageIncomplete: '有 {count} 次執行沒有回報用量，數字不含那幾次。',
     allSources: '找到 {count} 個出處',
-    citedSources: '答案引用的出處',
+    citedSources: '答案引用了 {count} 個出處',
     noneCited: '答案沒有引用任何出處。',
     stopped: '已停止。',
     searching: '正在查新聞資料……',

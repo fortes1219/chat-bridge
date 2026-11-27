@@ -104,7 +104,9 @@ async def chat_stream(
 async def _events(
     request: ChatRequest, sections: list[service.FoundSection], shutdown: anyio.Event
 ) -> AsyncIterator[JSONServerSentEvent]:
-    answer = service.answer_stream(request.question, sections, request.program)
+    answer = service.answer_stream(
+        request.question, sections, request.program, request.effort
+    )
     try:
         while True:
             # The wait for each piece is cancelled when the service begins to shut down. It is

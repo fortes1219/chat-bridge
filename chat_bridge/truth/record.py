@@ -5,8 +5,9 @@ built from the rules: the targets, markets, exposure words, significance values,
 source ids are enums. Each item carries the id of its source and the passage of that source it
 rests on. The program checks the record again, and checks what a schema cannot: each passage is
 in its page (white space aside), each item is in its source's language, no quantity is left
-written with 萬, 億, 兆 or 碼 after a numeral, each conversion's original is in its page and its
-result in the file, the date is in the asked window.
+written with 萬, 億, 兆 or 碼 after a numeral, no item ends with its full stop inside a closing
+quotation mark, each conversion's original is in its page and its result in the file, the date is
+in the asked window.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from chat_bridge.collect.markets import market_series
 from chat_bridge.collect.news_files import NewsFileError, event_moment
 from chat_bridge.collect.pages import Page
 from chat_bridge.truth.rules import Rules
@@ -38,6 +40,9 @@ PROMPT_FILE = Path(__file__).with_name("writing_prompt.md")
 # 萬, 億, 兆 or 碼 right after a numeral (format section 3); a name such as 兆豐金 or a phrase
 # such as 萬一 has no numeral before it.
 _UNCONVERTED = re.compile(r"[0-9０-９〇零一二兩三四五六七八九十百千半]\s?[萬億兆碼]")
+# Format section 4 b puts the full stop outside the quotation marks; none of the 71 sample files
+# ends an item with ." or 。」, and 280 end with ". or 」。.
+_STOP_INSIDE_QUOTE = re.compile(r"[.。][\"”」』]\s*$")
 _HAN = re.compile(r"[㐀-䶿一-鿿]")
 _CITATION = re.compile(r"\[s\d+\]")
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -181,12 +186,23 @@ def _prompt() -> str:
     return PROMPT_FILE.read_text(encoding="utf-8")
 
 
+def _market_closes() -> str:
+    """Each market's close, from the markets file: what `event_time` is in a file about a market's
+    trading day (the format's table of keys)."""
+    return "\n".join(
+        f"{market.code} {market.label}: closes {market.closes:%H:%M} {market.zone.key}"
+        for market in market_series().markets
+    )
+
+
 def system_prompt(rules: Rules, example: str | None) -> str:
-    """The agent's instructions, the two docs as its rules, and one file as an example."""
+    """The agent's instructions, the two docs as its rules, the markets' closes, and one file as an
+    example."""
     parts = [
         _prompt(),
         f"<format>\n{rules.format_text}\n</format>",
         f"<vocabulary>\n{rules.vocabulary_text}\n</vocabulary>",
+        f"<markets>\n{_market_closes()}\n</markets>",
     ]
     if example is not None:
         parts.append(f"<example>\n{example}\n</example>")
@@ -337,6 +353,11 @@ class _Checker:
             self.no(f"{label} is not in the language of {item.source} ({lang})")
         if _UNCONVERTED.search(item.text):
             self.no(f"{label} still writes a quantity with 萬, 億, 兆 or 碼")
+        if _STOP_INSIDE_QUOTE.search(item.text):
+            self.no(
+                f"{label} ends with its full stop inside the quotation marks; the format "
+                "puts it outside"
+            )
 
     def sections(self) -> list[tuple[str, _Item]]:
         headings = [section.heading for section in self.reply.sections]

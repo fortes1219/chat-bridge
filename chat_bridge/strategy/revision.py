@@ -18,7 +18,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from chat_bridge.chat.programs import AnsweringProgram, Program, ProgramError
+from chat_bridge.chat.programs import (
+    AnsweringProgram,
+    Effort,
+    Program,
+    ProgramError,
+    UsageCallback,
+)
 from chat_bridge.chat.sources import Source
 from chat_bridge.strategy import store
 from chat_bridge.strategy.compute import RATE_SYMBOL, price_time, valuation
@@ -138,13 +144,20 @@ async def revision_reply(
     input_text: str,
     *,
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> RevisionReply:
-    """Run the program once for the answer and the proposal. Raises ProgramError when the run
-    fails, takes too long, or its reply is not that shape."""
+    """Run the program once, at the question's level, for the answer and the proposal. Raises
+    ProgramError when the run fails, takes too long, or its reply is not that shape."""
     try:
         reply: dict[str, Any] = await asyncio.wait_for(
             program.reply_in_shape(
-                prompt, input_text, PROPOSAL_SCHEMA, on_start=on_start
+                prompt,
+                input_text,
+                PROPOSAL_SCHEMA,
+                on_start=on_start,
+                effort=effort,
+                on_usage=on_usage,
             ),
             ANSWER_TIMEOUT_SECONDS,
         )

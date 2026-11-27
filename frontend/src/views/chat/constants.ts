@@ -1,4 +1,5 @@
 import type { Program, ProgramState } from '@/service/api/programs';
+import type { Effort } from '@/service/api/chat';
 import type { MessageSchema } from '@/i18n';
 
 /** Product names, the same in every language. */
@@ -28,6 +29,19 @@ export const INSTALL_COMMANDS: Record<Program, readonly { system?: string; comma
 
 /** The service's order when no program is named: the first one logged in answers. */
 export const PROGRAM_ORDER: readonly Program[] = ['claude-code', 'codex'];
+
+/** The levels the page offers, from the fastest. Higher levels the programs have are not offered. */
+export const EFFORT_ORDER: readonly Effort[] = ['low', 'medium', 'high'];
+
+/** The level chosen until the person picks another: the service's own when none is sent. */
+export const DEFAULT_EFFORT: Effort = 'medium';
+
+/** The message key of each level's label. */
+export const EFFORT_KEYS: Record<Effort, keyof MessageSchema['chat']['effort']> = {
+  low: 'fast',
+  medium: 'default',
+  high: 'precise'
+};
 
 /** The message key of each login state, for its label and for its next step. */
 export const STATE_KEYS: Record<ProgramState['state'], keyof MessageSchema['loginState']> = {

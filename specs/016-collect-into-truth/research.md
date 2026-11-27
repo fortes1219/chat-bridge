@@ -321,6 +321,38 @@ assumed one run searched, read and wrote with the events kept in memory.
 - **Rationale**: Without it a second `collect` before `truth` finds and reads the same events again;
   the folder of an event is named from its pages, so the same pages give the same folder.
 
+## Decisions after the smallest real run of the second version
+
+The reviewer compared the two files of that run (below) with the 71 and found three differences.
+
+### 23. The full stop goes outside the quotation marks, checked
+
+- **Decision**: An item that ends with a full stop inside a closing quotation mark (`."`, `。」`) is
+  refused with that reason and asked once more, as with the other checks. The prompt does not
+  restate the rule; the format it is given says it (section 4 b).
+- **Rationale**: In the run 15 of the 20 English quotations ended `."`. None of the 71 sample files
+  ends an item so, and 280 items end with the stop outside (223 `".`, 57 `」。`). A program tells
+  this without a model run.
+
+### 24. `event_time` as the format says, with the markets' closes given
+
+- **Decision**: The prompt says what the format's table of keys says: the time a source writes, or,
+  in a file about a market's trading day, that market's close. The closes are given between
+  `<markets>` tags from `data/market_series.json` (US 16:00 America/New_York, TW 13:30
+  Asia/Taipei), so the agent does not write a close from what it knows.
+- **Rationale**: The prompt said "only when a source writes the time", the opposite of the format
+  for a market's day, and the run's file of the TAIEX's day had no `event_time`. Its market section
+  came out the same, aligned by date (format section 7).
+
+### 25. A keyword group that holds two things is not checked by the program
+
+- **Decision**: No program check. The reviewer reads the keyword groups of each file before the
+  maintainer commits it.
+- **Rationale**: The format says each group is one thing's names. In the run 1 group of 18 held a
+  company and its analyst (`[兆豐國際投顧, Mega International Investment Service, 黃國偉, Alex Huang]`).
+  Telling a person's name from a company's needs a model run or a list of names, and the project
+  has no such list.
+
 ## Not verified
 
 - langextract issue 289 and the AWS post were reported by lookups and not reopened here.
@@ -330,6 +362,29 @@ assumed one run searched, read and wrote with the events kept in memory.
   this feature's.
 
 ## Runs
+
+### The smallest real run of the second version (2026-11-27, with the maintainer's consent)
+
+In a separate local data folder and into a copy of `data/truth` (71 files), with the maintainer's
+logged-in Claude Code:
+
+- `uv run chat-bridge collect https://www.cna.com.tw/news/afe/202611250161.aspx https://focustaiwan.tw/business/202611250017 https://www.federalreserve.gov/newsevents/pressreleases/monetary20261118a.htm`:
+  from 12:01:12, 41 seconds, exit 0. The three pages were read, and one sorting run made two
+  events: the TAIEX's fall of 2026-11-25 from the two CNA pages (Chinese and English), and the
+  Fed's release of the October FOMC minutes on 2026-11-18 from one page. Both were stored.
+- `uv run chat-bridge truth --limit 3 --into <the copy>`: from 12:02:01, 208 seconds, exit 0. The
+  two events ran at once (different dates). The 2026-11-25 record was refused once (影響股市證據
+  item 6 was not in s2's language: an English item with a Chinese name) and written when asked
+  again; one conversion, 新台幣1兆1881.99億元 to NT$1.188199 trillion. Files: 2 written, 0 already
+  there, 0 not written. Four runs of Claude Code in all: sorting, writing twice, writing again.
+- `local_data/collected/` was gone after the run; the repository did not change.
+- The reviewer checked each item of both files (30 and 4) against the stored text: each holds,
+  and each quoted phrase is the source's. Beside the 71: the same keys in the same order, sources,
+  sections, notes of empty sections, market section, closing line and the space before `[sN]`.
+  The three differences are decisions 23 to 25.
+- The 2026-11-25 file aligns its market section by date; its US next-day column is empty
+  (Thanksgiving on 2026-11-26; 2026-11-27 had not closed).
+- Not run: the search for events on the channels in the second version; Codex.
 
 ### The smallest real run (2026-11-26, with the maintainer's consent)
 

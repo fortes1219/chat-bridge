@@ -13,10 +13,11 @@ Write:
 
 - `same_as`: when the event is one of the files listed between <events_already_collected> tags,
   that file's name, and the rest of the record may be left empty; otherwise null.
-- `title`, `event_date`, `event_time` (only when a source writes the time; ISO 8601 with its
-  offset, on the day of `event_date`; otherwise null), `targets`, `markets`, `tickers`,
-  `exposure`, `significance` and its reason in `significance_reason`, `keyword_groups`, as the
-  format says.
+- `title`, `event_date`, `event_time` (as the format's table of keys says: the time a source
+  writes, or in a file about a market's trading day that market's close, given between the
+  <markets> tags; ISO 8601 with its offset, on the day of `event_date`; otherwise null),
+  `targets`, `markets`, `tickers`, `exposure`, `significance` and its reason in
+  `significance_reason`, `keyword_groups`, as the format says.
 - `slug`: a short English name for the file, lowercase words joined by hyphens.
 - `sources`: for each source an item cites, its `publisher` (a site that carries a wire's story is
   written 「site（wire）」) and its `lang` (`en`, `zh-TW`, …).

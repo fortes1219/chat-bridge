@@ -83,6 +83,9 @@ investment advice.
    subquestions. It removes duplicates and adds market tables from the matched files. If query
    splitting fails or times out after 120 seconds, chat uses the results from the original query.
 4. **Answer from the results.** The answering program gets retrieved passages and their metadata.
+   A table or quoted note that repeats one an earlier passage already holds is sent once; the
+   later copy becomes a line that points to that passage. The page's sources and the records are
+   unchanged.
    The app attaches the source list, the knowledge base's latest event date and the investment
    disclaimer. If retrieval finds nothing, the app reports the gap without calling the answering
    program.
@@ -105,6 +108,31 @@ Try the endpoints in the [local API docs](http://127.0.0.1:8000/docs).
 Post JSON such as `{"question": "Did the Fed raise rates?"}`. Optionally set `program` to
 `claude-code` or `codex`. By default, the app uses Claude Code when signed in, then Codex.
 When you select a backend explicitly, it must be signed in.
+
+`effort` sets how hard the backend thinks: `low`, `medium` (the default) or `high`, shown on the
+chat page as Fast, Default and Precise under the question box. It applies to every model run of
+the question. Claude Code starts with `--effort`, Codex with `model_reasoning_effort`; higher
+levels are not offered. `CLAUDE_CODE_EFFORT_LEVEL` is removed from Claude Code's environment so
+it cannot override the choice. Claude Code runs a level the model lacks at the highest level it
+has below it. A model without effort levels does not support the option.
+One allocation request per level and backend, measured on 2026-11-27 (seconds until the answer
+arrived):
+
+| Backend | Fast | Default |
+| --- | --- | --- |
+| Claude Code 2.1.328 | 85.6 | 107.6 |
+| Codex 0.171.0 | 40.4 | 42.6 |
+
+Splitting the question took 7 to 8 seconds at both levels. Each figure is a single run.
+[Measurements](specs/018-answer-effort/research.md)
+
+When an answer ends, the last event, `response.completed`, carries `usage`: the input, cached
+input, output and total tokens of every model run of the question added up, and
+`unreported_runs`, the runs that reported none and are left out. Claude Code's counts come from
+its result's `modelUsage`, where the input is `inputTokens` plus the cache reads and writes;
+Codex's come from its `turn.completed` event, whose input already holds the cache. The chat page
+shows the total under the answer. A stopped or failed answer has no total; the question's record
+keeps each run's counts. [How the counts are read](specs/019-token-usage/research.md)
 
 The first payload, `response.context`, carries the sources, latest indexed event date, backend
 name, `split_failed` flag and bilingual disclaimer. Answer text arrives in

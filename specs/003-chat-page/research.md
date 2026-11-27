@@ -228,6 +228,28 @@ so by name when the installed Node.js is older (decision 3).
 - **Rationale**: spec User Story 0. Asking again only when the user presses the button is what
   the maintainer asked for.
 
+### 4a. "Check again" finds a program installed after the service started
+
+- **Decision**: Each program is looked for on the service's PATH and then in its official
+  installer's folder: Claude Code in `~/.local/bin` (`claude` on macOS and Linux, `claude.exe` on
+  Windows); Codex in `CODEX_INSTALL_DIR` when it is set, else
+  `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin` on Windows and `~/.local/bin` elsewhere.
+  `shutil.which` with that folder as its path finds the program under the name the system gives
+  it (with `.exe` on Windows).
+- **Rationale**: An installer adds its folder to the user's PATH, but a service already running
+  keeps the PATH it started with, so a program installed while the login screen is open was not
+  found when the person pressed "Check again". Claude Code's documentation: "the installer
+  places `claude` at `~/.local/bin/claude` on macOS/Linux or `%USERPROFILE%\.local\bin\claude.exe`
+  on Windows" (code.claude.com/docs/en/troubleshoot-install, read 2026-11-27). Codex's installer:
+  `$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"` and
+  `BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"`
+  (`openai/codex@8727186:scripts/install/install.ps1:992-996`, `scripts/install/install.sh:16`).
+- **What it fixes**: the earlier fallback looked for `~/.local/bin/claude`, a name that does not
+  exist on Windows (there it is `claude.exe`), and Codex had no fallback. Seen on 2026-11-26 while
+  walking the README from a clean PATH. A program installed some other way into a folder that is
+  not on the service's PATH is still found only after the service is started again from a new
+  terminal.
+
 ### 5. Layout
 
 - **Decision**: `views/chat/` is the one page: one `UDashboardGroup` with the chat panel as the
@@ -270,6 +292,17 @@ so by name when the installed Node.js is older (decision 3).
   The Markdown renderer draws each tag with the matching `Prose` component when the app has one;
   without them Tailwind's reset leaves lists with no markers and paragraphs with no space between
   them.
+
+### 5a. Both lists of sources are folded until opened
+
+- **Decision**: The sources the answer cites are folded under one line, as all the sources found
+  already are: `UCollapsible`, closed until the user opens it, with the count in the line. The
+  latest date, the split notice and the fixed notice stay open.
+- **Rationale**: Nuxt UI's chat template puts a search's sources in a `UChatTool` that is folded
+  (`nuxt-ui-templates/chat-vue@ce4ef47:src/components/chat/message/MessageContent.vue:53-61`); in
+  `nuxt/ui` 4.13.0 that component starts closed (`dist/runtime/components/ChatTool.vue:48`,
+  `ref(props.defaultOpen ?? false)`). In the real runs of 2026-11-25 an answer about the Fed cited
+  22 to 30 sources, a list longer than the answer on a phone.
 
 ### 6. Texts and address
 

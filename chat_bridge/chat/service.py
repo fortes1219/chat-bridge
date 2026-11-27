@@ -15,7 +15,7 @@ outside the data, and the user's plan is not charged for it.
 import asyncio
 import functools
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -27,11 +27,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from chat_bridge.chat import claude_code, codex
 from chat_bridge.chat.models import UNANSWERED, ChatRecord
 from chat_bridge.chat.programs import (
+    DEFAULT_EFFORT,
     AnsweringProgram,
+    Effort,
     Login,
     LoginStatus,
     Program,
     ProgramError,
+    Usage,
 )
 from chat_bridge.chat.schemas import (
     ChatContext,
@@ -40,6 +43,7 @@ from chat_bridge.chat.schemas import (
     Language,
     Localized,
     ProgramState,
+    QuestionUsage,
     Source,
 )
 from chat_bridge.chat.split import SplitOutcome, split_question
@@ -75,6 +79,13 @@ PART_CANDIDATES = 20
 # almost any market question whatever the event, and push the news out. So it does not rank: it
 # comes with its document, as a parent document's parts come with it.
 MARKET_SECTION = "當日與之後的行情"
+# Events of the same day carry the same market table, and every table starts with one of two
+# notes, so the model's input sends each once: a later copy becomes a pointer to the first section
+# that sent it.
+TABLE_LINE = "|"
+NOTE_LINE = ">"
+SAME_TABLE = "(same table as [{number}])"
+SAME_NOTE = "(same note as [{number}])"
 # Sent in both languages, each on its own, so a page shows the one it is in and a reader of the
 # API still gets it whatever language the question was in.
 DISCLAIMER: Localized = {
@@ -112,6 +123,7 @@ _ANSWERING: set[asyncio.Task[Any]] = set()
 PROMPT_FILE = Path(__file__).with_name("answer_prompt.md")
 TEXT_DELTA = "response.output_text.delta"
 PROPOSAL = "response.proposal"
+COMPLETED = "response.completed"
 
 # The programs that can answer, each a module with the same two functions.
 PROGRAMS: dict[Program, AnsweringProgram] = {
@@ -300,15 +312,62 @@ def system_prompt(today: date) -> str:
     return _prompt_template().replace("{{CURRENT_DATE}}", today.isoformat())
 
 
+def _pointer_or(
+    piece: str, pointer: str, sent: dict[str, int], own: dict[str, int], number: int
+) -> str:
+    """The pointer to the earlier section that sent `piece`, when there is one and the pointer
+    is shorter; else `piece`, kept in `own` as this section's."""
+    first = sent.get(piece)
+    if first is None:
+        own.setdefault(piece, number)
+        return piece
+    shorter = pointer.format(number=first)
+    return shorter if len(shorter) < len(piece) else piece
+
+
+def _folded(text: str, number: int, sent: dict[str, int]) -> str:
+    """The section's text with each table block and quoted line an earlier section sent written
+    as a pointer to that section. `sent` maps each block and line to the first section that sent
+    it; this section's are added once it is done, so a section never points at itself."""
+    lines = text.split("\n")
+    folded: list[str] = []
+    own: dict[str, int] = {}
+    start = 0
+    while start < len(lines):
+        line = lines[start]
+        if line.startswith(TABLE_LINE):
+            end = start
+            while end < len(lines) and lines[end].startswith(TABLE_LINE):
+                end += 1
+            block = "\n".join(lines[start:end])
+            folded.append(_pointer_or(block, SAME_TABLE, sent, own, number))
+            start = end
+            continue
+        if line.startswith(NOTE_LINE):
+            folded.append(_pointer_or(line, SAME_NOTE, sent, own, number))
+        else:
+            folded.append(line)
+        start += 1
+    for piece, first in own.items():
+        sent.setdefault(piece, first)
+    return "\n".join(folded)
+
+
 def model_input(question: str, sections: list[FoundSection], strategy: str = "") -> str:
     """The sources and the question, each between its own tags, so the two stay apart; for a
-    question the program answers, the profile's own block between them."""
-    blocks = [
-        f"[{section.source.number}] file: {section.source.file}"
-        f" | event date: {section.source.event_date or 'none'}"
-        f" | heading: {section.source.heading or '-'}\n{section.text}"
-        for section in sections
-    ]
+    question the program answers, the profile's own block between them. A table or note an
+    earlier source already holds is sent once (`_folded`); the page and the record keep every
+    section whole."""
+    sent: dict[str, int] = {}
+    blocks = []
+    for section in sections:
+        number = section.source.number
+        blocks.append(
+            f"[{number}] file: {section.source.file}"
+            f" | event date: {section.source.event_date or 'none'}"
+            f" | heading: {section.source.heading or '-'}\n"
+            f"{_folded(section.text, number, sent)}"
+        )
     sources = "\n\n".join(blocks)
     return (
         f"<sources>\n{sources}\n</sources>\n\n{strategy}"
@@ -332,6 +391,30 @@ def _section_details(sections: list[FoundSection]) -> list[dict[str, Any]]:
     ]
 
 
+def question_usage(runs: list[tuple[str, Usage | None]]) -> QuestionUsage:
+    """The question's tokens: the runs that reported, added up, and how many did not."""
+    reported = [usage for _, usage in runs if usage is not None]
+    inputs = sum(usage.input_tokens for usage in reported)
+    outputs = sum(usage.output_tokens for usage in reported)
+    return QuestionUsage(
+        input_tokens=inputs,
+        cached_input_tokens=sum(usage.cached_input_tokens for usage in reported),
+        output_tokens=outputs,
+        total_tokens=inputs + outputs,
+        unreported_runs=len(runs) - len(reported),
+    )
+
+
+def _usage_details(runs: list[tuple[str, Usage | None]]) -> dict[str, Any]:
+    return {
+        "runs": [
+            {"run": name, "usage": None if usage is None else asdict(usage)}
+            for name, usage in runs
+        ],
+        "total": question_usage(runs).model_dump(),
+    }
+
+
 async def _record(
     question: str,
     answer: str,
@@ -341,9 +424,11 @@ async def _record(
     command_line: list[str] | None,
     error: str | None,
     program: Program | None = None,
+    effort: Effort | None = None,
     split: SplitOutcome | None = None,
     searches: list[dict[str, Any]] | None = None,
     proposal: dict[str, Any] | None = None,
+    runs: list[tuple[str, Usage | None]] | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
@@ -351,6 +436,8 @@ async def _record(
         # The program that answered, and how it was started, kept as evidence that the command
         # line held no text from the user or the documents and that its tools were off.
         "program": program,
+        # The level every run of the question was started at; none when no program was asked.
+        "effort": effort,
         "command_line": command_line,
         # The parts the program listed and how that run was started, or why it failed; and each
         # search made, with the numbers of the sections it returned.
@@ -367,6 +454,8 @@ async def _record(
         # What came of a revision question's proposal: the checked proposal, the refusal, or
         # neither when the program proposed nothing.
         "proposal": proposal,
+        # Each run's tokens, or that it reported none, and their total; none when no program ran.
+        "usage": _usage_details(runs) if runs else None,
         "error": error,
     }
     async with open_engine() as engine:
@@ -377,16 +466,20 @@ async def _record(
 
 
 async def answer_stream(
-    question: str, sections: list[FoundSection], requested: Program | None = None
+    question: str,
+    sections: list[FoundSection],
+    requested: Program | None = None,
+    effort: Effort = DEFAULT_EFFORT,
 ) -> AsyncGenerator[ChatDelta, None]:
     """The context first, then the answer in pieces.
 
     The program is chosen before the context, so the context can name it; a refusal is still
     raised after the context, so the sources go out either way. Before the context, the chosen
     program lists the question's parts and each is searched, so the context carries every
-    source. Every question is recorded however the answer ends: answered, refused before the
-    model, failed, or cut off because the client stopped reading. Raises NoLoginError or a
-    ProgramError after the context when no answer can be had.
+    source. Every run of the program for the question starts at `effort`, and an answer that
+    ends is followed by the tokens of all of them. Every question is recorded however the answer
+    ends: answered, refused before the model, failed, or cut off because the client stopped
+    reading. Raises NoLoginError or a ProgramError after the context when no answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
@@ -401,12 +494,24 @@ async def answer_stream(
     current: strategy_store.Profile | None = None
     profile: strategy_store.Profile | None = None
     proposal: dict[str, Any] | None = None
+    # The tokens the answer's run reported once it ended.
+    answered: list[Usage] = []
     # A question the data has nothing on is answered without a model, so no login is read.
     if sections:
         try:
             program = await choose_program(requested)
         except NoLoginError as error:
             refusal = error
+
+    def runs() -> list[tuple[str, Usage | None]]:
+        """The question's model runs with what each reported: the split, then the answer once its
+        program was started."""
+        listed: list[tuple[str, Usage | None]] = []
+        if split is not None:
+            listed.append(("split", split.usage))
+        if command:
+            listed.append(("answer", answered[-1] if answered else None))
+        return listed
 
     async def record(error: str | None) -> None:
         await _record(
@@ -417,9 +522,11 @@ async def answer_stream(
             command_line=command or None,
             error=error,
             program=program,
+            effort=None if program is None else effort,
             split=split,
             searches=searches,
             proposal=proposal,
+            runs=runs(),
         )
 
     answering = asyncio.current_task()
@@ -430,7 +537,7 @@ async def answer_stream(
         if sections and program is not None:
             current = await _profile_or_none()
             split = await split_question(
-                PROGRAMS[program], question, holding_lines(current)
+                PROGRAMS[program], question, holding_lines(current), effort=effort
             )
             # A failed split has no parts, so the question's own sections go on alone.
             sections, searches = await gather_sections(question, sections, split.parts)
@@ -465,6 +572,8 @@ async def answer_stream(
                 revision.system_prompt(date.today()),
                 sent,
                 on_start=command.extend,
+                effort=effort,
+                on_usage=answered.append,
             )
             pieces.append(revised.answer)
             yield ChatDelta(type=TEXT_DELTA, delta=revised.answer)
@@ -477,6 +586,7 @@ async def answer_stream(
             )
             proposal = event.model_dump(mode="json")
             yield ChatDelta(type=PROPOSAL, proposal=event)
+            yield ChatDelta(type=COMPLETED, usage=question_usage(runs()))
             await record(None)
             return
         holdings = (
@@ -484,10 +594,15 @@ async def answer_stream(
         )
         sent = model_input(question, sections, holdings)
         async for piece in PROGRAMS[program].stream_answer(
-            system_prompt(date.today()), sent, on_start=command.extend
+            system_prompt(date.today()),
+            sent,
+            on_start=command.extend,
+            effort=effort,
+            on_usage=answered.append,
         ):
             pieces.append(piece)
             yield ChatDelta(type=TEXT_DELTA, delta=piece)
+        yield ChatDelta(type=COMPLETED, usage=question_usage(runs()))
     except (NoLoginError, ProgramError) as error:
         await record(str(error))
         raise
