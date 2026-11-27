@@ -91,6 +91,20 @@ uv run chat-bridge
 `claude-code` 或 `codex`。未指定時，應用程式優先使用已登入的 Claude Code，其次是 Codex。
 手動指定的後端必須已登入。
 
+`effort` 設定回答後端思考的強度：`low`、`medium`（預設）或 `high`，聊天頁面在輸入框下方
+顯示為快速、預設、精準。同一題裡每次叫模型都套用。Claude Code 以 `--effort` 啟動，
+Codex 以 `model_reasoning_effort` 啟動，更高的強度不開放。啟動 Claude Code 時會移除
+`CLAUDE_CODE_EFFORT_LEVEL`，所以它蓋不掉頁面的選擇。模型沒有選到的強度時，Claude Code
+會改用該模型有的、低於它的最高一級；沒有強度設定的模型不支援這個選項。
+2026-11-27 每個後端在每種強度各問一次配置調整題，量到的秒數（到答案出現為止）：
+
+| 後端 | 快速 | 預設 |
+| --- | --- | --- |
+| Claude Code 2.1.328 | 85.6 | 107.6 |
+| Codex 0.171.0 | 40.4 | 42.6 |
+
+拆題在兩種強度都是 7 到 8 秒。每個數字都只量了一次。[量測紀錄](specs/018-answer-effort/research.md)
+
 第一筆 `response.context` 包含來源、索引中最新的事件日期、回答後端、拆題失敗標記
 `split_failed` 與中英文免責聲明。回答文字由 `response.output_text.delta` 傳送。
 Claude Code 的一般回答會分段送出，Codex 或包含提案的回答會一次送出。

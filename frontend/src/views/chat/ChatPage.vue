@@ -15,10 +15,10 @@ import ChatPanel from './components/ChatPanel.vue';
 
 // Nothing of the chat or the strategy screen is drawn until a program is logged in.
 const { states, status: gate, isChecking, checkAgain } = useLoginGate();
-const { language, program, chooseLanguage, chooseProgram } = useAddressState(states);
+const { language, program, effort, chooseLanguage, chooseProgram, chooseEffort } = useAddressState(states);
 // A program that logged out since the page opened sends the page back to reading the states; a
 // proposal the service kept is now the open one of the strategy.
-const { exchanges, status, ask, stop } = useAsk(program, {
+const { exchanges, status, ask, stop } = useAsk(program, effort, {
   onLoggedOut: checkAgain,
   onProposal: useProposalKept()
 });
@@ -89,8 +89,10 @@ function onChooseLanguage(value: string): void {
           data-test="chat-open"
           :exchanges="exchanges"
           :status="status"
+          :effort="effort"
           @ask="ask"
           @stop="stop"
+          @choose-effort="chooseEffort"
           @open-strategy="strategyOpen = true"
         />
       </main>

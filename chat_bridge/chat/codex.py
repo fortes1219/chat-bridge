@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from chat_bridge.chat.programs import (
+    Effort,
     Login,
     LoginStatus,
     ProgramError,
@@ -144,9 +145,25 @@ def find_executable() -> str:
     return found
 
 
-def command_line(executable: str, folder: str) -> list[str]:
+def effort_args(effort: Effort | None) -> tuple[str, ...]:
+    """The level a run is started at, as a configuration value in single quotes like the web
+    search one; none leaves the model's own default."""
+    return () if effort is None else ("-c", f"model_reasoning_effort='{effort.value}'")
+
+
+def command_line(
+    executable: str, folder: str, effort: Effort | None = None
+) -> list[str]:
     """How Codex is started for one answer, working in `folder`."""
-    return [executable, *GLOBAL_ARGS, *EXEC_ARGS, "--cd", folder, STDIN_PROMPT]
+    return [
+        executable,
+        *GLOBAL_ARGS,
+        *effort_args(effort),
+        *EXEC_ARGS,
+        "--cd",
+        folder,
+        STDIN_PROMPT,
+    ]
 
 
 async def _start(args: list[str], *, with_input: bool) -> Process:
@@ -258,11 +275,13 @@ def shaped_command_line(
     folder: str,
     schema_file: str,
     global_args: Sequence[str] = GLOBAL_ARGS,
+    effort: Effort | None = None,
 ) -> list[str]:
     """How Codex is started for a reply in the shape the schema file gives, working in `folder`."""
     return [
         executable,
         *global_args,
+        *effort_args(effort),
         *EXEC_ARGS,
         "--output-schema",
         schema_file,
@@ -278,11 +297,12 @@ async def reply_in_shape(
     schema: dict[str, Any],
     *,
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> dict[str, Any]:
     """Run Codex once, with no tools, for a reply in the given JSON shape, and return it.
     Raises CodexError when the run fails or its final message is not a JSON object."""
     return await _reply_in_shape(
-        system_prompt, input_text, schema, GLOBAL_ARGS, on_start
+        system_prompt, input_text, schema, GLOBAL_ARGS, on_start, effort
     )
 
 
@@ -308,6 +328,7 @@ async def _reply_in_shape(
     schema: dict[str, Any],
     global_args: Sequence[str],
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> dict[str, Any]:
     """The schema goes in a file of its own folder, so the working folder stays empty and the
     command line holds only the file's path."""
@@ -318,7 +339,7 @@ async def _reply_in_shape(
         schema_file = Path(schema_folder) / "schema.json"
         schema_file.write_text(json.dumps(schema), encoding="utf-8")
         args = shaped_command_line(
-            find_executable(), folder, str(schema_file), global_args
+            find_executable(), folder, str(schema_file), global_args, effort
         )
         on_start(args)
         process = await _start(args, with_input=True)
@@ -345,6 +366,7 @@ async def stream_answer(
     input_text: str,
     *,
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> AsyncIterator[str]:
     """Yield the answer once Codex has written it.
 
@@ -353,7 +375,7 @@ async def stream_answer(
     limit.
     """
     with tempfile.TemporaryDirectory(prefix="chat-bridge-codex-") as folder:
-        args = command_line(find_executable(), folder)
+        args = command_line(find_executable(), folder, effort)
         on_start(args)
         process = await _start(args, with_input=True)
         try:

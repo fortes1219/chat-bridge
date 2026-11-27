@@ -9,11 +9,18 @@ export { SourceSchema };
 /** The service's own limit on a question, so a longer one is refused before it is sent. */
 export const MAX_QUESTION_LENGTH = 10_240;
 
-/** `POST /chat/stream` body. Without a program, the service picks the first one logged in. */
+/** How hard the answering program thinks; the service takes only these three. */
+export const EffortSchema = z.enum(['low', 'medium', 'high']);
+
+/**
+ * `POST /chat/stream` body. Without a program, the service picks the first one logged in; without
+ * a level, it answers at `medium`.
+ */
 export const ChatRequestSchema = z
   .object({
     question: z.string().min(1).max(MAX_QUESTION_LENGTH),
-    program: ProgramSchema.optional()
+    program: ProgramSchema.optional(),
+    effort: EffortSchema.optional()
   })
   .strict();
 

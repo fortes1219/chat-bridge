@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from chat_bridge.chat import claude_code, codex
 from chat_bridge.chat.models import UNANSWERED, ChatRecord
 from chat_bridge.chat.programs import (
+    DEFAULT_EFFORT,
     AnsweringProgram,
+    Effort,
     Login,
     LoginStatus,
     Program,
@@ -341,6 +343,7 @@ async def _record(
     command_line: list[str] | None,
     error: str | None,
     program: Program | None = None,
+    effort: Effort | None = None,
     split: SplitOutcome | None = None,
     searches: list[dict[str, Any]] | None = None,
     proposal: dict[str, Any] | None = None,
@@ -351,6 +354,8 @@ async def _record(
         # The program that answered, and how it was started, kept as evidence that the command
         # line held no text from the user or the documents and that its tools were off.
         "program": program,
+        # The level every run of the question was started at; none when no program was asked.
+        "effort": effort,
         "command_line": command_line,
         # The parts the program listed and how that run was started, or why it failed; and each
         # search made, with the numbers of the sections it returned.
@@ -377,16 +382,20 @@ async def _record(
 
 
 async def answer_stream(
-    question: str, sections: list[FoundSection], requested: Program | None = None
+    question: str,
+    sections: list[FoundSection],
+    requested: Program | None = None,
+    effort: Effort = DEFAULT_EFFORT,
 ) -> AsyncGenerator[ChatDelta, None]:
     """The context first, then the answer in pieces.
 
     The program is chosen before the context, so the context can name it; a refusal is still
     raised after the context, so the sources go out either way. Before the context, the chosen
     program lists the question's parts and each is searched, so the context carries every
-    source. Every question is recorded however the answer ends: answered, refused before the
-    model, failed, or cut off because the client stopped reading. Raises NoLoginError or a
-    ProgramError after the context when no answer can be had.
+    source. Every run of the program for the question starts at `effort`. Every question is
+    recorded however the answer ends: answered, refused before the model, failed, or cut off
+    because the client stopped reading. Raises NoLoginError or a ProgramError after the context
+    when no answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
@@ -417,6 +426,7 @@ async def answer_stream(
             command_line=command or None,
             error=error,
             program=program,
+            effort=None if program is None else effort,
             split=split,
             searches=searches,
             proposal=proposal,
@@ -430,7 +440,7 @@ async def answer_stream(
         if sections and program is not None:
             current = await _profile_or_none()
             split = await split_question(
-                PROGRAMS[program], question, holding_lines(current)
+                PROGRAMS[program], question, holding_lines(current), effort=effort
             )
             # A failed split has no parts, so the question's own sections go on alone.
             sections, searches = await gather_sections(question, sections, split.parts)
@@ -465,6 +475,7 @@ async def answer_stream(
                 revision.system_prompt(date.today()),
                 sent,
                 on_start=command.extend,
+                effort=effort,
             )
             pieces.append(revised.answer)
             yield ChatDelta(type=TEXT_DELTA, delta=revised.answer)
@@ -484,7 +495,7 @@ async def answer_stream(
         )
         sent = model_input(question, sections, holdings)
         async for piece in PROGRAMS[program].stream_answer(
-            system_prompt(date.today()), sent, on_start=command.extend
+            system_prompt(date.today()), sent, on_start=command.extend, effort=effort
         ):
             pieces.append(piece)
             yield ChatDelta(type=TEXT_DELTA, delta=piece)

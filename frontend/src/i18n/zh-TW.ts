@@ -30,6 +30,12 @@ const zhTW: typeof en = {
   chat: {
     placeholder: '問問知識庫裡的文件……',
     answerWith: '回答的程式',
+    effortLabel: '回答的強度',
+    effort: {
+      fast: '快速',
+      default: '預設',
+      precise: '精準'
+    },
     samplesTitle: '可以從這幾題開始',
     sources: '出處',
     noDate: '無日期',

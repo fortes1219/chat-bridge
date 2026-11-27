@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from chat_bridge.chat.programs import (
+    Effort,
     Login,
     LoginStatus,
     ProgramError,
@@ -53,6 +54,9 @@ SHAPED_ARGS = ("--output-format", "json", "--json-schema")
 # With one of these set, `claude -p` would use a key instead of the user's login, and bill an
 # account the user may not know is set.
 STRIPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
+# Claude Code takes this before `--effort` (model-config, "Adjust effort level"); `--restricted`
+# keeps the user's settings out, and this keeps the user's shell from setting the level instead.
+SETUP_ENV = ("CLAUDE_CODE_EFFORT_LEVEL",)
 # The native installer's folder: "~/.local/bin/claude on macOS/Linux or
 # %USERPROFILE%\.local\bin\claude.exe on Windows" (Claude Code's install troubleshooting page).
 # The installer adds it to the user's PATH, but a service started before the install keeps the
@@ -90,10 +94,14 @@ class ClaudeCodeError(ProgramError):
 
 
 def child_env() -> dict[str, str]:
-    """This process's environment without the key variables."""
-    return {
-        name: value for name, value in os.environ.items() if name not in STRIPPED_ENV
-    }
+    """This process's environment without the key variables and the effort variable."""
+    left_out = {*STRIPPED_ENV, *SETUP_ENV}
+    return {name: value for name, value in os.environ.items() if name not in left_out}
+
+
+def effort_args(effort: Effort | None) -> tuple[str, ...]:
+    """The level a run is started at; none leaves the model's own default."""
+    return () if effort is None else ("--effort", effort.value)
 
 
 def find_executable() -> str:
@@ -216,7 +224,11 @@ def web_tool_args(sites: Sequence[str]) -> tuple[str, ...]:
 
 
 def shaped_command_line(
-    executable: str, schema: dict[str, Any], prompt_file: str, tool_args: Sequence[str]
+    executable: str,
+    schema: dict[str, Any],
+    prompt_file: str,
+    tool_args: Sequence[str],
+    effort: Effort | None = None,
 ) -> list[str]:
     """How Claude Code is started for a reply in the given shape, with the given tools."""
     return [
@@ -225,6 +237,7 @@ def shaped_command_line(
         *SETUP_ARGS,
         *tool_args,
         *SESSION_ARGS,
+        *effort_args(effort),
         *SHAPED_ARGS,
         json.dumps(schema, separators=(",", ":")),
         "--system-prompt-file",
@@ -238,10 +251,13 @@ async def reply_in_shape(
     schema: dict[str, Any],
     *,
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> dict[str, Any]:
     """Run Claude Code once, with no tools, for a reply in the given JSON shape, and return it.
     Raises ClaudeCodeError when the run fails or ends without a reply in that shape."""
-    return await _reply_in_shape(system_prompt, input_text, schema, NO_TOOLS, on_start)
+    return await _reply_in_shape(
+        system_prompt, input_text, schema, NO_TOOLS, on_start, effort
+    )
 
 
 async def web_reply_in_shape(
@@ -265,6 +281,7 @@ async def _reply_in_shape(
     schema: dict[str, Any],
     tool_args: Sequence[str],
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> dict[str, Any]:
     """The schema is fixed text, so it may be on the command line; the input goes on standard
     input."""
@@ -272,7 +289,7 @@ async def _reply_in_shape(
         prompt_file = Path(folder) / "system_prompt.md"
         prompt_file.write_text(system_prompt, encoding="utf-8")
         args = shaped_command_line(
-            find_executable(), schema, str(prompt_file), tool_args
+            find_executable(), schema, str(prompt_file), tool_args, effort
         )
         on_start(args)
         process = await _start(args, with_input=True)
@@ -311,6 +328,7 @@ async def stream_answer(
     input_text: str,
     *,
     on_start: Callable[[list[str]], None],
+    effort: Effort | None = None,
 ) -> AsyncIterator[str]:
     """Yield the answer's text pieces as Claude Code writes them.
 
@@ -326,6 +344,7 @@ async def stream_answer(
             find_executable(),
             "-p",
             *ISOLATION_ARGS,
+            *effort_args(effort),
             *STREAM_ARGS,
             "--system-prompt-file",
             str(prompt_file),

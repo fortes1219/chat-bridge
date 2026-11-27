@@ -45,7 +45,11 @@ def codex_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
     async def no_parts(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> SplitOutcome:
         return SplitOutcome()
 

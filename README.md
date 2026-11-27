@@ -106,6 +106,23 @@ Post JSON such as `{"question": "Did the Fed raise rates?"}`. Optionally set `pr
 `claude-code` or `codex`. By default, the app uses Claude Code when signed in, then Codex.
 When you select a backend explicitly, it must be signed in.
 
+`effort` sets how hard the backend thinks: `low`, `medium` (the default) or `high`, shown on the
+chat page as Fast, Default and Precise under the question box. It applies to every model run of
+the question. Claude Code starts with `--effort`, Codex with `model_reasoning_effort`; higher
+levels are not offered. `CLAUDE_CODE_EFFORT_LEVEL` is removed from Claude Code's environment so
+it cannot override the choice. Claude Code runs a level the model lacks at the highest level it
+has below it. A model without effort levels does not support the option.
+One allocation request per level and backend, measured on 2026-11-27 (seconds until the answer
+arrived):
+
+| Backend | Fast | Default |
+| --- | --- | --- |
+| Claude Code 2.1.328 | 85.6 | 107.6 |
+| Codex 0.171.0 | 40.4 | 42.6 |
+
+Splitting the question took 7 to 8 seconds at both levels. Each figure is a single run.
+[Measurements](specs/018-answer-effort/research.md)
+
 The first payload, `response.context`, carries the sources, latest indexed event date, backend
 name, `split_failed` flag and bilingual disclaimer. Answer text arrives in
 `response.output_text.delta`, incrementally for ordinary Claude Code replies and in a single

@@ -29,6 +29,12 @@ export default {
   chat: {
     placeholder: 'Ask about the documents in the knowledge base…',
     answerWith: 'Answer with',
+    effortLabel: 'How hard the program thinks',
+    effort: {
+      fast: 'Fast',
+      default: 'Default',
+      precise: 'Precise'
+    },
     samplesTitle: 'Try one of these',
     sources: 'Sources',
     noDate: 'No date',

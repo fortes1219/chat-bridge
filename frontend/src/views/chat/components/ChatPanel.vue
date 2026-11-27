@@ -3,12 +3,14 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { MessageSchema } from '@/i18n';
 import { MAX_QUESTION_LENGTH } from '@/service/schema/chat';
+import type { Effort } from '@/service/api/chat';
 import type { AskStatus, Exchange } from '../composables/useAsk';
 import AnswerContent from './AnswerContent.vue';
+import EffortPicker from './EffortPicker.vue';
 import SampleQuestions from './SampleQuestions.vue';
 
-const props = defineProps<{ exchanges: Exchange[]; status: AskStatus }>();
-const emit = defineEmits<{ ask: [question: string]; stop: []; openStrategy: [] }>();
+const props = defineProps<{ exchanges: Exchange[]; status: AskStatus; effort: Effort }>();
+const emit = defineEmits<{ ask: [question: string]; stop: []; openStrategy: []; chooseEffort: [effort: Effort] }>();
 
 const { t } = useI18n<{ message: MessageSchema }>();
 const input = ref('');
@@ -112,6 +114,11 @@ function onSubmit(): void {
           @keydown.enter.exact="explainIfEmpty"
         >
           <UChatPromptSubmit data-test="send-or-stop" :status="status" @click="explainIfEmpty" @stop="emit('stop')" />
+          <!-- The level the next question is answered at, under the box as Nuxt UI's chat template
+               puts its model choice. -->
+          <template #footer>
+            <EffortPicker :effort="effort" @choose="emit('chooseEffort', $event)" />
+          </template>
         </UChatPrompt>
         <p v-if="notSent" class="text-error mt-2 text-sm" data-test="not-sent">
           {{ t(`chat.${notSent}`, { limit: MAX_QUESTION_LENGTH.toLocaleString() }) }}

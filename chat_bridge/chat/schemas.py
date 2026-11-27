@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from chat_bridge.chat.programs import Login, Program
+from chat_bridge.chat.programs import DEFAULT_EFFORT, Effort, Login, Program
 from chat_bridge.chat.sources import Language as Language
 from chat_bridge.chat.sources import Localized as Localized
 from chat_bridge.chat.sources import Source as Source
@@ -42,6 +42,9 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
     # The program that should answer. Without it, the first logged-in one answers.
     program: Program | None = None
+    # How hard the program thinks, for every run of the question; only the three levels the page
+    # offers are taken.
+    effort: Effort = DEFAULT_EFFORT
 
 
 class ProgramState(BaseModel):

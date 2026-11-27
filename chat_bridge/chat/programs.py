@@ -3,7 +3,8 @@ they are stopped.
 
 Each program is a module with the same four functions, `login_status()`, `reply_in_shape()`,
 `web_reply_in_shape()` and `stream_answer()`, so the service picks one from a table and nothing
-else changes with the program.
+else changes with the program. A chat question passes the level it is answered at; without one, a
+program runs at its model's own default.
 """
 
 import asyncio
@@ -23,6 +24,19 @@ STOP_TIMEOUT_SECONDS = 10
 class Program(StrEnum):
     CLAUDE_CODE = "claude-code"
     CODEX = "codex"
+
+
+class Effort(StrEnum):
+    """How hard the model thinks: the three levels the page offers, named as both programs name
+    them (Claude Code's `--effort`, Codex's `model_reasoning_effort`)."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+# A question that names no level is answered at this one.
+DEFAULT_EFFORT = Effort.MEDIUM
 
 
 class Login(StrEnum):
@@ -92,6 +106,7 @@ class AnsweringProgram(Protocol):
         schema: dict[str, Any],
         *,
         on_start: Callable[[list[str]], None],
+        effort: Effort | None = None,
     ) -> dict[str, Any]: ...
 
     async def web_reply_in_shape(
@@ -110,4 +125,5 @@ class AnsweringProgram(Protocol):
         input_text: str,
         *,
         on_start: Callable[[list[str]], None],
+        effort: Effort | None = None,
     ) -> AsyncIterator[str]: ...

@@ -38,7 +38,11 @@ def records(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         return LoginStatus(Login.LOGGED_IN, "claude.ai")
 
     async def two_pieces(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> AsyncIterator[str]:
         on_start(COMMAND)
         yield "聯準會"
@@ -101,7 +105,11 @@ def test_an_answer_cancelled_at_shutdown_is_recorded_before_the_service_goes_on(
         records.append({"question": question, "answer": answer, **kwargs})
 
     async def endless(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> AsyncIterator[str]:
         on_start(COMMAND)
         yield "聯準會"

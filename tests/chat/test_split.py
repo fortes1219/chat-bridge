@@ -37,6 +37,7 @@ class _Program:
     def __init__(self, reply: Any) -> None:
         self.reply = reply
         self.split_inputs: list[str] = []
+        self.efforts: list[object] = []
 
     async def reply_in_shape(
         self,
@@ -45,9 +46,11 @@ class _Program:
         schema: dict[str, Any],
         *,
         on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> dict[str, Any]:
         on_start(["program", "split"])
         self.split_inputs.append(input_text)
+        self.efforts.append(effort)
         if isinstance(self.reply, BaseException):
             raise self.reply
         if callable(self.reply):
@@ -334,7 +337,11 @@ def answering(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return LoginStatus(Login.LOGGED_IN, "claude.ai")
 
     async def answer(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> AsyncIterator[str]:
         seen["system_prompt"] = system_prompt
         seen["input_text"] = input_text
@@ -360,7 +367,11 @@ def _ask_with_split(
     monkeypatch: pytest.MonkeyPatch, outcome: split.SplitOutcome
 ) -> list[ChatDelta]:
     async def split_question(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> split.SplitOutcome:
         return outcome
 

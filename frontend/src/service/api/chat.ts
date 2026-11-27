@@ -8,8 +8,10 @@ import type { contract } from '@/service/contract';
 type AskRoute = 'ask';
 type EventOf<T> = T extends AsyncIteratorObject<infer TEvent, unknown, unknown> ? TEvent : never;
 
-/** The question and, optionally, the program that should answer, inferred from the contract. */
+/** The question and, optionally, the program that should answer and its level, inferred from the contract. */
 export type ChatRequest = InferContractRouterInputs<typeof contract>['chat'][AskRoute];
+/** How hard the answering program thinks. */
+export type Effort = NonNullable<ChatRequest['effort']>;
 /** One event of the answer: the context first, then each piece. */
 export type ChatEvent = EventOf<InferContractRouterOutputs<typeof contract>['chat'][AskRoute]>;
 export type ChatContext = Extract<ChatEvent, { type: 'response.context' }>['context'];

@@ -12,7 +12,7 @@ import pytest
 
 from chat_bridge.chat import claude_code, service
 from chat_bridge.chat.claude_code import Login, LoginStatus
-from chat_bridge.chat.programs import Program
+from chat_bridge.chat.programs import Effort, Program
 from chat_bridge.chat.schemas import ChatDelta, Source
 from chat_bridge.chat.split import SplitOutcome
 from chat_bridge.strategy import store
@@ -78,6 +78,10 @@ class Run:
     def __init__(self) -> None:
         self.inputs: list[str] = []
         self.schemas: list[dict[str, Any]] = []
+        # The level each shaped run was started at.
+        self.efforts: list[object] = []
+        # The level the split was asked at.
+        self.split_effort: object = None
         self.records: list[dict[str, Any]] = []
         self.saved: list[CheckedProposal] = []
         self.streamed = False
@@ -93,9 +97,14 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
     seen = Run()
 
     async def revise(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> SplitOutcome:
         seen.split_holdings = holdings
+        seen.split_effort = effort
         return SplitOutcome(revise=True)
 
     async def logged_in() -> LoginStatus:
@@ -125,7 +134,11 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
         )
 
     async def streamed(
-        system_prompt: str, input_text: str, *, on_start: Callable[[list[str]], None]
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> AsyncIterator[str]:
         seen.streamed = True
         seen.streamed_input = input_text
@@ -147,10 +160,12 @@ def _reply_with(seen: Run, monkeypatch: pytest.MonkeyPatch, reply: Any) -> None:
         schema: dict[str, Any],
         *,
         on_start: Callable[[list[str]], None],
+        effort: object = None,
     ) -> dict[str, Any]:
         on_start(COMMAND)
         seen.inputs.append(input_text)
         seen.schemas.append(schema)
+        seen.efforts.append(effort)
         return reply  # type: ignore[no-any-return]
 
     monkeypatch.setattr(claude_code, "reply_in_shape", shaped)
@@ -172,6 +187,21 @@ def test_the_split_is_given_the_holdings_but_cash_before_the_search(
 
     # The profile's names are its symbols here; each holding is named once.
     assert run.split_holdings == ["2330.TW: 2330.TW", "NVDA: NVDA"]
+
+
+def test_a_revision_question_is_split_and_answered_at_its_level(
+    run: Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reply_with(run, monkeypatch, {"answer": ANSWER, "proposal": None})
+
+    async def collect() -> None:
+        async for _ in service.answer_stream(QUESTION, [SECTION], effort=Effort.HIGH):
+            pass
+
+    asyncio.run(collect())
+
+    assert run.split_effort is Effort.HIGH
+    assert run.efforts == [Effort.HIGH]
 
 
 def test_a_revision_answer_comes_whole_then_the_checked_proposal(
@@ -394,7 +424,11 @@ def test_a_question_that_asks_for_no_revision_streams_with_the_holdings_and_no_p
     run: Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def no_revision(
-        program: object, question: str, holdings: object = None
+        program: object,
+        question: str,
+        holdings: object = None,
+        *,
+        effort: object = None,
     ) -> SplitOutcome:
         return SplitOutcome()
 

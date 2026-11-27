@@ -18,7 +18,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
-from chat_bridge.chat.programs import AnsweringProgram, ProgramError
+from chat_bridge.chat.programs import AnsweringProgram, Effort, ProgramError
 
 # A safety bound, not a value tuned on test questions: it keeps a question, or text pasted into
 # one, from making one answer run dozens of searches. Long questions are split into about eight
@@ -114,11 +114,15 @@ def kept_parts(question: str, parts: list[str]) -> tuple[list[str], int]:
 
 
 async def split_question(
-    program: AnsweringProgram, question: str, holdings: list[str] | None = None
+    program: AnsweringProgram,
+    question: str,
+    holdings: list[str] | None = None,
+    *,
+    effort: Effort | None = None,
 ) -> SplitOutcome:
-    """Ask the program for the question's parts, given the user's holdings when there are any.
-    Never raises for a split that fails: the outcome says why, and the caller goes on with the
-    question's own sections."""
+    """Ask the program for the question's parts, given the user's holdings when there are any,
+    at the question's level. Never raises for a split that fails: the outcome says why, and the
+    caller goes on with the question's own sections."""
     command: list[str] = []
     started = time.perf_counter()
 
@@ -136,6 +140,7 @@ async def split_question(
                 split_input(question, holdings),
                 SPLIT_SCHEMA,
                 on_start=command.extend,
+                effort=effort,
             ),
             SPLIT_TIMEOUT_SECONDS,
         )

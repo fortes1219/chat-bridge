@@ -25,6 +25,7 @@ vi.mock('@/service/api/chat', () => ({
 }));
 
 import ChatPage from '@/views/chat/ChatPage.vue';
+import EffortPicker from '@/views/chat/components/EffortPicker.vue';
 
 const CODEX_ONLY: ProgramState[] = [
   { program: 'claude-code', state: 'not logged in' },
@@ -155,7 +156,10 @@ describe('asking a question', () => {
     await box.trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    expect(askMock).toHaveBeenCalledWith({ question: 'Fed?', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'Fed?', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
     expect(page.find('[data-test="not-sent"]').exists()).toBe(false);
   });
 
@@ -192,7 +196,10 @@ describe('asking a question', () => {
     const page = await open(CODEX_ONLY);
 
     await typeAndSend(page, 'Fed?');
-    expect(askMock).toHaveBeenCalledWith({ question: 'Fed?', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'Fed?', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
 
     answer.send(CONTEXT_EVENT);
     await flushPromises();
@@ -316,7 +323,10 @@ describe('asking a question', () => {
     const second = controlledAnswer();
     askMock.mockImplementationOnce(second.events);
     await typeAndSend(page, 'second');
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('stops an answer being written and is ready for another question', async () => {
@@ -337,7 +347,10 @@ describe('asking a question', () => {
     const second = controlledAnswer();
     askMock.mockImplementationOnce(second.events);
     await typeAndSend(page, 'second');
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('keeps the text so far and shows the error under it when the answer breaks off', async () => {
@@ -437,7 +450,10 @@ describe('asking a question', () => {
     second.end();
     await flushPromises();
 
-    expect(askMock).toHaveBeenLastCalledWith({ question: 'second', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenLastCalledWith(
+      { question: 'second', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
     expect(page.findAll('[data-test="answer-text"]').map(text => text.text())).toEqual(['one', 'two']);
   });
 });
@@ -462,12 +478,65 @@ describe('which program answers', () => {
     await flushPromises();
     await typeAndSend(page, 'q');
 
-    expect(askMock).toHaveBeenCalledWith({ question: 'q', program: 'codex' }, expect.any(AbortSignal));
+    expect(askMock).toHaveBeenCalledWith(
+      { question: 'q', program: 'codex', effort: 'medium' },
+      expect.any(AbortSignal)
+    );
   });
 
   it('corrects an address naming a program that is not logged in', async () => {
     await open(CODEX_ONLY, '/?lang=en&program=claude-code');
     expect(router.currentRoute.value.query.program).toBe('codex');
+  });
+});
+
+describe('how hard the program thinks', () => {
+  function effortSelect(page: VueWrapper) {
+    return page.findComponent(EffortPicker).findComponent({ name: 'Select' });
+  }
+
+  function labels(page: VueWrapper): string[] {
+    return (effortSelect(page).props('items') as { label: string }[]).map(item => item.label);
+  }
+
+  it('offers Fast, Default and Precise under the question box, with Default chosen and in the address', async () => {
+    const page = await open(CODEX_ONLY);
+
+    expect(page.find('[data-slot="footer"] [data-test="effort"]').exists()).toBe(true);
+    expect(labels(page)).toEqual(['Fast', 'Default', 'Precise']);
+    expect(effortSelect(page).props('modelValue')).toBe('medium');
+    expect(router.currentRoute.value.query.effort).toBe('medium');
+  });
+
+  it('names the levels in Traditional Chinese on the Chinese page', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+
+    expect(labels(page)).toEqual(['快速', '預設', '精準']);
+  });
+
+  it('sends a question at the level chosen and keeps the choice in the address', async () => {
+    askMock.mockImplementation(controlledAnswer().events);
+    const page = await open(CODEX_ONLY);
+
+    effortSelect(page).vm.$emit('update:modelValue', 'low');
+    await flushPromises();
+    await typeAndSend(page, 'q');
+
+    expect(router.currentRoute.value.query.effort).toBe('low');
+    expect(askMock).toHaveBeenCalledWith({ question: 'q', program: 'codex', effort: 'low' }, expect.any(AbortSignal));
+  });
+
+  it('opens at the level the address names', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=en&effort=high');
+
+    expect(effortSelect(page).props('modelValue')).toBe('high');
+  });
+
+  it('chooses Default for a level the page does not offer and corrects the address', async () => {
+    const page = await open(CODEX_ONLY, '/?lang=en&effort=max');
+
+    expect(effortSelect(page).props('modelValue')).toBe('medium');
+    expect(router.currentRoute.value.query.effort).toBe('medium');
   });
 });
 
