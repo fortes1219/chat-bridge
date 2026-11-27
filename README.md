@@ -83,6 +83,9 @@ investment advice.
    subquestions. It removes duplicates and adds market tables from the matched files. If query
    splitting fails or times out after 120 seconds, chat uses the results from the original query.
 4. **Answer from the results.** The answering program gets retrieved passages and their metadata.
+   A table or quoted note that repeats one an earlier passage already holds is sent once; the
+   later copy becomes a line that points to that passage. The page's sources and the records are
+   unchanged.
    The app attaches the source list, the knowledge base's latest event date and the investment
    disclaimer. If retrieval finds nothing, the app reports the gap without calling the answering
    program.

@@ -79,6 +79,13 @@ PART_CANDIDATES = 20
 # almost any market question whatever the event, and push the news out. So it does not rank: it
 # comes with its document, as a parent document's parts come with it.
 MARKET_SECTION = "當日與之後的行情"
+# Events of the same day carry the same market table, and every table starts with one of two
+# notes, so the model's input sends each once: a later copy becomes a pointer to the first section
+# that sent it.
+TABLE_LINE = "|"
+NOTE_LINE = ">"
+SAME_TABLE = "(same table as [{number}])"
+SAME_NOTE = "(same note as [{number}])"
 # Sent in both languages, each on its own, so a page shows the one it is in and a reader of the
 # API still gets it whatever language the question was in.
 DISCLAIMER: Localized = {
@@ -305,15 +312,62 @@ def system_prompt(today: date) -> str:
     return _prompt_template().replace("{{CURRENT_DATE}}", today.isoformat())
 
 
+def _pointer_or(
+    piece: str, pointer: str, sent: dict[str, int], own: dict[str, int], number: int
+) -> str:
+    """The pointer to the earlier section that sent `piece`, when there is one and the pointer
+    is shorter; else `piece`, kept in `own` as this section's."""
+    first = sent.get(piece)
+    if first is None:
+        own.setdefault(piece, number)
+        return piece
+    shorter = pointer.format(number=first)
+    return shorter if len(shorter) < len(piece) else piece
+
+
+def _folded(text: str, number: int, sent: dict[str, int]) -> str:
+    """The section's text with each table block and quoted line an earlier section sent written
+    as a pointer to that section. `sent` maps each block and line to the first section that sent
+    it; this section's are added once it is done, so a section never points at itself."""
+    lines = text.split("\n")
+    folded: list[str] = []
+    own: dict[str, int] = {}
+    start = 0
+    while start < len(lines):
+        line = lines[start]
+        if line.startswith(TABLE_LINE):
+            end = start
+            while end < len(lines) and lines[end].startswith(TABLE_LINE):
+                end += 1
+            block = "\n".join(lines[start:end])
+            folded.append(_pointer_or(block, SAME_TABLE, sent, own, number))
+            start = end
+            continue
+        if line.startswith(NOTE_LINE):
+            folded.append(_pointer_or(line, SAME_NOTE, sent, own, number))
+        else:
+            folded.append(line)
+        start += 1
+    for piece, first in own.items():
+        sent.setdefault(piece, first)
+    return "\n".join(folded)
+
+
 def model_input(question: str, sections: list[FoundSection], strategy: str = "") -> str:
     """The sources and the question, each between its own tags, so the two stay apart; for a
-    question the program answers, the profile's own block between them."""
-    blocks = [
-        f"[{section.source.number}] file: {section.source.file}"
-        f" | event date: {section.source.event_date or 'none'}"
-        f" | heading: {section.source.heading or '-'}\n{section.text}"
-        for section in sections
-    ]
+    question the program answers, the profile's own block between them. A table or note an
+    earlier source already holds is sent once (`_folded`); the page and the record keep every
+    section whole."""
+    sent: dict[str, int] = {}
+    blocks = []
+    for section in sections:
+        number = section.source.number
+        blocks.append(
+            f"[{number}] file: {section.source.file}"
+            f" | event date: {section.source.event_date or 'none'}"
+            f" | heading: {section.source.heading or '-'}\n"
+            f"{_folded(section.text, number, sent)}"
+        )
     sources = "\n\n".join(blocks)
     return (
         f"<sources>\n{sources}\n</sources>\n\n{strategy}"
