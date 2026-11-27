@@ -15,7 +15,7 @@ outside the data, and the user's plan is not charged for it.
 import asyncio
 import functools
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -34,6 +34,7 @@ from chat_bridge.chat.programs import (
     LoginStatus,
     Program,
     ProgramError,
+    Usage,
 )
 from chat_bridge.chat.schemas import (
     ChatContext,
@@ -42,6 +43,7 @@ from chat_bridge.chat.schemas import (
     Language,
     Localized,
     ProgramState,
+    QuestionUsage,
     Source,
 )
 from chat_bridge.chat.split import SplitOutcome, split_question
@@ -114,6 +116,7 @@ _ANSWERING: set[asyncio.Task[Any]] = set()
 PROMPT_FILE = Path(__file__).with_name("answer_prompt.md")
 TEXT_DELTA = "response.output_text.delta"
 PROPOSAL = "response.proposal"
+COMPLETED = "response.completed"
 
 # The programs that can answer, each a module with the same two functions.
 PROGRAMS: dict[Program, AnsweringProgram] = {
@@ -334,6 +337,30 @@ def _section_details(sections: list[FoundSection]) -> list[dict[str, Any]]:
     ]
 
 
+def question_usage(runs: list[tuple[str, Usage | None]]) -> QuestionUsage:
+    """The question's tokens: the runs that reported, added up, and how many did not."""
+    reported = [usage for _, usage in runs if usage is not None]
+    inputs = sum(usage.input_tokens for usage in reported)
+    outputs = sum(usage.output_tokens for usage in reported)
+    return QuestionUsage(
+        input_tokens=inputs,
+        cached_input_tokens=sum(usage.cached_input_tokens for usage in reported),
+        output_tokens=outputs,
+        total_tokens=inputs + outputs,
+        unreported_runs=len(runs) - len(reported),
+    )
+
+
+def _usage_details(runs: list[tuple[str, Usage | None]]) -> dict[str, Any]:
+    return {
+        "runs": [
+            {"run": name, "usage": None if usage is None else asdict(usage)}
+            for name, usage in runs
+        ],
+        "total": question_usage(runs).model_dump(),
+    }
+
+
 async def _record(
     question: str,
     answer: str,
@@ -347,6 +374,7 @@ async def _record(
     split: SplitOutcome | None = None,
     searches: list[dict[str, Any]] | None = None,
     proposal: dict[str, Any] | None = None,
+    runs: list[tuple[str, Usage | None]] | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
@@ -372,6 +400,8 @@ async def _record(
         # What came of a revision question's proposal: the checked proposal, the refusal, or
         # neither when the program proposed nothing.
         "proposal": proposal,
+        # Each run's tokens, or that it reported none, and their total; none when no program ran.
+        "usage": _usage_details(runs) if runs else None,
         "error": error,
     }
     async with open_engine() as engine:
@@ -392,10 +422,10 @@ async def answer_stream(
     The program is chosen before the context, so the context can name it; a refusal is still
     raised after the context, so the sources go out either way. Before the context, the chosen
     program lists the question's parts and each is searched, so the context carries every
-    source. Every run of the program for the question starts at `effort`. Every question is
-    recorded however the answer ends: answered, refused before the model, failed, or cut off
-    because the client stopped reading. Raises NoLoginError or a ProgramError after the context
-    when no answer can be had.
+    source. Every run of the program for the question starts at `effort`, and an answer that
+    ends is followed by the tokens of all of them. Every question is recorded however the answer
+    ends: answered, refused before the model, failed, or cut off because the client stopped
+    reading. Raises NoLoginError or a ProgramError after the context when no answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
@@ -410,12 +440,24 @@ async def answer_stream(
     current: strategy_store.Profile | None = None
     profile: strategy_store.Profile | None = None
     proposal: dict[str, Any] | None = None
+    # The tokens the answer's run reported once it ended.
+    answered: list[Usage] = []
     # A question the data has nothing on is answered without a model, so no login is read.
     if sections:
         try:
             program = await choose_program(requested)
         except NoLoginError as error:
             refusal = error
+
+    def runs() -> list[tuple[str, Usage | None]]:
+        """The question's model runs with what each reported: the split, then the answer once its
+        program was started."""
+        listed: list[tuple[str, Usage | None]] = []
+        if split is not None:
+            listed.append(("split", split.usage))
+        if command:
+            listed.append(("answer", answered[-1] if answered else None))
+        return listed
 
     async def record(error: str | None) -> None:
         await _record(
@@ -430,6 +472,7 @@ async def answer_stream(
             split=split,
             searches=searches,
             proposal=proposal,
+            runs=runs(),
         )
 
     answering = asyncio.current_task()
@@ -476,6 +519,7 @@ async def answer_stream(
                 sent,
                 on_start=command.extend,
                 effort=effort,
+                on_usage=answered.append,
             )
             pieces.append(revised.answer)
             yield ChatDelta(type=TEXT_DELTA, delta=revised.answer)
@@ -488,6 +532,7 @@ async def answer_stream(
             )
             proposal = event.model_dump(mode="json")
             yield ChatDelta(type=PROPOSAL, proposal=event)
+            yield ChatDelta(type=COMPLETED, usage=question_usage(runs()))
             await record(None)
             return
         holdings = (
@@ -495,10 +540,15 @@ async def answer_stream(
         )
         sent = model_input(question, sections, holdings)
         async for piece in PROGRAMS[program].stream_answer(
-            system_prompt(date.today()), sent, on_start=command.extend, effort=effort
+            system_prompt(date.today()),
+            sent,
+            on_start=command.extend,
+            effort=effort,
+            on_usage=answered.append,
         ):
             pieces.append(piece)
             yield ChatDelta(type=TEXT_DELTA, delta=piece)
+        yield ChatDelta(type=COMPLETED, usage=question_usage(runs()))
     except (NoLoginError, ProgramError) as error:
         await record(str(error))
         raise

@@ -123,6 +123,14 @@ arrived):
 Splitting the question took 7 to 8 seconds at both levels. Each figure is a single run.
 [Measurements](specs/018-answer-effort/research.md)
 
+When an answer ends, the last event, `response.completed`, carries `usage`: the input, cached
+input, output and total tokens of every model run of the question added up, and
+`unreported_runs`, the runs that reported none and are left out. Claude Code's counts come from
+its result's `modelUsage`, where the input is `inputTokens` plus the cache reads and writes;
+Codex's come from its `turn.completed` event, whose input already holds the cache. The chat page
+shows the total under the answer. A stopped or failed answer has no total; the question's record
+keeps each run's counts. [How the counts are read](specs/019-token-usage/research.md)
+
 The first payload, `response.context`, carries the sources, latest indexed event date, backend
 name, `split_failed` flag and bilingual disclaimer. Answer text arrives in
 `response.output_text.delta`, incrementally for ordinary Claude Code replies and in a single

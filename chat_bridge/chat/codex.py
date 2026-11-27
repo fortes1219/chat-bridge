@@ -33,7 +33,10 @@ from chat_bridge.chat.programs import (
     Login,
     LoginStatus,
     ProgramError,
+    Usage,
+    UsageCallback,
     end_process_tree,
+    token_count,
 )
 
 # The tools Codex turns on by default that would run a command, touch a file or go online. With
@@ -256,6 +259,34 @@ def read_events(lines: list[bytes]) -> tuple[str | None, list[str]]:
     return message, errors
 
 
+def usage_of(lines: list[bytes]) -> Usage | None:
+    """The run's tokens from its last `turn.completed` event; None when there is none or a count is
+    not a whole number.
+
+    Codex's input count already holds what was read from and written to the cache, and its output
+    count the reasoning (Codex's `TokenUsage`, filled from the API's counts), so nothing is added.
+    """
+    usage: Usage | None = None
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "turn.completed":
+            continue
+        counts = event.get("usage")
+        if not isinstance(counts, dict):
+            return None
+        inputs, cached, outputs = (
+            token_count(counts.get(name))
+            for name in ("input_tokens", "cached_input_tokens", "output_tokens")
+        )
+        if inputs is None or cached is None or outputs is None:
+            return None
+        usage = Usage(inputs, cached, outputs)
+    return usage
+
+
 def _failure(
     message: str | None, errors: list[str], exit_code: int | None, stderr: str
 ) -> str | None:
@@ -298,11 +329,12 @@ async def reply_in_shape(
     *,
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> dict[str, Any]:
     """Run Codex once, with no tools, for a reply in the given JSON shape, and return it.
     Raises CodexError when the run fails or its final message is not a JSON object."""
     return await _reply_in_shape(
-        system_prompt, input_text, schema, GLOBAL_ARGS, on_start, effort
+        system_prompt, input_text, schema, GLOBAL_ARGS, on_start, effort, on_usage
     )
 
 
@@ -329,6 +361,7 @@ async def _reply_in_shape(
     global_args: Sequence[str],
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> dict[str, Any]:
     """The schema goes in a file of its own folder, so the working folder stays empty and the
     command line holds only the file's path."""
@@ -344,7 +377,9 @@ async def _reply_in_shape(
         on_start(args)
         process = await _start(args, with_input=True)
         try:
-            message = await _read_answer(process, f"{system_prompt}\n\n{input_text}")
+            message = await _read_answer(
+                process, f"{system_prompt}\n\n{input_text}", on_usage
+            )
         finally:
             await _stop(process)
     return shaped_reply(message)
@@ -367,6 +402,7 @@ async def stream_answer(
     *,
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> AsyncIterator[str]:
     """Yield the answer once Codex has written it.
 
@@ -379,13 +415,17 @@ async def stream_answer(
         on_start(args)
         process = await _start(args, with_input=True)
         try:
-            answer = await _read_answer(process, f"{system_prompt}\n\n{input_text}")
+            answer = await _read_answer(
+                process, f"{system_prompt}\n\n{input_text}", on_usage
+            )
         finally:
             await _stop(process)
     yield answer
 
 
-async def _read_answer(process: Process, input_text: str) -> str:
+async def _read_answer(
+    process: Process, input_text: str, on_usage: UsageCallback | None = None
+) -> str:
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise CodexError("Codex started without its pipes")
     try:
@@ -405,6 +445,10 @@ async def _read_answer(process: Process, input_text: str) -> str:
         ) from None
     exit_code = await process.wait()
     message, errors = read_events(stdout)
+    # A run that failed may still have used tokens; its last event says how many.
+    usage = usage_of(stdout)
+    if on_usage is not None and usage is not None:
+        on_usage(usage)
     failure = _failure(
         message, errors, exit_code, stderr.decode("utf-8", errors="replace")
     )

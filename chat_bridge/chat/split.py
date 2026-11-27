@@ -18,7 +18,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
-from chat_bridge.chat.programs import AnsweringProgram, Effort, ProgramError
+from chat_bridge.chat.programs import AnsweringProgram, Effort, ProgramError, Usage
 
 # A safety bound, not a value tuned on test questions: it keeps a question, or text pasted into
 # one, from making one answer run dozens of searches. Long questions are split into about eight
@@ -73,6 +73,9 @@ class SplitOutcome:
     revise: bool = False
     seconds: float = 0.0
     command_line: list[str] = field(default_factory=list)
+    # The tokens the split's run reported; None when it reported none, as a run stopped at the
+    # time limit.
+    usage: Usage | None = None
 
     @property
     def failed(self) -> bool:
@@ -124,12 +127,14 @@ async def split_question(
     at the question's level. Never raises for a split that fails: the outcome says why, and the
     caller goes on with the question's own sections."""
     command: list[str] = []
+    reported: list[Usage] = []
     started = time.perf_counter()
 
     def outcome(**fields: Any) -> SplitOutcome:
         return SplitOutcome(
             seconds=round(time.perf_counter() - started, 3),
             command_line=command,
+            usage=reported[-1] if reported else None,
             **fields,
         )
 
@@ -141,6 +146,7 @@ async def split_question(
                 SPLIT_SCHEMA,
                 on_start=command.extend,
                 effort=effort,
+                on_usage=reported.append,
             ),
             SPLIT_TIMEOUT_SECONDS,
         )

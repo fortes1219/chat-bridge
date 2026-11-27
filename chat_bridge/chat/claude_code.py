@@ -29,7 +29,10 @@ from chat_bridge.chat.programs import (
     Login,
     LoginStatus,
     ProgramError,
+    Usage,
+    UsageCallback,
     end_process_tree,
+    token_count,
 )
 
 # Nothing from the user's own Claude Code setup (settings, hooks, MCP servers), no built-in
@@ -76,6 +79,11 @@ ERROR_TAIL_CHARS = 300
 # The longest output line read. A line holds one message, and the final result holds the whole
 # answer; asyncio's default of 64 KB could cut a long answer, so lines up to 1 MB are read.
 MAX_LINE_BYTES = 1024 * 1024
+# A result's per-model counts, for every model call of the run (the Agent SDK reference,
+# `ModelUsage`). The input count leaves out what was read from and written to the cache, which the
+# two other counts hold, so all three make the input.
+INPUT_COUNTS = ("inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+OUTPUT_COUNT = "outputTokens"
 
 
 __all__ = [
@@ -190,6 +198,35 @@ def _text_piece(message: dict[str, Any]) -> str | None:
     return text if isinstance(text, str) else None
 
 
+def usage_of(result: dict[str, Any] | None) -> Usage | None:
+    """The run's tokens from its result's `modelUsage`, summed over the models; None when there is
+    none or a count is not a whole number."""
+    models = result.get("modelUsage") if result else None
+    if not isinstance(models, dict) or not models:
+        return None
+    inputs = cached = outputs = 0
+    for entry in models.values():
+        if not isinstance(entry, dict):
+            return None
+        fresh, read, written, out = (
+            token_count(entry.get(name)) for name in (*INPUT_COUNTS, OUTPUT_COUNT)
+        )
+        if fresh is None or read is None or written is None or out is None:
+            return None
+        inputs += fresh + read + written
+        cached += read
+        outputs += out
+    return Usage(inputs, cached, outputs)
+
+
+def _report_usage(
+    result: dict[str, Any] | None, on_usage: UsageCallback | None
+) -> None:
+    usage = usage_of(result)
+    if on_usage is not None and usage is not None:
+        on_usage(usage)
+
+
 def _failure(
     result: dict[str, Any] | None, exit_code: int | None, stderr: str
 ) -> str | None:
@@ -252,11 +289,12 @@ async def reply_in_shape(
     *,
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> dict[str, Any]:
     """Run Claude Code once, with no tools, for a reply in the given JSON shape, and return it.
     Raises ClaudeCodeError when the run fails or ends without a reply in that shape."""
     return await _reply_in_shape(
-        system_prompt, input_text, schema, NO_TOOLS, on_start, effort
+        system_prompt, input_text, schema, NO_TOOLS, on_start, effort, on_usage
     )
 
 
@@ -282,6 +320,7 @@ async def _reply_in_shape(
     tool_args: Sequence[str],
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> dict[str, Any]:
     """The schema is fixed text, so it may be on the command line; the input goes on standard
     input."""
@@ -297,19 +336,25 @@ async def _reply_in_shape(
             output, stderr = await process.communicate(input_text.encode("utf-8"))
         finally:
             await _stop(process)
+    # A run that failed may still have used tokens; its result says how many.
+    _report_usage(parsed_result(output), on_usage)
     return shaped_reply(
         output, process.returncode, stderr.decode("utf-8", errors="replace")
     )
 
 
-def shaped_reply(output: bytes, exit_code: int | None, stderr: str) -> dict[str, Any]:
-    """The reply in the asked-for shape from the JSON result `--output-format json` prints."""
+def parsed_result(output: bytes) -> dict[str, Any] | None:
+    """The JSON result `--output-format json` prints, or None when it printed none."""
     try:
         result = json.loads(output)
     except ValueError:
-        result = None
-    if not isinstance(result, dict):
-        result = None
+        return None
+    return result if isinstance(result, dict) else None
+
+
+def shaped_reply(output: bytes, exit_code: int | None, stderr: str) -> dict[str, Any]:
+    """The reply in the asked-for shape from the JSON result `--output-format json` prints."""
+    result = parsed_result(output)
     failure = _failure(result, exit_code, stderr)
     if failure:
         raise ClaudeCodeError(failure)
@@ -329,6 +374,7 @@ async def stream_answer(
     *,
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> AsyncIterator[str]:
     """Yield the answer's text pieces as Claude Code writes them.
 
@@ -352,13 +398,15 @@ async def stream_answer(
         on_start(args)
         process = await _start(args, with_input=True)
         try:
-            async for piece in _read_answer(process, input_text):
+            async for piece in _read_answer(process, input_text, on_usage):
                 yield piece
         finally:
             await _stop(process)
 
 
-async def _read_answer(process: Process, input_text: str) -> AsyncIterator[str]:
+async def _read_answer(
+    process: Process, input_text: str, on_usage: UsageCallback | None = None
+) -> AsyncIterator[str]:
     if process.stdin is None or process.stdout is None or process.stderr is None:
         raise ClaudeCodeError("Claude Code started without its pipes")
     try:
@@ -399,6 +447,7 @@ async def _read_answer(process: Process, input_text: str) -> AsyncIterator[str]:
 
     exit_code = await process.wait()
     stderr = (await stderr_task).decode("utf-8", errors="replace")
+    _report_usage(result, on_usage)
     failure = _failure(result, exit_code, stderr)
     if failure:
         raise ClaudeCodeError(failure)

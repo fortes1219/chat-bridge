@@ -1,7 +1,7 @@
 import { computed, markRaw, onScopeDispose, reactive, ref, type ComputedRef, type Ref } from 'vue';
 import { useAskMutation } from '@/queries/use-ask-mutation';
 import { isAppError, isCancellation, type AppError } from '@/service/error';
-import type { ChatContext, ChatEvent, Effort, ProposalOutcome } from '@/service/api/chat';
+import type { ChatContext, ChatEvent, Effort, ProposalOutcome, QuestionUsage } from '@/service/api/chat';
 import type { Proposal } from '@/service/api/strategy';
 import type { Program } from '@/service/api/programs';
 
@@ -13,6 +13,8 @@ export interface Exchange {
   context: ChatContext | null;
   /** What came of a revision question's proposal; null until its event arrives, or for any other question. */
   proposal: ProposalOutcome | null;
+  /** The tokens the question used; null until the answer has ended, and for one that did not. */
+  usage: QuestionUsage | null;
   error: AppError | null;
   stopped: boolean;
 }
@@ -39,6 +41,9 @@ const APPLY_EVENT: { [T in ChatEvent['type']]: (exchange: Exchange, event: Event
   },
   'response.proposal': (exchange, event) => {
     exchange.proposal = event.proposal;
+  },
+  'response.completed': (exchange, event) => {
+    exchange.usage = event.usage;
   }
 };
 
@@ -83,6 +88,7 @@ export function useAsk(
       answer: '',
       context: null,
       proposal: null,
+      usage: null,
       error: null,
       stopped: false
     });

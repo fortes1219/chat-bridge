@@ -160,7 +160,12 @@ def test_every_run_of_a_question_is_at_its_level(
         return SplitOutcome()
 
     async def answer(
-        system_prompt: str, input_text: str, *, on_start: Any, effort: object = None
+        system_prompt: str,
+        input_text: str,
+        *,
+        on_start: Any,
+        effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         seen["answer"] = effort
         yield "ok"

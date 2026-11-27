@@ -43,6 +43,7 @@ def records(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         *,
         on_start: Callable[[list[str]], None],
         effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         on_start(COMMAND)
         yield "聯準會"
@@ -110,6 +111,7 @@ def test_an_answer_cancelled_at_shutdown_is_recorded_before_the_service_goes_on(
         *,
         on_start: Callable[[list[str]], None],
         effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         on_start(COMMAND)
         yield "聯準會"

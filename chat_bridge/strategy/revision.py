@@ -23,6 +23,7 @@ from chat_bridge.chat.programs import (
     Effort,
     Program,
     ProgramError,
+    UsageCallback,
 )
 from chat_bridge.chat.sources import Source
 from chat_bridge.strategy import store
@@ -144,13 +145,19 @@ async def revision_reply(
     *,
     on_start: Callable[[list[str]], None],
     effort: Effort | None = None,
+    on_usage: UsageCallback | None = None,
 ) -> RevisionReply:
     """Run the program once, at the question's level, for the answer and the proposal. Raises
     ProgramError when the run fails, takes too long, or its reply is not that shape."""
     try:
         reply: dict[str, Any] = await asyncio.wait_for(
             program.reply_in_shape(
-                prompt, input_text, PROPOSAL_SCHEMA, on_start=on_start, effort=effort
+                prompt,
+                input_text,
+                PROPOSAL_SCHEMA,
+                on_start=on_start,
+                effort=effort,
+                on_usage=on_usage,
             ),
             ANSWER_TIMEOUT_SECONDS,
         )

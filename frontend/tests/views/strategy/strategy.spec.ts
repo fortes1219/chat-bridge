@@ -182,6 +182,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: PROPOSAL, refused: null }
     });
 
@@ -198,6 +199,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: null, refused: { code: 'not_100', message: 'the targets add up to 90%, not 100%' } }
     });
 
@@ -215,6 +217,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: PROPOSAL, refused: null }
     });
     expect(page.find('[data-test="proposal-card"] button').exists()).toBe(true);
@@ -238,6 +241,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: PROPOSAL, refused: null }
     });
 
@@ -246,6 +250,7 @@ describe('a revision question on the chat page', () => {
         type: 'response.proposal',
         delta: null,
         context: null,
+        usage: null,
         proposal: { proposal: replacing, refused: null }
       })
     );
@@ -265,6 +270,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: null, refused: null }
     });
 
@@ -299,6 +305,7 @@ describe('a revision question on the chat page', () => {
       type: 'response.proposal',
       delta: null,
       context: null,
+      usage: null,
       proposal: { proposal: PROPOSAL, refused: null }
     });
 

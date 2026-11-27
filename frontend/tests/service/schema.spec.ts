@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ErrorBodySchema } from '@/service/schema/common';
 import { ProgramStateSchema } from '@/service/schema/program';
 import { ChatEventSchema, ChatRequestSchema, StreamErrorSchema } from '@/service/schema/chat';
-import { CONTEXT_EVENT, textEvent } from '../helpers/sse';
+import { CONTEXT_EVENT, completedEvent, textEvent } from '../helpers/sse';
 
 describe('ProgramStateSchema', () => {
   it('accepts each program and state the service sends', () => {
@@ -43,6 +43,13 @@ describe('ChatEventSchema', () => {
 
   it('accepts a piece of the answer', () => {
     expect(ChatEventSchema.parse(textEvent('降息。'))).toEqual(textEvent('降息。'));
+  });
+
+  it('accepts the tokens of an answer that ended, and refuses a count that is not whole', () => {
+    expect(ChatEventSchema.parse(completedEvent())).toEqual(completedEvent());
+    expect(() => ChatEventSchema.parse(completedEvent({ total_tokens: 1.5 }))).toThrow();
+    expect(() => ChatEventSchema.parse(completedEvent({ unreported_runs: -1 }))).toThrow();
+    expect(() => ChatEventSchema.parse({ ...completedEvent(), usage: null })).toThrow();
   });
 
   it('refuses a piece without its text and a context without its notice', () => {

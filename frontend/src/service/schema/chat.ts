@@ -48,7 +48,8 @@ export const ContextEventSchema = z
     type: z.literal('response.context'),
     delta: z.null(),
     context: ChatContextSchema,
-    proposal: z.null()
+    proposal: z.null(),
+    usage: z.null()
   })
   .strict();
 
@@ -58,22 +59,56 @@ export const TextEventSchema = z
     type: z.literal('response.output_text.delta'),
     delta: z.string(),
     context: z.null(),
-    proposal: z.null()
+    proposal: z.null(),
+    usage: z.null()
   })
   .strict();
 
-/** A revision question's last event: what came of its proposal. */
+/** A revision question's event after its answer: what came of its proposal. */
 export const ProposalEventSchema = z
   .object({
     type: z.literal('response.proposal'),
     delta: z.null(),
     context: z.null(),
-    proposal: ProposalOutcomeSchema
+    proposal: ProposalOutcomeSchema,
+    usage: z.null()
+  })
+  .strict();
+
+const tokens = z.number().int().nonnegative();
+
+/**
+ * The tokens of every model run of the question, added up. The input counts all of it, the part
+ * read from the cache included; `unreported_runs` runs reported none and are left out.
+ */
+export const QuestionUsageSchema = z
+  .object({
+    input_tokens: tokens,
+    cached_input_tokens: tokens,
+    output_tokens: tokens,
+    total_tokens: tokens,
+    unreported_runs: tokens
+  })
+  .strict();
+
+/** The last event of an answer that ended: the question's tokens. */
+export const CompletedEventSchema = z
+  .object({
+    type: z.literal('response.completed'),
+    delta: z.null(),
+    context: z.null(),
+    proposal: z.null(),
+    usage: QuestionUsageSchema
   })
   .strict();
 
 /** An unnamed event of the stream. */
-export const ChatEventSchema = z.discriminatedUnion('type', [ContextEventSchema, TextEventSchema, ProposalEventSchema]);
+export const ChatEventSchema = z.discriminatedUnion('type', [
+  ContextEventSchema,
+  TextEventSchema,
+  ProposalEventSchema,
+  CompletedEventSchema
+]);
 
 /** The event named `error` that ends a stream whose answer failed after it started. */
 export const StreamErrorSchema = ErrorDetailSchema;

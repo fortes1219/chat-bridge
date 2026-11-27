@@ -4,7 +4,7 @@ they are stopped.
 Each program is a module with the same four functions, `login_status()`, `reply_in_shape()`,
 `web_reply_in_shape()` and `stream_answer()`, so the service picks one from a table and nothing
 else changes with the program. A chat question passes the level it is answered at; without one, a
-program runs at its model's own default.
+program runs at its model's own default. A run that reports its tokens hands them to `on_usage`.
 """
 
 import asyncio
@@ -37,6 +37,27 @@ class Effort(StrEnum):
 
 # A question that names no level is answered at this one.
 DEFAULT_EFFORT = Effort.MEDIUM
+
+
+@dataclass(frozen=True)
+class Usage:
+    """One run's tokens as its program reported them. `input_tokens` is all of the input, the part
+    read from the cache included; `cached_input_tokens` is that part."""
+
+    input_tokens: int
+    cached_input_tokens: int
+    output_tokens: int
+
+
+# Called once a run has ended, with the tokens it reported.
+UsageCallback = Callable[[Usage], None]
+
+
+def token_count(value: object) -> int | None:
+    """A reported count: a whole number of zero or more, else None, never a guess."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 class Login(StrEnum):
@@ -107,6 +128,7 @@ class AnsweringProgram(Protocol):
         *,
         on_start: Callable[[list[str]], None],
         effort: Effort | None = None,
+        on_usage: UsageCallback | None = None,
     ) -> dict[str, Any]: ...
 
     async def web_reply_in_shape(
@@ -126,4 +148,5 @@ class AnsweringProgram(Protocol):
         *,
         on_start: Callable[[list[str]], None],
         effort: Effort | None = None,
+        on_usage: UsageCallback | None = None,
     ) -> AsyncIterator[str]: ...

@@ -41,6 +41,9 @@ export default {
     latestDate: 'The data reaches {date}.',
     noLatestDate: 'None of the data has a date.',
     splitFailed: 'This question could not be split into parts, so it was searched as a whole.',
+    usage: 'This question used {total} tokens ({input} in, {output} out)',
+    usageIncomplete:
+      'One run reported no tokens and is not counted. | {count} runs reported no tokens and are not counted.',
     allSources: 'Found one source | Found {count} sources',
     citedSources: 'The answer cites one source | The answer cites {count} sources',
     noneCited: 'The answer cites none of the sources.',

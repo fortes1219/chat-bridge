@@ -18,6 +18,8 @@ export type ChatContext = Extract<ChatEvent, { type: 'response.context' }>['cont
 export type Source = ChatContext['sources'][number];
 /** What came of a revision question: the checked proposal, or why it was refused. */
 export type ProposalOutcome = Extract<ChatEvent, { type: 'response.proposal' }>['proposal'];
+/** The tokens a question used, sent once its answer ended. */
+export type QuestionUsage = Extract<ChatEvent, { type: 'response.completed' }>['usage'];
 
 /**
  * The stream ends when the service closes it, at its own time limit or when the user stops it,

@@ -50,6 +50,7 @@ def _logins(
             *,
             on_start: Callable[[list[str]], None],
             effort: object = None,
+            on_usage: object = None,
         ) -> AsyncIterator[str]:
             on_start([name])
             yield name
@@ -209,6 +210,7 @@ def test_an_unexpected_error_still_leaves_the_question_on_record(
         *,
         on_start: Callable[[list[str]], None],
         effort: object = None,
+        on_usage: object = None,
     ) -> AsyncIterator[str]:
         raise OSError("the program was moved")
         yield ""  # pragma: no cover - makes this an async generator

@@ -47,9 +47,30 @@ export const CONTEXT_EVENT: Extract<ChatEvent, { type: 'response.context' }> = {
     split_failed: false,
     proposal_expected: false
   },
-  proposal: null
+  proposal: null,
+  usage: null
 };
 
 export function textEvent(delta: string): Extract<ChatEvent, { type: 'response.output_text.delta' }> {
-  return { type: 'response.output_text.delta', delta, context: null, proposal: null };
+  return { type: 'response.output_text.delta', delta, context: null, proposal: null, usage: null };
+}
+
+/** The last event of an answer that ended: the question's tokens. */
+export function completedEvent(
+  usage: Partial<Extract<ChatEvent, { type: 'response.completed' }>['usage']> = {}
+): Extract<ChatEvent, { type: 'response.completed' }> {
+  return {
+    type: 'response.completed',
+    delta: null,
+    context: null,
+    proposal: null,
+    usage: {
+      input_tokens: 93_000,
+      cached_input_tokens: 60_800,
+      output_tokens: 2_050,
+      total_tokens: 95_050,
+      unreported_runs: 0,
+      ...usage
+    }
+  };
 }

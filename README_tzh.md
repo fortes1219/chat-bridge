@@ -105,6 +105,12 @@ Codex 以 `model_reasoning_effort` 啟動，更高的強度不開放。啟動 Cl
 
 拆題在兩種強度都是 7 到 8 秒。每個數字都只量了一次。[量測紀錄](specs/018-answer-effort/research.md)
 
+答案結束時，最後一個事件 `response.completed` 帶著 `usage`：這一題每次叫模型的輸入、
+快取輸入、輸出與總 token 數的加總，以及 `unreported_runs`，也就是沒有回報用量、沒算進去的次數。
+Claude Code 的數字取自結果裡的 `modelUsage`，輸入是 `inputTokens` 加上快取讀取與寫入；
+Codex 的數字取自 `turn.completed` 事件，它的輸入已經含快取。聊天頁面在答案下方顯示總數。
+中途停止或出錯的答案沒有總數，但紀錄會保留每一次的用量。[用量怎麼讀](specs/019-token-usage/research.md)
+
 第一筆 `response.context` 包含來源、索引中最新的事件日期、回答後端、拆題失敗標記
 `split_failed` 與中英文免責聲明。回答文字由 `response.output_text.delta` 傳送。
 Claude Code 的一般回答會分段送出，Codex 或包含提案的回答會一次送出。

@@ -27,6 +27,9 @@ const sources = computed(() => props.exchange.context?.sources ?? []);
 // Read from the text on screen, so a source is listed under the answer once its mark is shown.
 const cited = useCitedSources(shown, sources);
 const answerDone = computed(() => !props.streaming && !typing.value && props.exchange.answer !== '');
+// The question's tokens come with the answer's end; they are shown once it has been typed out.
+const usage = computed(() => (answerDone.value ? props.exchange.usage : null));
+const tokens = (count: number): string => count.toLocaleString(locale.value);
 
 /**
  * The sources are in and the program has not written its first words, which can take a while: the
@@ -119,6 +122,21 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
       <p v-if="exchange.context?.split_failed" class="text-muted mt-1" data-test="split-failed">
         {{ t('chat.splitFailed') }}
       </p>
+      <!-- Every model run of the question added up; a run that reported none is said, not counted. -->
+      <template v-if="usage">
+        <p class="text-muted mt-1" data-test="usage">
+          {{
+            t('chat.usage', {
+              total: tokens(usage.total_tokens),
+              input: tokens(usage.input_tokens),
+              output: tokens(usage.output_tokens)
+            })
+          }}
+        </p>
+        <p v-if="usage.unreported_runs" class="text-muted" data-test="usage-incomplete">
+          {{ t('chat.usageIncomplete', { count: usage.unreported_runs }, usage.unreported_runs) }}
+        </p>
+      </template>
     </section>
     <p v-if="exchange.context" class="text-muted text-xs" data-test="notice">
       {{ exchange.context.disclaimer[locale] }}

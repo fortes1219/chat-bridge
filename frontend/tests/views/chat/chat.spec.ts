@@ -4,7 +4,7 @@ import type { Router } from 'vue-router';
 import { CanceledError } from 'axios';
 import type { ProgramState } from '@/service/api/programs';
 import type { ChatEvent, ChatRequest } from '@/service/api/chat';
-import { CONTEXT_EVENT, textEvent } from '../../helpers/sse';
+import { CONTEXT_EVENT, completedEvent, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
 import { getSampleQuestionsMock } from '../../helpers/samples';
 
@@ -495,6 +495,53 @@ describe('which program answers', () => {
   it('corrects an address naming a program that is not logged in', async () => {
     await open(CODEX_ONLY, '/?lang=en&program=claude-code');
     expect(router.currentRoute.value.query.program).toBe('codex');
+  });
+});
+
+describe('the tokens a question used', () => {
+  async function answered(lang: string, ...events: ChatEvent[]): Promise<VueWrapper> {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY, `/?lang=${lang}`);
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    for (const event of events) answer.send(event);
+    answer.end();
+    await flushPromises();
+    return page;
+  }
+
+  it('says them under the answer once it has ended, after the sources and the date', async () => {
+    const page = await answered('en', textEvent('Rates rose [1].'), completedEvent());
+
+    await vi.waitFor(() =>
+      expect(page.find('[data-test="usage"]').text()).toBe('This question used 95,050 tokens (93,000 in, 2,050 out)')
+    );
+    expect(page.find('[data-test="usage-incomplete"]').exists()).toBe(false);
+    const block = page.find('[data-test="sources"]').html();
+    expect(block.indexOf('data-test="latest-date"')).toBeLessThan(block.indexOf('data-test="usage"'));
+  });
+
+  it('says them in Traditional Chinese, and that a run reporting none is not counted', async () => {
+    const page = await answered('zh-TW', textEvent('利率上升 [1]。'), completedEvent({ unreported_runs: 1 }));
+
+    await vi.waitFor(() =>
+      expect(page.find('[data-test="usage"]').text()).toBe('這一題用了 95,050 個 token（輸入 93,000、輸出 2,050）')
+    );
+    expect(page.find('[data-test="usage-incomplete"]').text()).toBe('有 1 次執行沒有回報用量，數字不含那幾次。');
+  });
+
+  it('says nothing about tokens for an answer that broke off', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementation(answer.events);
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'q');
+    answer.send(CONTEXT_EVENT);
+    answer.send(textEvent('Rates'));
+    answer.fail(new Error('broke off'));
+    await flushPromises();
+
+    expect(page.find('[data-test="usage"]').exists()).toBe(false);
   });
 });
 
