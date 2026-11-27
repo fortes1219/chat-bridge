@@ -60,3 +60,9 @@ description: "Task list for A chat page in the browser"
 - [ ] T022 Ask the maintainer for consent to the real runs of research.md, in one list
 - [ ] T023 Real run: the runs of research.md; keep what the page showed
 - [ ] T024 `git ls-files --eol` shows no `w/crlf`; give the maintainer the feature's files with one one-line commit message
+
+## Fix: "Check again" after installing a program (2026-11-27)
+
+- [x] T025 `chat_bridge/chat/claude_code.py`, `codex.py`: look for each program on PATH, then in its official installer's folder, under the name the system gives it (research decision 4a)
+- [x] T026 Tests: with an empty PATH, each program is found in its installer's folder (`.exe` on Windows) and reported not installed when that folder is empty; Codex's folder on Windows is under `LOCALAPPDATA`
+- [x] T027 Checks (ruff, ruff format, mypy, fast suite), `git ls-files --eol`; the file list and one fix commit message to the maintainer

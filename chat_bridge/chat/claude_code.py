@@ -53,8 +53,11 @@ SHAPED_ARGS = ("--output-format", "json", "--json-schema")
 # With one of these set, `claude -p` would use a key instead of the user's login, and bill an
 # account the user may not know is set.
 STRIPPED_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
-# The native installer puts the executable here, and it is not always on PATH yet.
-FALLBACK_EXECUTABLE = Path.home() / ".local" / "bin" / "claude"
+# The native installer's folder: "~/.local/bin/claude on macOS/Linux or
+# %USERPROFILE%\.local\bin\claude.exe on Windows" (Claude Code's install troubleshooting page).
+# The installer adds it to the user's PATH, but a service started before the install keeps the
+# PATH it started with, so "check again" would not find it there.
+INSTALL_DIR = Path.home() / ".local" / "bin"
 # Reading the login calls no model. A status that takes longer than this means Claude Code is
 # stuck, and the question is better refused than left waiting.
 LOGIN_STATUS_TIMEOUT_SECONDS = 15
@@ -94,13 +97,12 @@ def child_env() -> dict[str, str]:
 
 
 def find_executable() -> str:
-    """The `claude` executable: on PATH first, then where the native installer puts it."""
-    found = shutil.which("claude")
-    if found:
-        return found
-    if FALLBACK_EXECUTABLE.is_file():
-        return str(FALLBACK_EXECUTABLE)
-    raise ClaudeCodeError("Claude Code is not installed")
+    """The `claude` executable: on PATH first, then in the native installer's folder, under the
+    name the system gives it (`claude.exe` on Windows)."""
+    found = shutil.which("claude") or shutil.which("claude", path=str(INSTALL_DIR))
+    if found is None:
+        raise ClaudeCodeError("Claude Code is not installed")
+    return found
 
 
 async def _start(args: list[str], *, with_input: bool) -> Process:

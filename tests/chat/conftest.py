@@ -70,6 +70,27 @@ def no_profile(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def empty_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """A PATH and a current folder that hold no program, as a service has that was started
+    before a program was installed. Returns a folder, not yet made, to install into."""
+    on_path = tmp_path / "on-path"
+    on_path.mkdir()
+    monkeypatch.setenv("PATH", str(on_path))
+    monkeypatch.chdir(on_path)
+    return tmp_path / "installed"
+
+
+def install(folder: Path, name: str) -> Path:
+    """A stand-in for a program an installer left in `folder`, under the name the system gives
+    it: `name.exe` on Windows, an executable file `name` elsewhere."""
+    folder.mkdir(parents=True, exist_ok=True)
+    program = folder / (f"{name}.exe" if sys.platform == "win32" else name)
+    program.write_text("", encoding="utf-8")
+    program.chmod(0o755)
+    return program
+
+
+@pytest.fixture
 def start_launcher(tmp_path: Path) -> StartLauncher:
     """Starts, with a program's own start function, a stand-in for what npm installs on Windows.
 

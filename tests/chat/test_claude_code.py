@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import pytest
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.claude_code import Login, LoginStatus
 from chat_bridge.chat.service import NO_LOGIN_MESSAGES, NoLoginError
-from tests.chat.conftest import StartLauncher
+from tests.chat.conftest import StartLauncher, install
 
 
 def test_the_key_variables_are_removed_from_the_child(
@@ -70,14 +69,23 @@ def test_a_status_that_cannot_be_read_is_unknown_and_not_a_login(
 
 
 def test_a_missing_executable_is_reported_as_not_installed(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, empty_path: Path
 ) -> None:
-    monkeypatch.setattr(shutil, "which", lambda name: None)
-    monkeypatch.setattr(claude_code, "FALLBACK_EXECUTABLE", Path("no-such-claude"))
+    monkeypatch.setattr(claude_code, "INSTALL_DIR", empty_path)
 
     status = asyncio.run(claude_code.login_status())
 
     assert status.state is Login.NOT_INSTALLED
+
+
+def test_claude_code_installed_after_the_service_started_is_found(
+    monkeypatch: pytest.MonkeyPatch, empty_path: Path
+) -> None:
+    # Not on the service's PATH, in the native installer's folder: `claude.exe` on Windows.
+    program = install(empty_path, "claude")
+    monkeypatch.setattr(claude_code, "INSTALL_DIR", empty_path)
+
+    assert Path(claude_code.find_executable()).samefile(program)
 
 
 @pytest.mark.parametrize(

@@ -97,8 +97,8 @@ class CodexError(ProgramError):
 
 
 class CodexNotFoundError(CodexError):
-    """No `codex` on PATH. Only this means not installed; a `codex` that was found but refused
-    is a different state."""
+    """No `codex` on PATH or in its installer's folder. Only this means not installed; a `codex`
+    that was found but refused is a different state."""
 
 
 def child_env() -> dict[str, str]:
@@ -108,14 +108,33 @@ def child_env() -> dict[str, str]:
     }
 
 
+def install_dir() -> Path | None:
+    """The folder Codex's own installer puts it in: `CODEX_INSTALL_DIR` when set, else
+    `%LOCALAPPDATA%\\Programs\\OpenAI\\Codex\\bin` on Windows and `~/.local/bin` elsewhere
+    (openai/codex `scripts/install/install.ps1`, `install.sh`). The installer adds it to the
+    user's PATH, but a service started before the install keeps the PATH it started with."""
+    chosen = os.environ.get("CODEX_INSTALL_DIR")
+    if chosen:
+        return Path(chosen)
+    if sys.platform != "win32":
+        return Path.home() / ".local" / "bin"
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if not local_app_data:
+        return None
+    return Path(local_app_data) / "Programs" / "OpenAI" / "Codex" / "bin"
+
+
 def find_executable() -> str:
-    """The `codex` the user installed, as found on PATH.
+    """The `codex` the user installed: on PATH first, then in its installer's folder.
 
     On Windows the search looks in the current folder first, so a program of the same name put
     in the folder the service runs from would be found before the user's own. Such a program
     is refused, never run.
     """
-    found = shutil.which("codex")
+    folder = install_dir()
+    found = shutil.which("codex") or (
+        shutil.which("codex", path=str(folder)) if folder else None
+    )
     if found is None:
         raise CodexNotFoundError("Codex is not installed")
     if Path(found).resolve().is_relative_to(Path.cwd().resolve()):

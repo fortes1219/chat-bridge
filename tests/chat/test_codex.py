@@ -15,7 +15,7 @@ import pytest
 from chat_bridge.chat import codex, service
 from chat_bridge.chat.programs import Login
 from chat_bridge.chat.schemas import Source
-from tests.chat.conftest import StartLauncher
+from tests.chat.conftest import StartLauncher, install
 
 # Taken before the fixture in conftest.py replaces it, to test the real lookup.
 REAL_FIND_EXECUTABLE = codex.find_executable
@@ -53,12 +53,34 @@ def test_the_key_variables_are_removed_from_the_child(
 
 
 def test_a_missing_codex_is_reported_as_not_installed(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, empty_path: Path
 ) -> None:
-    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setenv("CODEX_INSTALL_DIR", str(empty_path))
     monkeypatch.setattr(codex, "find_executable", REAL_FIND_EXECUTABLE)
 
     assert asyncio.run(codex.login_status()).state is Login.NOT_INSTALLED
+
+
+def test_codex_installed_after_the_service_started_is_found(
+    monkeypatch: pytest.MonkeyPatch, empty_path: Path
+) -> None:
+    # Not on the service's PATH, in its installer's folder: `codex.exe` on Windows.
+    program = install(empty_path, "codex")
+    monkeypatch.setenv("CODEX_INSTALL_DIR", str(empty_path))
+
+    assert Path(REAL_FIND_EXECUTABLE()).samefile(program)
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32", reason="the installer's folder differs on Windows"
+)
+def test_codex_installer_folder_on_windows_is_under_local_app_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("CODEX_INSTALL_DIR", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    assert codex.install_dir() == tmp_path / "Programs" / "OpenAI" / "Codex" / "bin"
 
 
 def test_a_codex_in_the_service_folder_is_refused_not_run(
