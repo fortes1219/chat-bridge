@@ -45,8 +45,9 @@ class PriceTrend(BaseModel):
 
 class PriceDay(BaseModel):
     day: date
+    # The close of the market's trading day before it, and the change against that close.
+    previous_close: float | None
     close: float | None
-    # Against the market's trading day before it.
     change: float | None
 
 
@@ -68,6 +69,8 @@ class PriceRow(BaseModel):
     aligned: date
     # None when the data has no trading day on or after the aligned day yet.
     d0: date | None
+    # The close of the trading day before D0.
+    previous_close: float | None
     close: float | None
     # D0 against the trading day before it; the next trading day against D0; the fifth trading
     # day after D0 against the trading day before D0.
@@ -112,5 +115,7 @@ class PriceLookups(BaseModel):
     # the events' rows.
     days_left_out: int = 0
     events_left_out: int = 0
+    # The events of the days a short lookup asks about that were not given to the program.
+    period_events_left_out: int = 0
     # Where the closes come from and its terms, as the strategy panel names them.
     source: PriceSourceView

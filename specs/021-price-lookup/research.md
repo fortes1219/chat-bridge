@@ -201,6 +201,41 @@ minimatch GHSA-g3hv-75wg-m249, through `@vue/test-utils` and js-beautify).
 - **Decision**: The chat's lookup and the end of market sections in new files can each be undone on
   its own; at delivery they are proposed as two commits.
 
+### 13. The events of the days a short lookup asks about (a fix, T013)
+
+- **Decision**: For each read lookup of at most 10 trading days (the block's own "short period"),
+  the service reads the stored events dated from that market's trading day before the period to
+  its end, on the indexed `documents.event_date`, each lookup's span on its own (overlapping or
+  adjoining spans as one), first their dates, markets and moments only; it keeps those whose date
+  is in the period or whose day 0 in the lookup's market is (the alignment the rows already use),
+  at most 30 in date order, the rest counted; only then are the kept events' first sections read,
+  and each comes after the found sections, unless a found section is of it. An event gets a
+  series' row when the period holds its date or its day 0. Every row, and every day of a short
+  period, also gives the close of the trading day before.
+- **The bound**: 30, the number of sections the question's own wide search keeps. The sample
+  news's busiest ten trading days with the trading day before, eleven weekdays (2026-11-03 to
+  11-17), hold 25 events (counted 2026-11-28 on `data/truth`), so none of it is cut; a person's own folder with hundreds of dated files in a
+  week sends 30 and says how many more there were, in `<prices>`, on the page and in the record.
+- **Rationale**: The real run (T010) showed that "006208 在 9 月 17 日的漲跌" no longer gave the
+  program the events of those days, their later rows or the close before: before this feature,
+  the question's words found the events' market tables, which every file has and which held 006208;
+  with no table stored, no news text of those events holds "006208" or "9 月 17 日". The lookup the
+  program named already says which days are asked about; taking the events of those days by their
+  date is a search on a typed field with typed arguments the model gave, as the Azure template's
+  planning call returns `search_database` with a typed `price_filter`
+  (`Azure-Samples/rag-postgres-openai-python@ecaafc4:src/backend/fastapi_app/rag_advanced.py:76-108`)
+  that becomes a checked `WHERE` condition on the `price` column
+  (`src/backend/fastapi_app/postgres_searcher.py:35-50`). Its cost follows the days asked about,
+  not the months between two of them: one indexed query on the dates, then one section for each
+  of at most 30 events. A Fed decision of the evening before reaches Taiwan the
+  next day, so the period's trading day before is read and the event kept by its day 0. The close
+  before was a column of the market tables (`docs/truth_format.md` section 7) and of 11-23's answer
+  to the same question; T001 had left it out of the rows to save room.
+- **Alternatives**: Searching the question's words within the dates: a file none of whose sections
+  the words or the vector reach is still left out, and 006208 is in no news text. Every event of a
+  long period (the holdings question's two months, 41 to 47 events): those found by the words have
+  their rows already; adding all would send every event's first section.
+
 ## Runs
 
 ### T001, before any code (2026-11-28, no model called)
@@ -343,6 +378,79 @@ missing; documents.event_time is missing`), so it was cleared and is made again,
 any folder of one's own again; the service then ingested the sample news (71 files, 245
 sections). A question about 006208 was answered with its sources and its prices. Ctrl+C ended the
 service with no process left.
+
+### T010, the real run (2026-11-28 13:21, with consent; 6 model runs)
+
+On a copy of the person's 0.1.0 database (the service cleared and made the knowledge base again
+itself), the person's Claude Code and Codex, real prices, effort medium; one run each.
+
+| Question, program | Before (018 run, 2026-11-27) | This feature |
+|---|---|---|
+| Holdings question, Claude Code | 107.6 s, 108 sections, 97,989 characters sent | 87.4 s, 54 sections, 34,632 characters, 52,605 tokens |
+| Holdings question, Codex | 42.6 s, 98 sections, 89,631 characters | 57.1 s, 52 sections, 32,584 characters, 44,885 tokens |
+| 006208 在 9 月 17 日的漲跌, Claude Code | | 17.4 s, 21 sections, 22,951 tokens |
+
+- Each split named the lookups as asked: the six holdings over two months, cash not among them;
+  006208.TW for 2026-09-17. None left out, none unread.
+- The numbers each answer quoted are in its sources, `<prices>` or `<strategy>`.
+- Worse than before: the Codex run took 14.5 s longer, its split 12.6 s against 7.3 s; the sources
+  came 3 to 5 s later with both programs (the split now also names the lookups). One run each, so
+  noise cannot be told apart; two more Codex runs of it are asked for.
+- Worse than before: the 006208 question was given neither the events of those days nor their
+  later rows nor the close before (decision 13); fixed in T013.
+
+### T013, the events of the days asked about (2026-11-28, no model)
+
+The replay of SC-003 in the test container with the fix's code (`with_period_events` after the
+read), the stand-in lookups of decision 8:
+
+- "006208 在 9 月 17 日的漲跌": 2026-09-16-fomc-raises-rate and
+  2026-09-17-cbc-holds-rates-eases-mortgage-cap come among the sources; 006208.TW's row: D0
+  2026-09-17, before 244.60, close 247.40, +1.14%, next +1.54%, D+5 +5.01%, as 11-23's answer
+  quoted them.
+- The 9 market questions: every event dated on the day asked about is given now (a section, and
+  its rows); 15 sections were added across them, none for the recorded cases and the holdings
+  splits, whose periods are long.
+- Against the feature's first commit: no section, file or row of any of the 39 cases is lost.
+- Counting the market sections, against 0.1.0's lists (`3403a5a`): the event files the program
+  had only through their market table and has nothing of now went from 34 to 26 (case and file
+  pairs). The 26 are events of other days whose tables matched the question's words (for "費半 10
+  月 30 日跌幾趴", the 29 October Amazon and Microsoft files; for 006208, June and July files).
+- The block's largest is 24,370 characters (bound 30,000), no event left out. The input grew with
+  the close before and the added events: the holdings splits by 2,013 to 2,291 characters (about
+  5%), the market questions' median from 11,110 to 12,383; the recorded cases' median did not
+  change.
+- As a person (SC-004's walk again, stand-in program and prices, headless Edge): the 006208
+  question's prices line shows the day with its close before, and both events of those days, the
+  second naming the first's rows; the English page shows the column as "Previous close" and no
+  Chinese but the files' names. Ctrl+C ended the service in 7 seconds with no process left.
+
+### T013's real run (2026-11-28 18:01, with consent; 6 model runs)
+
+The same copy of a 0.1.0 database (rebuilt on start, on the person's machine: the run should have
+used the copy already rebuilt at 13:21), the person's programs, real prices, effort medium.
+
+| Question, program | Before | After the fix |
+|---|---|---|
+| Holdings question, Codex | 42.6 s (018 run, one) | 53.9 s and 52.7 s (57.1 s at 13:21); 54 sections; 44,560 and 45,427 tokens |
+| 006208 在 9 月 17 日的漲跌, Claude Code | 21.3 s (11-23, one); 17.4 s at 13:21 without the events | 25.8 s; 23 sections; 25,107 tokens |
+
+- The 006208 answer has what 11-23's had: the close before (244.60) and +1.14%; the Fed's
+  decision of 16 September, with the 17th as its first Taiwan trading day, and the central bank's
+  of the 17th, each cited by its source number; the next trading day's +1.54% and D+5's +5.01%;
+  and that the numbers do not show the events caused the move. Its numbers are in its sources and
+  `<prices>`.
+- Measured in tokens, as the time depends on the effort chosen: the Codex holdings question
+  44,885 before the fix, 44,560 and 45,427 after, the same; the 006208 question 22,951 before,
+  25,107 after (2,156 more, about 9%), for the two events brought back and a longer answer (479
+  characters against 192). The holdings question with Claude Code was not run again; the replay
+  put its input 2,013 to 2,291 characters longer, the close before. Against 0.1.0 (`3403a5a`),
+  which kept no token counts, in characters sent: the holdings question 69,567 to 79,958 then,
+  39,305 to 44,701 now; the 006208 question 46,371 then, 15,454 now.
+- In seconds, for the record: the Codex holdings question 52.7 to 57.1 s against 42.6 s; the
+  006208 question 25.8 s against 21.3 s on 11-23.
+- Not run: H019 (a question about 17 November that names no symbol), and the English 0050
+  question of SC-005.
 
 ## To measure
 

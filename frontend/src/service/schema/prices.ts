@@ -27,10 +27,11 @@ export const PriceTrendSchema = z
   })
   .strict();
 
-/** One trading day of a short period, with its change from the trading day before. */
+/** One trading day of a short period, with the trading day before's close and the change from it. */
 export const PriceDaySchema = z
   .object({
     day,
+    previous_close: number.nullable(),
     close: number.nullable(),
     change: number.nullable()
   })
@@ -46,12 +47,13 @@ export const MoveNotesSchema = z
   })
   .strict();
 
-/** A series on an event's trading day (D0) and after; D0 is null when the data has none yet. */
+/** A series on the trading day before an event's trading day (D0), on D0 and after; D0 is null when the data has none yet. */
 export const PriceRowSchema = z
   .object({
     symbol: z.string(),
     aligned: day,
     d0: day.nullable(),
+    previous_close: number.nullable(),
     close: number.nullable(),
     day_change: number.nullable(),
     next_change: number.nullable(),
@@ -103,6 +105,8 @@ export const PriceLookupsSchema = z
     events: PriceEventSchema.array(),
     days_left_out: z.number().int().nonnegative(),
     events_left_out: z.number().int().nonnegative(),
+    /** The events of the days a short lookup asks about that were not given to the program. */
+    period_events_left_out: z.number().int().nonnegative(),
     source: PriceSourceSchema
   })
   .strict();

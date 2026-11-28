@@ -17,6 +17,7 @@ from chat_bridge.price_history.closes import ClosesError, SeriesCloses
 from chat_bridge.price_history.lookups import Lookup
 from chat_bridge.price_history.markets import MarketSeries
 from chat_bridge.price_history.reading import Reads, SymbolRead
+from chat_bridge.search.service import DatedEvent, SearchHit
 
 READ_AT = datetime(2026, 11, 28, 10, 0, tzinfo=ZoneInfo("Asia/Taipei"))
 SESSIONS = [date(2026, 9, day) for day in (15, 16, 17, 18, 21, 22)]
@@ -219,7 +220,111 @@ def test_a_question_about_prices_alone_is_answered_from_the_prices(
     assert deltas[-1].type == "response.completed"
     sent = asked["input_text"]
     assert "<sources>\n\n</sources>" in sent
-    assert "| 006208.TW | 2026-09-17 | 118.00 | -2.48% |" in sent
+    assert "| 006208.TW | 2026-09-17 | 121.00 | 118.00 | -2.48% |" in sent
+
+
+def _stored(
+    monkeypatch: pytest.MonkeyPatch, events: list[DatedEvent]
+) -> dict[str, list[Any]]:
+    """The knowledge base holds these events; what was read of it."""
+    read: dict[str, list[Any]] = {"spans": [], "paths": []}
+
+    async def dated_events(spans: list[tuple[date, date]]) -> list[DatedEvent]:
+        read["spans"].append(spans)
+        return [e for e in events if any(a <= e.event_date <= b for a, b in spans)]
+
+    async def first_sections(paths: list[str]) -> list[SearchHit]:
+        read["paths"].append(paths)
+        return [
+            SearchHit(
+                section_id=500 + number,
+                source_path=path,
+                title=path,
+                event_date=next(e.event_date for e in events if e.source_path == path),
+                heading="事件發生",
+                snippet="",
+                markets=next(e.markets for e in events if e.source_path == path),
+                event_time=None,
+                content=f"what happened in {path}",
+                score=0.0,
+                keyword_rank=None,
+                vector_rank=None,
+            )
+            for number, path in enumerate(paths)
+        ]
+
+    monkeypatch.setattr(service, "dated_events", dated_events)
+    monkeypatch.setattr(service, "first_sections", first_sections)
+    return read
+
+
+def test_the_events_of_the_days_asked_about_go_to_the_program_with_their_rows(
+    monkeypatch: pytest.MonkeyPatch, asked: dict[str, Any]
+) -> None:
+    # The search found an unrelated section; the knowledge base holds the 16 September Fed
+    # decision, whose first Taiwan trading day is the 17th, the central bank's decision of the
+    # 17th, and an event of the 18th, which is not asked about.
+    read = _stored(
+        monkeypatch,
+        [
+            DatedEvent("2026-09-16-fomc.md", date(2026, 9, 16), ("US",), None),
+            DatedEvent("2026-09-17-cbc.md", date(2026, 9, 17), ("TW",), None),
+            DatedEvent("2026-09-18-later.md", date(2026, 9, 18), ("TW",), None),
+        ],
+    )
+    looked_up = split.SplitOutcome(
+        prices=[_lookup("006208.TW", "2026-09-17", "2026-09-17")]
+    )
+    question = "006208 在 9 月 17 日的漲跌"
+    other = _section(1, "2026-08-01-other.md")
+
+    deltas = _ask(monkeypatch, looked_up, question, sections=[other])
+
+    assert read["spans"] == [[(date(2026, 9, 16), date(2026, 9, 17))]]
+    # Only the kept events' sections are read.
+    assert read["paths"] == [["2026-09-16-fomc.md", "2026-09-17-cbc.md"]]
+    context = deltas[0].context
+    assert context is not None and context.prices is not None
+    assert [(s.number, s.file) for s in context.sources] == [
+        (1, "2026-08-01-other.md"),
+        (2, "2026-09-16-fomc.md"),
+        (3, "2026-09-17-cbc.md"),
+    ]
+    sent = asked["input_text"]
+    assert "[2] file: 2026-09-16-fomc.md" in sent
+    assert "2026-09-16-fomc.md, event date 2026-09-16, sources [2]:" in sent
+    # The day before's close, the day's close, its change, the next day's and the fifth's.
+    assert "| 006208.TW | 2026-09-17 | 121.00 | 118.00 | -2.48% | +0.85% |" in sent
+    [written] = asked["records"]
+    assert written["searches"][-1] == {
+        "events_between": [["2026-09-16", "2026-09-17"]],
+        "numbers": [2, 3],
+        "left_out": 0,
+    }
+
+
+def test_past_their_bound_the_events_of_the_days_asked_about_are_counted(
+    monkeypatch: pytest.MonkeyPatch, asked: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(service, "PERIOD_EVENTS", 2)
+    day = date(2026, 9, 17)
+    _stored(
+        monkeypatch,
+        [DatedEvent(f"2026-09-17-{n}.md", day, ("TW",), None) for n in range(5)],
+    )
+    looked_up = split.SplitOutcome(
+        prices=[_lookup("006208.TW", "2026-09-17", "2026-09-17")]
+    )
+
+    deltas = _ask(monkeypatch, looked_up, "006208 在 9 月 17 日的漲跌", sections=[])
+
+    context = deltas[0].context
+    assert context is not None and context.prices is not None
+    assert [s.file for s in context.sources] == ["2026-09-17-0.md", "2026-09-17-1.md"]
+    assert context.prices.period_events_left_out == 3
+    assert "3 more events of the days asked about were not given" in asked["input_text"]
+    [written] = asked["records"]
+    assert written["searches"][-1]["left_out"] == 3
 
 
 def test_a_question_about_prices_alone_that_looks_nothing_up_gets_the_fixed_line(

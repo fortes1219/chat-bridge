@@ -4,9 +4,9 @@ With no program named, the service falls back to Codex when Claude Code is not l
 test that makes Claude Code look missing would otherwise reach the Codex on the machine.
 
 Nor does a chat test start a program to split a question, or read the database for the date the
-data reaches or for the profile, unless it says otherwise: the split lists no parts and no
-prices, the date is fixed, and there is no profile. With no prices named, nothing is read from
-a market data source.
+data reaches, for the profile or for the events of the days a lookup asks about, unless it says
+otherwise: the split lists no parts and no prices, the date is fixed, there is no profile and no
+such event. With no prices named, nothing is read from a market data source.
 """
 
 import asyncio
@@ -55,8 +55,16 @@ def no_split_and_a_fixed_date(monkeypatch: pytest.MonkeyPatch) -> None:
     async def latest() -> date:
         return LATEST_EVENT_DATE
 
+    async def no_events(spans: object) -> list[object]:
+        return []
+
+    async def no_sections(paths: object) -> list[object]:
+        return []
+
     monkeypatch.setattr(service, "split_question", no_parts)
     monkeypatch.setattr(service, "latest_event_date", latest)
+    monkeypatch.setattr(service, "dated_events", no_events)
+    monkeypatch.setattr(service, "first_sections", no_sections)
 
 
 @pytest.fixture(autouse=True)

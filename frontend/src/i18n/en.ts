@@ -75,11 +75,14 @@ export default {
       "One more event's prices were not given to the program. | {count} more events' prices were not given to the program.",
     daysLeftOut:
       "One trading day's row was not given to the program. | {count} trading days' rows were not given to the program.",
+    periodLeftOut:
+      'One more event of the days asked about was not given to the program. | {count} more events of the days asked about were not given to the program.',
     noValue: 'n/a',
     terms: 'Terms of use',
     columns: {
       symbol: 'Symbol',
       day: 'Day',
+      previousClose: 'Previous close',
       close: 'Close',
       change: 'Change',
       d0: 'D0',

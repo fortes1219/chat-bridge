@@ -124,6 +124,7 @@ const events = computed(() =>
             <tr>
               <th>{{ t('prices.columns.symbol') }}</th>
               <th>{{ t('prices.columns.day') }}</th>
+              <th>{{ t('prices.columns.previousClose') }}</th>
               <th>{{ t('prices.columns.close') }}</th>
               <th>{{ t('prices.columns.change') }}</th>
             </tr>
@@ -132,6 +133,7 @@ const events = computed(() =>
             <tr v-for="day in days" :key="`${day.symbol}-${day.day}`">
               <td>{{ day.symbol }}</td>
               <td>{{ day.day }}</td>
+              <td>{{ close(day.previous_close) }}</td>
               <td>{{ close(day.close) }}</td>
               <td>{{ change(day.change) }}</td>
             </tr>
@@ -145,6 +147,7 @@ const events = computed(() =>
               <tr>
                 <th>{{ t('prices.columns.symbol') }}</th>
                 <th>{{ t('prices.columns.d0') }}</th>
+                <th>{{ t('prices.columns.previousClose') }}</th>
                 <th>{{ t('prices.columns.d0Close') }}</th>
                 <th>{{ t('prices.columns.change') }}</th>
                 <th>{{ t('prices.columns.next') }}</th>
@@ -156,6 +159,7 @@ const events = computed(() =>
               <tr v-for="row in event.rows" :key="row.symbol">
                 <td>{{ row.symbol }}</td>
                 <td>{{ row.d0 ?? t('prices.noValue') }}</td>
+                <td>{{ close(row.previous_close) }}</td>
                 <td>{{ close(row.close) }}</td>
                 <td>{{ change(row.day_change) }}</td>
                 <td>{{ change(row.next_change) }}</td>
@@ -170,6 +174,9 @@ const events = computed(() =>
         </p>
         <p v-if="prices.events_left_out" class="text-muted" data-test="prices-left-out">
           {{ t('prices.leftOut', { count: prices.events_left_out }, prices.events_left_out) }}
+        </p>
+        <p v-if="prices.period_events_left_out" class="text-muted" data-test="prices-period-left-out">
+          {{ t('prices.periodLeftOut', { count: prices.period_events_left_out }, prices.period_events_left_out) }}
         </p>
         <p class="text-muted text-xs">
           <ULink :to="prices.source.terms_url" target="_blank" rel="noopener noreferrer" class="underline">

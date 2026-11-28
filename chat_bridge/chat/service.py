@@ -19,7 +19,7 @@ and the user's plan is not charged for it.
 
 import asyncio
 import functools
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -55,10 +55,18 @@ from chat_bridge.chat.split import SplitOutcome, split_question
 from chat_bridge.database import create_tables, open_engine
 from chat_bridge.price_history import block as price_block
 from chat_bridge.price_history.block import FoundEvent, Prices
-from chat_bridge.price_history.lookups import Checked, check
+from chat_bridge.price_history.lookups import Checked, Lookup, check
 from chat_bridge.price_history.markets import MarketSeries, market_series
 from chat_bridge.price_history.reading import Reads, read_for
-from chat_bridge.search.service import SearchHit, latest_event_date, search, search_many
+from chat_bridge.search.service import (
+    DatedEvent,
+    SearchHit,
+    dated_events,
+    first_sections,
+    latest_event_date,
+    search,
+    search_many,
+)
 from chat_bridge.strategy import revision
 from chat_bridge.strategy import store as strategy_store
 from chat_bridge.strategy.models import CASH
@@ -79,6 +87,11 @@ QUESTION_CANDIDATES = 50
 # One part is one topic, which one search of 8 already answers well.
 PART_SECTIONS = 8
 PART_CANDIDATES = 20
+# The events of the days a short lookup asks about given at most, in date order; the rest are
+# counted. The sample news's busiest ten trading days with the trading day before (eleven
+# weekdays, 2026-11-03 to 11-17) hold 25 events, so none of it is cut; it is the 30 the
+# question's own search keeps.
+PERIOD_EVENTS = QUESTION_SECTIONS
 # A table or a note that several documents hold the same is sent once: a later copy becomes a
 # pointer to the first section that sent it.
 TABLE_LINE = "|"
@@ -431,6 +444,66 @@ def found_events(sections: list[FoundSection]) -> list[FoundEvent]:
     return events
 
 
+def _event_of(event: DatedEvent) -> FoundEvent:
+    return FoundEvent(
+        file=event.source_path,
+        event_date=event.event_date,
+        markets=event.markets,
+        moment=event.event_time,
+        numbers=(),
+    )
+
+
+@dataclass(frozen=True)
+class PeriodEvents:
+    """What the events of the days asked about added: the sections, the spans of event dates
+    read, the numbers given to the added sections, and how many more were not given."""
+
+    sections: list[FoundSection]
+    spans: list[tuple[date, date]]
+    numbers: list[int]
+    left_out: int
+
+    def record(self) -> dict[str, Any] | None:
+        if not self.spans:
+            return None
+        return {
+            "events_between": [[f"{a}", f"{b}"] for a, b in self.spans],
+            "numbers": self.numbers,
+            "left_out": self.left_out,
+        }
+
+
+async def with_period_events(
+    sections: list[FoundSection],
+    lookups: Sequence[Lookup],
+    reads: Reads,
+    listed: MarketSeries,
+) -> PeriodEvents:
+    """The sections, then the first section of each event a short lookup asks about that no found
+    section comes from, at most PERIOD_EVENTS of them in date order.
+
+    The program names a lookup's symbol and days; the events of those days are then taken by
+    their stored event date, as a search filters on a typed field, since the question's words
+    ("006208 on 17 September") need not find any of them. An event the evening before counts
+    when its first trading day is one of the days asked about. Only the kept events' sections are
+    read.
+    """
+    spans = price_block.days_asked(lookups, reads)
+    if not spans:
+        return PeriodEvents(sections, [], [], 0)
+    files = {section.source.file for section in sections}
+    stored = [_event_of(event) for event in await dated_events(spans)]
+    candidates = [event for event in stored if event.file not in files]
+    asked = price_block.period_events(candidates, lookups, reads, listed)
+    kept = asked[:PERIOD_EVENTS]
+    gathered = list(sections)
+    for hit in await first_sections([event.file for event in kept]):
+        gathered.append(_found_section(hit, len(gathered) + 1))
+    numbers = [section.source.number for section in gathered[len(sections) :]]
+    return PeriodEvents(gathered, spans, numbers, len(asked) - len(kept))
+
+
 async def _read_prices(checked: Checked, listed: MarketSeries) -> Reads | None:
     """The closes the kept lookups need, read in a worker thread; None with none to read."""
     if not checked.kept:
@@ -658,12 +731,17 @@ async def answer_stream(
                 _read_prices(checked, listed),
             )
             if reads is not None:
+                period = await with_period_events(sections, checked.kept, reads, listed)
+                sections = period.sections
+                if (read := period.record()) is not None:
+                    searches.append(read)
                 prices = price_block.prices(
                     checked.kept,
                     checked.left_out,
                     reads,
                     found_events(sections),
                     listed,
+                    period.left_out,
                 )
             if split.revise:
                 profile = current

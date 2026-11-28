@@ -20,3 +20,7 @@ Two commits, made by the maintainer, once the maintainer has read the spec.
 ## New news files carry no market table
 
 - [ ] T012 `truth` and `collect`: no market section (FR-012); the tests of the retired behavior deleted; `docs/truth_format.md` (FR-014); checks; the file list and one commit message.
+
+## The events of the days asked about (a fix, found by T010)
+
+- [x] T013 FR-017 and the close before (FR-003): `search.dated_events` and `search.first_sections`, `price_history.block` (short lookups, the spans asked about, the events a short period asks about, the row by date or day 0, the close before, the count left out), `chat.service.with_period_events` and its bound, the record's entry, the prompts' line, the page's column and sentence; tests; the replay with the market sections counted; checks; the slow suite; the file list and one commit message.

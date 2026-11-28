@@ -352,9 +352,10 @@ describe('asking a question', () => {
     );
     expect(content.text()).toContain('Could not read prices for NVDA: Yahoo Finance could not be read.');
     expect(content.text()).toContain('largest fall from a high 0.00%');
-    expect(page.find('[data-test="prices-days"]').text()).toContain('2026-09-17118.00-2.48%');
+    expect(page.find('[data-test="prices-days"]').text()).toContain('2026-09-17121.00118.00-2.48%');
     const event = page.find('[data-test="prices-event-2026-09-16-fomc-raises-rate.md"]');
     expect(event.text()).toContain('2026-09-16-fomc-raises-rate.md, event date 2026-09-16, sources [1]');
+    expect(event.text()).toContain('2026-09-17121.00118.00-2.48%+0.85%+1.70%');
     expect(event.text()).toContain('2026-09-17 from FinMind');
     expect(page.find('[data-test="prices-event-2026-09-16-cbc.md"]').text()).toContain(
       'The same as 2026-09-16-fomc-raises-rate.md.'
@@ -394,7 +395,8 @@ describe('asking a question', () => {
           not_read: { source: 'yahoo', reason: 'no_data' } as const
         }
       ],
-      days_left_out: 12
+      days_left_out: 12,
+      period_events_left_out: 4
     };
     answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, prices: noData } });
     answer.send(textEvent('答案。'));
@@ -406,6 +408,9 @@ describe('asking a question', () => {
     const content = page.find('[data-test="prices-content"]').text();
     expect(content).toContain('ZZZZ 的行情讀不到：Yahoo Finance 沒有它的日線收盤。');
     expect(page.find('[data-test="prices-days-left-out"]').text()).toBe('另有 12 個交易日的行情沒有交給回答的程式。');
+    expect(page.find('[data-test="prices-period-left-out"]').text()).toBe(
+      '所問那幾天另有 4 個事件沒有交給回答的程式。'
+    );
   });
 
   it('stops while the data is being searched, before any source arrives', async () => {

@@ -1,9 +1,11 @@
 """The numbers a question's price lookups give, and the `<prices>` block the program reads.
 
 Every number is the service's: a lookup's trend over its period, every trading day of a short
-period, and each found event's rows on its trading day and after, lined up as the sample news
-files' market sections are (`docs/truth_format.md` section 7). The total return and the largest
-fall from a high are defined as ffn defines them.
+period with the close of the trading day before, and each found event's rows from the close of
+the trading day before its trading day to the fifth after, lined up as the sample news files'
+market sections are (`docs/truth_format.md` section 7). An event has a series' row when the
+lookup's period holds its date or its first trading day in that market. The total return and the
+largest fall from a high are defined as ffn defines them.
 
 An event is named by its file and event date with the numbers of its sections in `<sources>`, so
 the only `[n]` in the block are those numbers. The block keeps every lookup's line; the days of
@@ -17,11 +19,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from chat_bridge.price_history.closes import SeriesCloses
 from chat_bridge.price_history.lookups import LeftOut, LeftOutReason, Lookup
-from chat_bridge.price_history.markets import DayZero, MarketSeries, by_date, by_moment
+from chat_bridge.price_history.markets import (
+    DayZero,
+    Market,
+    MarketSeries,
+    Series,
+    by_date,
+    by_moment,
+)
 from chat_bridge.price_history.moves import move, percent
 from chat_bridge.price_history.reading import Reads
 from chat_bridge.price_history.schemas import (
@@ -53,19 +62,23 @@ INTRO = (
     "The app's numbers, from daily closes: Yahoo Finance, with FinMind for the Taiwan days "
     "Yahoo lacks. Closes are not adjusted for dividends; changes are in percent."
 )
-DAYS_INTRO = "Every trading day of a short period:"
+DAYS_INTRO = (
+    "Every trading day of a short period. before: the close of the trading day before it. "
+    "change: the day's close against that close."
+)
 DAYS_HEADER = (
-    "| symbol | day | close | change from the trading day before |",
-    "|---|---|---|---|",
+    "| symbol | day | before | close | change |",
+    "|---|---|---|---|---|",
 )
 EVENTS_INTRO = (
-    "Events of the sources: D0 is the event's first trading day in that market. day: D0 against "
-    "the trading day before it. next: the next trading day against D0. D+5: the fifth trading "
-    "day after D0 against the trading day before D0."
+    "Events of the sources: D0 is the event's first trading day in that market. before: the "
+    "close of the trading day before D0. day: D0 against the trading day before it. next: the "
+    "next trading day against D0. D+5: the fifth trading day after D0 against the trading day "
+    "before D0."
 )
 EVENTS_HEADER = (
-    "| symbol | D0 | D0 close | day | next | D+5 | notes |",
-    "|---|---|---|---|---|---|---|",
+    "| symbol | D0 | before | D0 close | day | next | D+5 | notes |",
+    "|---|---|---|---|---|---|---|---|",
 )
 SPLIT_FAILED = "No prices were looked up for this question: the split did not finish."
 REASONS: dict[LeftOutReason, str] = {
@@ -151,11 +164,93 @@ def _days(
         rows.append(
             PriceDay(
                 day=day,
+                previous_close=_rounded(before),
                 close=_rounded(closes.get(day)),
                 change=percent(before, closes.get(day)),
             )
         )
     return rows
+
+
+def _period(lookup: Lookup, reads: Reads) -> list[date]:
+    """The trading days of the lookup's period in its market."""
+    sessions = reads.sessions.get(lookup.series.market.code, [])
+    return [day for day in sessions if lookup.start <= day <= lookup.end]
+
+
+def short_lookups(lookups: Sequence[Lookup], reads: Reads) -> list[Lookup]:
+    """The lookups read whose period has at most DAYS_SHOWN trading days: a question about some
+    days, not about a stretch of months."""
+    return [
+        lookup
+        for lookup in lookups
+        if reads.by_symbol[lookup.series.symbol].closes is not None
+        and len(_period(lookup, reads)) <= DAYS_SHOWN
+    ]
+
+
+def days_asked(lookups: Sequence[Lookup], reads: Reads) -> list[tuple[date, date]]:
+    """The event dates each short lookup asks about, from its market's trading day before its
+    period, so an event of the evening before, whose first trading day is the period's first,
+    is among them, to the period's end; overlapping or adjoining spans as one, in date order.
+    Empty with no short lookup. Two periods months apart stay two spans."""
+    spans: list[tuple[date, date]] = []
+    for lookup in short_lookups(lookups, reads):
+        sessions = reads.sessions.get(lookup.series.market.code, [])
+        before = [day for day in sessions if day < lookup.start]
+        spans.append((before[-1] if before else lookup.start, lookup.end))
+    merged: list[tuple[date, date]] = []
+    for first, last in sorted(spans):
+        if merged and first <= merged[-1][1] + timedelta(days=1):
+            merged[-1] = (merged[-1][0], max(merged[-1][1], last))
+        else:
+            merged.append((first, last))
+    return merged
+
+
+def _zero(
+    one: Series, event: FoundEvent, event_market: Market, sessions: Sequence[date]
+) -> DayZero:
+    """The event's day 0 in the series' market: by its moment when the file gives one, else by
+    its date."""
+    if event.moment is not None:
+        return by_moment(one.market, event.moment, sessions)
+    return by_date(one.market, event_market, event.event_date, sessions)
+
+
+def _asks_about(
+    lookup: Lookup, event: FoundEvent, listed: MarketSeries, reads: Reads
+) -> DayZero | None:
+    """The event's day 0 in the lookup's market when the lookup's period holds the event's date
+    or that day 0; else None. An event of no market the app reads has no day 0."""
+    event_market = listed.market(event.markets[0]) if event.markets else None
+    if event_market is None:
+        return None
+    one = lookup.series
+    zero = _zero(one, event, event_market, reads.sessions.get(one.market.code, []))
+    dated = lookup.start <= event.event_date <= lookup.end
+    traded = zero.session is not None and lookup.start <= zero.session <= lookup.end
+    return zero if dated or traded else None
+
+
+def period_events(
+    candidates: Sequence[FoundEvent],
+    lookups: Sequence[Lookup],
+    reads: Reads,
+    listed: MarketSeries,
+) -> list[FoundEvent]:
+    """Of the candidates, in their order, those a short lookup asks about: dated in its period,
+    or with their first trading day in its market in it."""
+    short = short_lookups(lookups, reads)
+    return [
+        event
+        for event in candidates
+        if any(
+            lookup.start <= event.event_date <= lookup.end
+            or _asks_about(lookup, event, listed, reads) is not None
+            for lookup in short
+        )
+    ]
 
 
 def lookup_views(lookups: Sequence[Lookup], reads: Reads) -> list[PriceLookup]:
@@ -164,7 +259,7 @@ def lookup_views(lookups: Sequence[Lookup], reads: Reads) -> list[PriceLookup]:
         one = lookup.series
         read = reads.by_symbol[one.symbol]
         sessions = reads.sessions.get(one.market.code, [])
-        period = [day for day in sessions if lookup.start <= day <= lookup.end]
+        period = _period(lookup, reads)
         found = read.closes
         views.append(
             PriceLookup(
@@ -195,6 +290,7 @@ def _row(
         symbol=symbol,
         aligned=moved.aligned,
         d0=moved.session,
+        previous_close=_rounded(moved.before_close),
         close=_rounded(moved.close),
         day_change=percent(moved.before_close, moved.close),
         next_change=percent(moved.close, moved.after_close),
@@ -211,24 +307,19 @@ def _row(
 def event_rows(
     event: FoundEvent, lookups: Sequence[Lookup], reads: Reads, listed: MarketSeries
 ) -> list[PriceRow]:
-    """The event's row for each series read whose lookup covers its date, once a series."""
-    event_market = listed.market(event.markets[0]) if event.markets else None
-    if event_market is None:
-        return []
+    """The event's row for each series read whose lookup's period holds the event's date or its
+    first trading day in that market, once a series: so an event of the evening before has its
+    row on the day asked about."""
     rows: dict[str, PriceRow] = {}
     for lookup in lookups:
         one = lookup.series
         found = reads.by_symbol[one.symbol].closes
         if found is None or one.symbol in rows:
             continue
-        if not lookup.start <= event.event_date <= lookup.end:
+        zero = _asks_about(lookup, event, listed, reads)
+        if zero is None:
             continue
         sessions = reads.sessions.get(one.market.code, [])
-        zero = (
-            by_moment(one.market, event.moment, sessions)
-            if event.moment is not None
-            else by_date(one.market, event_market, event.event_date, sessions)
-        )
         rows[one.symbol] = _row(one.symbol, found, zero, sessions)
     return list(rows.values())
 
@@ -276,6 +367,7 @@ def _row_line(row: PriceRow) -> str:
     cells = [
         row.symbol,
         NOT_A_NUMBER if row.d0 is None else row.d0.isoformat(),
+        _close(row.previous_close),
         _close(row.close),
         _change(row.day_change),
         _change(row.next_change),
@@ -310,7 +402,8 @@ def _not_looked_up(left_out: Sequence[LeftOut]) -> list[str]:
 
 def _day_lines(view: PriceLookup) -> list[str]:
     return [
-        f"| {view.symbol} | {day.day} | {_close(day.close)} | {_change(day.change)} |"
+        f"| {view.symbol} | {day.day} | {_close(day.previous_close)} | {_close(day.close)} "
+        f"| {_change(day.change)} |"
         for day in view.days
     ]
 
@@ -321,6 +414,7 @@ def _text(
     events: list[list[str]],
     days_left: int,
     events_left: int,
+    period_left: int = 0,
 ) -> str:
     lines = [OPEN, *head]
     if days:
@@ -339,6 +433,11 @@ def _text(
     if events_left:
         lines.append(
             f"{events_left} more events' rows were left out to keep this block short."
+        )
+    if period_left:
+        lines.append(
+            f"{period_left} more events of the days asked about were not given, to keep the "
+            "sources short."
         )
     return "\n".join([*lines, CLOSE])
 
@@ -376,8 +475,10 @@ def prices(
     reads: Reads,
     found: Sequence[FoundEvent],
     listed: MarketSeries,
+    period_left_out: int = 0,
 ) -> Prices:
-    """The lookups' numbers for the page and the block for the program."""
+    """The lookups' numbers for the page and the block for the program; `period_left_out`
+    counts the events of the days asked about that were not given (PERIOD_EVENTS)."""
     views = lookup_views(lookups, reads)
     head = [INTRO, "", "Lookups:", *(_lookup_line(view) for view in views)]
     head += _not_looked_up(left_out)
@@ -399,7 +500,16 @@ def prices(
     with_days = [view for view in views if view.days]
     day_groups = [_day_lines(view) for view in with_days]
     event_groups = [_event_lines(event) for event in events]
-    room = len(_text(head, [[]], [[]], len(with_days) * DAYS_SHOWN, len(events)))
+    room = len(
+        _text(
+            head,
+            [[]],
+            [[]],
+            len(with_days) * DAYS_SHOWN,
+            len(events),
+            period_left_out,
+        )
+    )
     days_kept, room = _within(day_groups, room)
     events_kept, _ = _within(event_groups, room)
     dropped = {id(view) for view in with_days[days_kept:]}
@@ -415,6 +525,7 @@ def prices(
         events=kept,
         days_left_out=days_left,
         events_left_out=len(events) - events_kept,
+        period_events_left_out=period_left_out,
         source=PriceSourceView(name=SOURCE_NAME, terms_url=PRICE_TERMS_URL),
     )
     text = _text(
@@ -423,6 +534,7 @@ def prices(
         event_groups[:events_kept],
         days_left,
         len(events) - events_kept,
+        period_left_out,
     )
     errors = {
         symbol: str(read.error)

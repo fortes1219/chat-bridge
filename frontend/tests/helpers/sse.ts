@@ -78,8 +78,8 @@ export const PRICES: NonNullable<(typeof CONTEXT_EVENT)['context']['prices']> = 
         fall_to: null
       },
       days: [
-        { day: '2026-09-17', close: 118, change: -2.48 },
-        { day: '2026-09-18', close: 119, change: 0.85 }
+        { day: '2026-09-17', previous_close: 121, close: 118, change: -2.48 },
+        { day: '2026-09-18', previous_close: 118, close: 119, change: 0.85 }
       ],
       not_read: null
     },
@@ -106,6 +106,7 @@ export const PRICES: NonNullable<(typeof CONTEXT_EVENT)['context']['prices']> = 
           symbol: '006208.TW',
           aligned: '2026-09-17',
           d0: '2026-09-17',
+          previous_close: 121,
           close: 118,
           day_change: -2.48,
           next_change: 0.85,
@@ -125,6 +126,7 @@ export const PRICES: NonNullable<(typeof CONTEXT_EVENT)['context']['prices']> = 
   ],
   days_left_out: 0,
   events_left_out: 3,
+  period_events_left_out: 0,
   source: { name: 'Yahoo Finance', terms_url: 'https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html' }
 };
 

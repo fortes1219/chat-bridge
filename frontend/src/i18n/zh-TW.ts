@@ -72,11 +72,13 @@ const zhTW: typeof en = {
     sameAs: '和 {file} 相同。',
     leftOut: '另有 {count} 個事件的行情沒有交給回答的程式。',
     daysLeftOut: '另有 {count} 個交易日的行情沒有交給回答的程式。',
+    periodLeftOut: '所問那幾天另有 {count} 個事件沒有交給回答的程式。',
     noValue: '無',
     terms: '使用條款',
     columns: {
       symbol: '代號',
       day: '日期',
+      previousClose: '前一交易日收盤',
       close: '收盤',
       change: '漲跌',
       d0: 'D0',

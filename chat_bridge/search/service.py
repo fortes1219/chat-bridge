@@ -21,8 +21,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Float, Integer, Row, column, func, select, text
+from sqlalchemy import Float, Integer, Row, column, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from chat_bridge.database import create_tables, open_engine
 from chat_bridge.embedding import MODEL_NAME, MODEL_REVISION, embed_queries, load_model
@@ -141,6 +142,16 @@ class SearchHit:
     # The section's rank in each method's candidate list; None when that method missed it.
     keyword_rank: int | None
     vector_rank: int | None
+
+
+@dataclass(frozen=True)
+class DatedEvent:
+    """A stored file's event: its date, its markets (its own first) and its moment, no text."""
+
+    source_path: str
+    event_date: date
+    markets: tuple[str, ...]
+    event_time: datetime | None
 
 
 @dataclass(frozen=True)
@@ -303,6 +314,93 @@ async def _hits(
             vector_rank=row.vector_rank,
         )
         for row in ranked
+    ]
+
+
+async def dated_events(windows: Sequence[tuple[date, date]]) -> list[DatedEvent]:
+    """The files whose event date is in any of the windows (each a first and last day), in date
+    and file order, without their text: the events the days of a price lookup may ask about,
+    which a search by the question's words need not find. One query on the indexed event date,
+    whose rows hold no section."""
+    if not windows:
+        return []
+    async with open_engine() as engine:
+        await create_tables(engine)
+        sessions = async_sessionmaker(engine)
+        async with sessions() as session:
+            rows = await session.execute(
+                select(
+                    Document.source_path,
+                    Document.event_date,
+                    Document.markets,
+                    Document.event_time,
+                )
+                .where(
+                    or_(
+                        *(
+                            Document.event_date.between(first, last)
+                            for first, last in windows
+                        )
+                    )
+                )
+                .order_by(Document.event_date, Document.source_path)
+            )
+            return [
+                DatedEvent(
+                    row.source_path, row.event_date, tuple(row.markets), row.event_time
+                )
+                for row in rows
+            ]
+
+
+async def first_sections(source_paths: Sequence[str]) -> list[SearchHit]:
+    """Each of these files' first section, in the order given, with no score: how an event a
+    price lookup asks about comes among the sources."""
+    if not source_paths:
+        return []
+    other = aliased(Section)
+    first_position = (
+        select(func.min(other.position))
+        .where(other.document_id == Section.document_id)
+        .scalar_subquery()
+    )
+    async with open_engine() as engine:
+        await create_tables(engine)
+        sessions = async_sessionmaker(engine)
+        async with sessions() as session:
+            rows = await session.execute(
+                select(
+                    Section,
+                    Document.source_path,
+                    Document.title,
+                    Document.event_date,
+                    Document.markets,
+                    Document.event_time,
+                )
+                .join(Document, Section.document_id == Document.id)
+                .where(
+                    Document.source_path.in_(list(source_paths)),
+                    Section.position == first_position,
+                )
+            )
+            by_path = {row.source_path: row for row in rows}
+    return [
+        SearchHit(
+            section_id=row.Section.id,
+            source_path=row.source_path,
+            title=row.title,
+            event_date=row.event_date,
+            heading=row.Section.heading,
+            snippet=_snippet(row.Section.content, []),
+            markets=tuple(row.markets),
+            event_time=row.event_time,
+            content=row.Section.content,
+            score=0.0,
+            keyword_rank=None,
+            vector_rank=None,
+        )
+        for path in source_paths
+        if (row := by_path.get(path)) is not None
     ]
 
 

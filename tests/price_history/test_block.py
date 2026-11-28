@@ -92,11 +92,11 @@ def test_a_short_period_has_every_trading_day_with_its_change() -> None:
     )
 
     [view] = given.view.lookups
-    assert [(d.day, d.close, d.change) for d in view.days] == [
-        (date(2026, 11, 6), 95.0, -5.0),
-        (date(2026, 11, 9), 97.0, 2.11),
+    assert [(d.day, d.previous_close, d.close, d.change) for d in view.days] == [
+        (date(2026, 11, 6), 100.0, 95.0, -5.0),
+        (date(2026, 11, 9), 95.0, 97.0, 2.11),
     ]
-    assert "| 0050.TW | 2026-11-06 | 95.00 | -5.00% |" in given.block
+    assert "| 0050.TW | 2026-11-06 | 100.00 | 95.00 | -5.00% |" in given.block
 
 
 def test_a_long_period_has_no_rows_of_its_days() -> None:
@@ -123,8 +123,9 @@ def test_an_event_has_the_market_sections_values_on_its_day_and_after() -> None:
 
     [event] = given.view.events
     [row] = event.rows
-    assert (row.d0, row.close, row.day_change, row.next_change) == (
+    assert (row.d0, row.previous_close, row.close, row.day_change, row.next_change) == (
         date(2026, 11, 6),
+        100.0,
         95.0,
         -5.0,
         2.11,
@@ -133,7 +134,8 @@ def test_an_event_has_the_market_sections_values_on_its_day_and_after() -> None:
     assert row.fifth_change == -2.0
     assert "2026-11-06-a.md, event date 2026-11-06, sources [3] [7]:" in given.block
     assert (
-        "| 0050.TW | 2026-11-06 | 95.00 | -5.00% | +2.11% | -2.00% |  |" in given.block
+        "| 0050.TW | 2026-11-06 | 100.00 | 95.00 | -5.00% | +2.11% | -2.00% |  |"
+        in given.block
     )
 
 
@@ -148,6 +150,74 @@ def test_a_us_event_reaches_taiwan_the_next_session() -> None:
 
     [row] = given.view.events[0].rows
     assert (row.aligned, row.d0) == (date(2026, 11, 7), date(2026, 11, 9))
+
+
+def test_an_event_the_evening_before_has_its_row_on_the_day_asked() -> None:
+    # Friday's US event reaches Taiwan on Monday 2026-11-09, the one day asked about.
+    given = prices(
+        [_lookup("0050.TW", SESSIONS[2], SESSIONS[2])],
+        [],
+        _reads({"0050.TW": CLOSES_0050}),
+        [_event("us.md", date(2026, 11, 6), ("US",))],
+        LISTED,
+    )
+
+    [row] = given.view.events[0].rows
+    assert (row.d0, row.previous_close, row.close) == (date(2026, 11, 9), 95.0, 97.0)
+
+
+def test_the_events_a_short_period_asks_about_are_dated_in_it_or_trade_first_in_it() -> (
+    None
+):
+    lookups = [_lookup("0050.TW", SESSIONS[2], SESSIONS[2])]
+    reads = _reads({"0050.TW": CLOSES_0050})
+    candidates = [
+        _event("same-day.md", date(2026, 11, 9)),
+        _event("us-friday.md", date(2026, 11, 6), ("US",)),
+        _event("tw-friday.md", date(2026, 11, 6)),
+        _event("no-market.md", date(2026, 11, 9), ()),
+    ]
+
+    asked = block.period_events(candidates, lookups, reads, LISTED)
+
+    # Friday's Taiwan event traded first on Friday, before the day asked about.
+    assert [event.file for event in asked] == [
+        "same-day.md",
+        "us-friday.md",
+        "no-market.md",
+    ]
+    # From the trading day before the period, for an event of that evening.
+    assert block.days_asked(lookups, reads) == [(date(2026, 11, 6), date(2026, 11, 9))]
+
+
+def test_periods_apart_are_read_as_spans_apart_and_adjoining_ones_as_one() -> None:
+    reads = _reads({"0050.TW": CLOSES_0050, "2330.TW": CLOSES_0050})
+    lookups = [
+        _lookup("0050.TW", SESSIONS[0], SESSIONS[0]),
+        _lookup("2330.TW", SESSIONS[1], SESSIONS[1]),
+        _lookup("0050.TW", SESSIONS[6], SESSIONS[6]),
+    ]
+
+    # 11-05 and 11-06 adjoin; 11-13 is a week later, read from the trading day before it.
+    assert block.days_asked(lookups, reads) == [
+        (date(2026, 11, 5), date(2026, 11, 6)),
+        (date(2026, 11, 12), date(2026, 11, 13)),
+    ]
+
+
+def test_a_long_period_or_one_not_read_asks_about_no_events() -> None:
+    sessions = [SESSIONS[0] + timedelta(days=n) for n in range(11)]
+    closes = {day: 100.0 + n for n, day in enumerate(sessions)}
+    long = Reads(_reads({"0050.TW": closes}).by_symbol, {"TW": sessions})
+    not_read = _reads({}, {"0050.TW": "Yahoo 0050.TW: timed out"})
+    event = _event("in.md", sessions[3])
+
+    for lookup, reads in [
+        (_lookup("0050.TW", sessions[0], sessions[-1]), long),
+        (_lookup("0050.TW", SESSIONS[2], SESSIONS[2]), not_read),
+    ]:
+        assert block.days_asked([lookup], reads) == []
+        assert block.period_events([event], [lookup], reads, LISTED) == []
 
 
 def test_an_event_outside_every_period_or_without_a_market_has_no_rows() -> None:
