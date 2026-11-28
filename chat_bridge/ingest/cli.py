@@ -27,6 +27,12 @@ def _run(args: argparse.Namespace) -> int:
     except LocalSetupError as error:
         return print_error(str(error))
 
+    if report.outdated:
+        print(
+            "The knowledge base was made by an earlier version of chat-bridge "
+            f"({'; '.join(report.outdated)}), so it was cleared and made again from this "
+            "folder. Ingest any other folder of yours again."
+        )
     if report.replace_refused:
         _print_rejections(report)
         return print_error(
@@ -34,6 +40,11 @@ def _run(args: argparse.Namespace) -> int:
             "the knowledge base is as it was"
         )
     print(f"Written: {len(report.written)} files, {report.sections_written} sections.")
+    if report.market_sections_left_out:
+        print(
+            f"Not stored: {report.market_sections_left_out} sections headed "
+            f"{ingest_service.MARKET_SECTION}; the chat looks market prices up instead."
+        )
     print(f"Unchanged and skipped: {len(report.unchanged)} files.")
     if report.index_update != IndexUpdate.NONE:
         print(f"Search index: {INDEX_NOTES[report.index_update]}.")

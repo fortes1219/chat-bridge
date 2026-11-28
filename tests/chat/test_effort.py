@@ -154,6 +154,7 @@ def test_every_run_of_a_question_is_at_its_level(
         question: str,
         holdings: object = None,
         *,
+        series: object = None,
         effort: object = None,
     ) -> SplitOutcome:
         seen["split"] = effort

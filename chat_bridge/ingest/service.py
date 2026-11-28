@@ -3,6 +3,9 @@
 The shape follows private-gpt's `make ingest <folder>`: walk the folder, pick a reader by
 extension, convert to Markdown, split at headings, and skip a file whose SHA-256 is unchanged.
 All writes of one run happen in one transaction, so a failure leaves nothing half-written.
+
+A knowledge base an earlier version made is cleared first and made again, as an index built
+another way is rebuilt: keeping it up to date is the app's work, not the person's.
 """
 
 import hashlib
@@ -13,9 +16,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from chat_bridge.database import create_tables, open_engine, vacuum
+from chat_bridge.database import (
+    Base,
+    create_tables,
+    open_engine,
+    table_differences,
+    vacuum,
+)
 from chat_bridge.embedding import (
     MODEL_NAME,
     MODEL_REVISION,
@@ -41,7 +50,12 @@ from chat_bridge.ingest.readers import (
     is_supported,
     unsupported_reason,
 )
-from chat_bridge.ingest.sections import ParsedDocument, read_document, split_tables
+from chat_bridge.ingest.sections import (
+    HEADING_PATH_SEPARATOR,
+    ParsedDocument,
+    read_document,
+    split_tables,
+)
 from chat_bridge.synonyms import Synonyms, load_synonyms
 from chat_bridge.tokenizer import (
     DICTIONARY_BLOB_SHA1,
@@ -60,6 +74,20 @@ HASH_CHUNK_BYTES = 4096
 TOKENIZER_STATE_ID = 1
 EMBEDDING_STATE_ID = 1
 ENTRY_LAYOUT_STATE_ID = 1
+# The section of the sample news format that holds a file's market table
+# (docs/truth_format.md section 7).
+MARKET_SECTION = "當日與之後的行情"
+# The knowledge base's tables: all of them are made again from the files when an earlier
+# version of chat-bridge made them. The profile's and the question records' tables are not
+# among them.
+KNOWLEDGE_BASE_MODELS = (
+    Document,
+    Section,
+    SearchEntry,
+    TokenizerState,
+    EmbeddingState,
+    EntryLayoutState,
+)
 
 # setweight labels every word with its source's weight (SOURCE_RULES), as the PostgreSQL
 # manual uses setweight to mark entries that come from different parts of a document. The
@@ -106,7 +134,13 @@ class IngestReport:
     # Without replace: how many stored documents are not in the folder and were left as they are.
     others_kept: int = 0
     sections_written: int = 0
+    # Sections headed as the sample format's market section, not stored: the chat reads market
+    # numbers from its price lookups.
+    market_sections_left_out: int = 0
     index_update: IndexUpdate = IndexUpdate.NONE
+    # What differed in a knowledge base an earlier version made, which was cleared and made
+    # again; empty when there was none.
+    outdated: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -187,6 +221,11 @@ def _prepare(changed: Sequence[_Candidate], report: IngestReport) -> list[_Prepa
     return prepared
 
 
+def is_market_section(heading: str) -> bool:
+    """Whether a section is headed as the sample format's market section, at any depth."""
+    return heading.rsplit(HEADING_PATH_SEPARATOR, 1)[-1] == MARKET_SECTION
+
+
 async def _insert(session: AsyncSession, item: _Prepared, report: IngestReport) -> int:
     document = Document(
         source_path=item.candidate.source_path,
@@ -194,20 +233,29 @@ async def _insert(session: AsyncSession, item: _Prepared, report: IngestReport) 
         title=item.document.title,
         keyword_groups=item.document.keyword_groups,
         event_date=item.document.event_date,
+        markets=item.document.markets,
+        event_time=item.document.event_time,
     )
     session.add(document)
     await session.flush()
+    kept = [
+        section
+        for section in item.document.sections
+        if not is_market_section(section.heading)
+    ]
+    # Numbered again, so the first section kept is the one the keyword entry points at.
     session.add_all(
         Section(
             document_id=document.id,
-            position=section.position,
+            position=position,
             heading=section.heading,
             content=section.content,
         )
-        for section in item.document.sections
+        for position, section in enumerate(kept)
     )
     report.written.append(item.candidate.source_path)
-    report.sections_written += len(item.document.sections)
+    report.sections_written += len(kept)
+    report.market_sections_left_out += len(item.document.sections) - len(kept)
     return document.id
 
 
@@ -407,12 +455,49 @@ async def ingest_folder(root: Path, *, replace: bool = False) -> IngestReport:
     likely wrong than empty on purpose.
     """
     report = IngestReport()
-    candidates = _collect(root, report)
+    await _ingest(_collect(root, report), report, replace=replace)
+    return report
+
+
+async def refresh_index() -> IngestReport:
+    """Clear a knowledge base an earlier version made, and bring the stored search entries up to
+    this version's dictionary, keywords, model and entry layout, without reading any file: what
+    an ingest does before it writes, done when the service starts so a search never meets an old
+    index."""
+    report = IngestReport()
+    async with open_engine() as engine:
+        report.outdated = await _clear_outdated(engine)
+    # An empty knowledge base has no index to bring up to date; writing its states would make it
+    # look filled.
+    if not await knowledge_base_is_empty():
+        await _ingest([], report, replace=False)
+    return report
+
+
+async def _clear_outdated(engine: AsyncEngine) -> list[str]:
+    """Drop the knowledge base's tables when an earlier version of chat-bridge made them, so they
+    are made again; the profile and the question records stay. Returns what differed."""
+    tables = [
+        Base.metadata.tables[model.__tablename__] for model in KNOWLEDGE_BASE_MODELS
+    ]
+    async with engine.begin() as connection:
+        differences = await connection.run_sync(table_differences, tables)
+        if differences:
+            await connection.run_sync(
+                lambda sync: Base.metadata.drop_all(sync, tables=tables)
+            )
+    return differences
+
+
+async def _ingest(
+    candidates: list[_Candidate], report: IngestReport, *, replace: bool
+) -> None:
     synonyms = load_synonyms()
     # Download the dictionary before the transaction opens, so no network call runs inside it.
     ensure_dictionary()
 
     async with open_engine() as engine:
+        report.outdated += await _clear_outdated(engine)
         await create_tables(engine)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         async with sessions() as session:
@@ -448,7 +533,7 @@ async def ingest_folder(root: Path, *, replace: bool = False) -> IngestReport:
         prepared = _prepare(changed, report)
         if replace and not prepared and not report.unchanged:
             report.replace_refused = True
-            return report
+            return
         prepared_paths = {item.candidate.source_path for item in prepared}
         stale_paths = [
             c.source_path
@@ -467,7 +552,7 @@ async def ingest_folder(root: Path, *, replace: bool = False) -> IngestReport:
             and entries_are_current
             and words_are_current
         ):
-            return report
+            return
 
         # Load the model before the transaction opens: the first run downloads it. A run
         # that only removes files or changes words embeds nothing, so it loads no model.
@@ -480,7 +565,6 @@ async def ingest_folder(root: Path, *, replace: bool = False) -> IngestReport:
             # the write report when its transaction ends, before VACUUM runs.
             await session.execute(text("SELECT pg_stat_force_next_flush()"))
         await vacuum(engine)
-    return report
 
 
 async def holds_any(source_paths: Sequence[str]) -> bool:
@@ -499,7 +583,8 @@ async def holds_any(source_paths: Sequence[str]) -> bool:
 async def knowledge_base_is_empty() -> bool:
     """Whether nothing has been ingested yet: the states an ingest writes are not there.
 
-    Raises SchemaMismatchError for a database made by another version of chat-bridge.
+    Raises SchemaMismatchError for a database made by another version of chat-bridge;
+    `refresh_index` clears an old knowledge base first.
     """
     async with open_engine() as engine:
         await create_tables(engine)

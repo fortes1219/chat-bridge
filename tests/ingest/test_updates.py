@@ -12,10 +12,15 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
-from chat_bridge.cli import EXIT_ERROR, main
+from chat_bridge.chat.models import ChatRecord
+from chat_bridge.cli import EXIT_OK, main
 from chat_bridge.database import open_engine
 from chat_bridge.ingest.models import Document, SearchEntry, Section
-from chat_bridge.ingest.service import IndexUpdate
+from chat_bridge.ingest.service import (
+    IndexUpdate,
+    knowledge_base_is_empty,
+    refresh_index,
+)
 from chat_bridge.search.service import IndexMismatchError, search
 from tests.utils import (
     copy_sample_files,
@@ -152,15 +157,45 @@ def test_search_refuses_an_index_built_another_way(
         asyncio.run(search("高盛", 3))
 
 
-def test_a_database_from_an_older_version_is_refused_with_one_line(
+def test_the_service_start_rebuilds_an_index_built_another_way(
+    knowledge_base: Path,
+) -> None:
+    run_sql("UPDATE entry_layout_state SET layout = 'other'")
+
+    report = asyncio.run(refresh_index())
+
+    assert report.index_update == IndexUpdate.ALL
+    assert report.outdated == []
+    assert asyncio.run(search("高盛", 3)).hits
+
+
+def test_the_service_start_leaves_an_empty_knowledge_base_empty(tmp_path: Path) -> None:
+    with using_local_data(prepare_local_data(tmp_path / "local_data")):
+        report = asyncio.run(refresh_index())
+
+        assert (report.outdated, report.index_update) == ([], IndexUpdate.NONE)
+        assert asyncio.run(knowledge_base_is_empty())
+
+
+def test_a_knowledge_base_an_earlier_version_made_is_cleared_and_made_again(
     knowledge_base: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # A database made before event dates were stored has no such column.
     run_sql("ALTER TABLE documents DROP COLUMN event_date")
+    run_sql(
+        f"INSERT INTO {ChatRecord.__tablename__} (question, answer, details) "
+        "VALUES ('kept', '', '{}')"
+    )
 
-    assert main(["ingest", str(knowledge_base)]) == EXIT_ERROR
+    assert main(["ingest", str(knowledge_base)]) == EXIT_OK
 
-    error = capsys.readouterr().err.strip()
-    assert "documents.event_date is missing" in error
-    assert "run `chat-bridge ingest <folder>` again" in error
-    assert len(error.splitlines()) == 1
+    out = capsys.readouterr().out
+    assert (
+        "made by an earlier version of chat-bridge (documents.event_date is missing), "
+        "so it was cleared and made again from this folder" in out
+    )
+    assert run_sql("SELECT count(*) FROM documents WHERE event_date IS NOT NULL") == [
+        (len(SAMPLE_FILES),)
+    ]
+    # The question records are not the knowledge base's: they stay.
+    assert run_sql(f"SELECT question FROM {ChatRecord.__tablename__}") == [("kept",)]

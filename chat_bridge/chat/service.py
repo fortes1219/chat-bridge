@@ -6,17 +6,22 @@ answer then lists the question's parts, each part is searched on its own, and th
 from the question's sections and each part's together: one search ranks a question's parts
 against each other, and a part that ranks low would otherwise be crowded out.
 
+The same run names the prices to look up. The service reads them while the parts are searched,
+and gives the program the numbers it computed from them, each found event lined up with its
+trading days; the program reads no market data itself.
+
 Two things come from the code, not the model, so a model that has been led astray cannot drop
 them: the sources, sent before the answer, and the disclaimer. A question the search finds
-nothing for is not sent to the model at all: the reply is fixed, so nothing can be answered from
-outside the data, and the user's plan is not charged for it.
+nothing for, and that names none of the person's holdings and none of the listed series, is not
+sent to the model at all: the reply is fixed, so nothing can be answered from outside the data,
+and the user's plan is not charged for it.
 """
 
 import asyncio
 import functools
 from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,18 +53,18 @@ from chat_bridge.chat.schemas import (
 )
 from chat_bridge.chat.split import SplitOutcome, split_question
 from chat_bridge.database import create_tables, open_engine
-from chat_bridge.search.service import (
-    SearchHit,
-    latest_event_date,
-    search,
-    search_many,
-    sections_headed,
-)
+from chat_bridge.price_history import block as price_block
+from chat_bridge.price_history.block import FoundEvent, Prices
+from chat_bridge.price_history.lookups import Checked, check
+from chat_bridge.price_history.markets import MarketSeries, market_series
+from chat_bridge.price_history.reading import Reads, read_for
+from chat_bridge.search.service import SearchHit, latest_event_date, search, search_many
 from chat_bridge.strategy import revision
 from chat_bridge.strategy import store as strategy_store
 from chat_bridge.strategy.models import CASH
 from chat_bridge.strategy.state import STATE
-from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST
+from chat_bridge.synonyms import load_synonyms
+from chat_bridge.tokenizer import HAN_FIRST, HAN_LAST, mentions
 
 # The question's search as it ran before parts were searched: 8 sections, 20 candidates per
 # method, every section ranking. Kept whole and first, so nothing it finds is crowded out by what
@@ -74,14 +79,8 @@ QUESTION_CANDIDATES = 50
 # One part is one topic, which one search of 8 already answers well.
 PART_SECTIONS = 8
 PART_CANDIDATES = 20
-# The section of the sample news that holds its market table (docs/truth_format.md). Its tables
-# and its short preface read nearly the same in every file, so ranked on their own they match
-# almost any market question whatever the event, and push the news out. So it does not rank: it
-# comes with its document, as a parent document's parts come with it.
-MARKET_SECTION = "當日與之後的行情"
-# Events of the same day carry the same market table, and every table starts with one of two
-# notes, so the model's input sends each once: a later copy becomes a pointer to the first section
-# that sent it.
+# A table or a note that several documents hold the same is sent once: a later copy becomes a
+# pointer to the first section that sent it.
 TABLE_LINE = "|"
 NOTE_LINE = ">"
 SAME_TABLE = "(same table as [{number}])"
@@ -106,10 +105,6 @@ SECTION_NAMES: dict[str, Localized] = {
     "事件發生": {"zh-TW": "事件發生", "en": "What happened"},
     "影響股市證據": {"zh-TW": "影響股市證據", "en": "Evidence of market impact"},
     "相關標的": {"zh-TW": "相關標的", "en": "Related assets"},
-    MARKET_SECTION: {
-        "zh-TW": "當日與之後的行情",
-        "en": "Market moves on the day and after",
-    },
     "後續與不同說法": {
         "zh-TW": "後續與不同說法",
         "en": "Later developments and other views",
@@ -216,6 +211,9 @@ class FoundSection:
     # What the model reads for this section: its whole text, not the snippet a list shows.
     text: str
     score: float
+    # The document's markets and moment, which line its event up with looked-up prices.
+    markets: tuple[str, ...] = ()
+    event_time: datetime | None = None
 
 
 def _found_section(hit: SearchHit, number: int) -> FoundSection:
@@ -231,6 +229,8 @@ def _found_section(hit: SearchHit, number: int) -> FoundSection:
         ),
         text=hit.content,
         score=hit.score,
+        markets=hit.markets,
+        event_time=hit.event_time,
     )
 
 
@@ -238,15 +238,10 @@ async def find_sections(question: str) -> list[FoundSection]:
     """The sections the search finds for the question as asked, numbered from 1.
 
     First the question's search as it ran before parts were searched, whole; then the wider
-    search, with market sections left out, adding what the first did not find.
+    search, adding what the first did not find.
     """
     kept = await search(question, KEPT_SECTIONS, candidates=KEPT_CANDIDATES)
-    wide = await search(
-        question,
-        QUESTION_SECTIONS,
-        candidates=QUESTION_CANDIDATES,
-        left_out_heading=MARKET_SECTION,
-    )
+    wide = await search(question, QUESTION_SECTIONS, candidates=QUESTION_CANDIDATES)
     seen: set[int] = set()
     hits = []
     for hit in [*kept.hits, *wide.hits]:
@@ -259,8 +254,7 @@ async def find_sections(question: str) -> list[FoundSection]:
 async def gather_sections(
     question: str, sections: list[FoundSection], parts: list[str]
 ) -> tuple[list[FoundSection], list[dict[str, Any]]]:
-    """The question's sections, then each part's in the order listed, then the market section of
-    each document among them; and every search made.
+    """The question's sections, then each part's in the order listed; and every search made.
 
     Each part keeps the sections its own search found, and none of the question's is dropped:
     nothing is cut to fit a total, because ranking the lists against each other and cutting would
@@ -280,18 +274,9 @@ async def gather_sections(
         return [numbers[hit.section_id] for hit in hits]
 
     if parts:
-        results = await search_many(
-            parts,
-            PART_SECTIONS,
-            candidates=PART_CANDIDATES,
-            left_out_heading=MARKET_SECTION,
-        )
+        results = await search_many(parts, PART_SECTIONS, candidates=PART_CANDIDATES)
         for part, result in zip(parts, results, strict=True):
             searches.append({"query": part, "numbers": add(result.hits)})
-    attached = await sections_headed(
-        [section.section_id for section in gathered], MARKET_SECTION
-    )
-    searches.append({"attached": MARKET_SECTION, "numbers": add(attached)})
     return gathered, searches
 
 
@@ -353,11 +338,13 @@ def _folded(text: str, number: int, sent: dict[str, int]) -> str:
     return "\n".join(folded)
 
 
-def model_input(question: str, sections: list[FoundSection], strategy: str = "") -> str:
-    """The sources and the question, each between its own tags, so the two stay apart; for a
-    question the program answers, the profile's own block between them. A table or note an
-    earlier source already holds is sent once (`_folded`); the page and the record keep every
-    section whole."""
+def model_input(
+    question: str, sections: list[FoundSection], strategy: str = "", prices: str = ""
+) -> str:
+    """The sources and the question, each between its own tags, so the two stay apart; between
+    them, the prices looked up for the question and, for a question the program answers, the
+    profile's own block. A table or note an earlier source already holds is sent once
+    (`_folded`); the page and the record keep every section whole."""
     sent: dict[str, int] = {}
     blocks = []
     for section in sections:
@@ -369,10 +356,119 @@ def model_input(question: str, sections: list[FoundSection], strategy: str = "")
             f"{_folded(section.text, number, sent)}"
         )
     sources = "\n\n".join(blocks)
+    looked_up = f"{prices}\n\n" if prices else ""
     return (
-        f"<sources>\n{sources}\n</sources>\n\n{strategy}"
+        f"<sources>\n{sources}\n</sources>\n\n{looked_up}{strategy}"
         f"<question>\n{question}\n</question>\n"
     )
+
+
+def holding_names(profile: strategy_store.Profile | None) -> dict[str, str]:
+    """Each holding but cash by its symbol, named as the split reads it."""
+    if profile is None:
+        return {}
+    return {
+        holding.symbol: " / ".join(dict.fromkeys(holding.names.values()))
+        for holding in profile.holdings
+        if holding.symbol != CASH
+    }
+
+
+def series_lines(listed: MarketSeries) -> list[str]:
+    """Each listed series as the split reads it: its symbol and its name."""
+    return [f"{one.symbol}: {one.name}" for one in listed.series]
+
+
+def _names(symbol: str, names: list[str]) -> list[str]:
+    """What a question may call a series: its symbol, its exchange code, its names, and each word
+    of a Chinese name with its code ("台積電 2330"). An English name stays whole: "Average" alone
+    is not the Dow."""
+    code = symbol.removeprefix("^").split(".", 1)[0]
+    words = [word for name in names if not name.isascii() for word in name.split()]
+    return [symbol, code, *names, *words]
+
+
+def names_a_series(
+    question: str, profile: strategy_store.Profile | None, listed: MarketSeries
+) -> bool:
+    """Whether the question names one of the person's holdings or a listed series, by symbol or
+    name, after the synonym list's expansion: a question about prices alone, which finds no
+    section, still has its prices looked up."""
+    text = " ".join([question, *load_synonyms().expand(question)]).lower()
+    held = profile.holdings if profile is not None else []
+    named = [
+        name
+        for holding in held
+        if holding.symbol != CASH
+        for name in _names(holding.symbol, list(holding.names.values()))
+    ]
+    named += [name for one in listed.series for name in _names(one.symbol, [one.name])]
+    return any(mentions(text, name) for name in named)
+
+
+def found_events(sections: list[FoundSection]) -> list[FoundEvent]:
+    """Each found file with an event date, in the order it was first found, with the numbers of
+    its sections."""
+    numbers: dict[str, list[int]] = {}
+    first: dict[str, FoundSection] = {}
+    for section in sections:
+        if section.source.event_date is None:
+            continue
+        first.setdefault(section.source.file, section)
+        numbers.setdefault(section.source.file, []).append(section.source.number)
+    events: list[FoundEvent] = []
+    for file, section in first.items():
+        assert section.source.event_date is not None
+        events.append(
+            FoundEvent(
+                file=file,
+                event_date=section.source.event_date,
+                markets=section.markets,
+                moment=section.event_time,
+                numbers=tuple(numbers[file]),
+            )
+        )
+    return events
+
+
+async def _read_prices(checked: Checked, listed: MarketSeries) -> Reads | None:
+    """The closes the kept lookups need, read in a worker thread; None with none to read."""
+    if not checked.kept:
+        return None
+    now = datetime.now().astimezone()
+    return await anyio.to_thread.run_sync(
+        functools.partial(read_for, checked.kept, listed, now)
+    )
+
+
+def _prices_block(split: SplitOutcome | None, prices: Prices | None) -> str:
+    """What the program is given of the prices: the looked-up block; or, when the split failed,
+    that nothing was looked up, so a missing number is not taken for the data's; or nothing."""
+    if prices is not None:
+        return prices.block
+    if split is not None and split.failed:
+        return price_block.split_failed()
+    return ""
+
+
+def _prices_details(
+    split: SplitOutcome | None, checked: Checked | None, prices: Prices | None
+) -> dict[str, Any] | None:
+    """What the record keeps of the lookups: those asked for, those left out and why, and what
+    each kept one gave, read from the sources or the day's store."""
+    if split is None or checked is None:
+        return None
+    return {
+        "asked": [request.model_dump() for request in split.prices],
+        "left_out": [
+            {**asdict(one), "reason": str(one.reason)} for one in checked.left_out
+        ],
+        "given": None if prices is None else prices.view.model_dump(mode="json"),
+        # The sources' own messages for the symbols not read; the page and the program get a
+        # reason code and a fixed sentence instead.
+        "read_errors": None if prices is None else prices.errors,
+        "block_characters": None if prices is None else len(prices.block),
+    }
 
 
 def _section_details(sections: list[FoundSection]) -> list[dict[str, Any]]:
@@ -429,6 +525,7 @@ async def _record(
     searches: list[dict[str, Any]] | None = None,
     proposal: dict[str, Any] | None = None,
     runs: list[tuple[str, Usage | None]] | None = None,
+    prices: dict[str, Any] | None = None,
 ) -> None:
     details = {
         "sections": _section_details(sections),
@@ -451,6 +548,9 @@ async def _record(
             "command_line": split.command_line,
         },
         "searches": searches,
+        # The prices the split named, those left out and why, and what the rest gave; none when
+        # no split ran.
+        "prices": prices,
         # What came of a revision question's proposal: the checked proposal, the refusal, or
         # neither when the program proposed nothing.
         "proposal": proposal,
@@ -475,11 +575,12 @@ async def answer_stream(
 
     The program is chosen before the context, so the context can name it; a refusal is still
     raised after the context, so the sources go out either way. Before the context, the chosen
-    program lists the question's parts and each is searched, so the context carries every
-    source. Every run of the program for the question starts at `effort`, and an answer that
-    ends is followed by the tokens of all of them. Every question is recorded however the answer
-    ends: answered, refused before the model, failed, or cut off because the client stopped
-    reading. Raises NoLoginError or a ProgramError after the context when no answer can be had.
+    program lists the question's parts and the prices to look up; each part is searched while
+    the prices are read, so the context carries every source and what was looked up. Every run
+    of the program for the question starts at `effort`, and an answer that ends is followed by
+    the tokens of all of them. Every question is recorded however the answer ends: answered,
+    refused before the model, failed, or cut off because the client stopped reading. Raises
+    NoLoginError or a ProgramError after the context when no answer can be had.
     """
     pieces: list[str] = []
     sent: str | None = None
@@ -488,20 +589,16 @@ async def answer_stream(
     refusal: NoLoginError | None = None
     split: SplitOutcome | None = None
     searches: list[dict[str, Any]] | None = None
-    # The profile as it is now, read for every question the program answers, so its advice is on
-    # the person's current holdings; and the same profile when the question asks to revise the
-    # strategy, none otherwise.
+    # The profile as it is now, read for every question, so the program's advice is on the
+    # person's current holdings and a question about one of them has its prices looked up; and
+    # the same profile when the question asks to revise the strategy, none otherwise.
     current: strategy_store.Profile | None = None
     profile: strategy_store.Profile | None = None
     proposal: dict[str, Any] | None = None
+    checked: Checked | None = None
+    prices: Prices | None = None
     # The tokens the answer's run reported once it ended.
     answered: list[Usage] = []
-    # A question the data has nothing on is answered without a model, so no login is read.
-    if sections:
-        try:
-            program = await choose_program(requested)
-        except NoLoginError as error:
-            refusal = error
 
     def runs() -> list[tuple[str, Usage | None]]:
         """The question's model runs with what each reported: the split, then the answer once its
@@ -527,6 +624,7 @@ async def answer_stream(
             searches=searches,
             proposal=proposal,
             runs=runs(),
+            prices=_prices_details(split, checked, prices),
         )
 
     answering = asyncio.current_task()
@@ -534,15 +632,42 @@ async def answer_stream(
         _ANSWERING.add(answering)
         answering.add_done_callback(_ANSWERING.discard)
     try:
-        if sections and program is not None:
-            current = await _profile_or_none()
+        current = await _profile_or_none()
+        listed = market_series()
+        # A question the data has nothing on, and that names nothing whose prices could be
+        # looked up, is answered without a model, so no login is read.
+        answerable = bool(sections) or names_a_series(question, current, listed)
+        if answerable:
+            try:
+                program = await choose_program(requested)
+            except NoLoginError as error:
+                refusal = error
+        if program is not None:
             split = await split_question(
-                PROGRAMS[program], question, holding_lines(current), effort=effort
+                PROGRAMS[program],
+                question,
+                holding_lines(current),
+                series=series_lines(listed),
+                effort=effort,
             )
-            # A failed split has no parts, so the question's own sections go on alone.
-            sections, searches = await gather_sections(question, sections, split.parts)
+            checked = check(split.prices, date.today(), listed, holding_names(current))
+            # A failed split has no parts and no lookups, so the question's own sections go on
+            # alone. The prices are read while the parts are searched.
+            (sections, searches), reads = await asyncio.gather(
+                gather_sections(question, sections, split.parts),
+                _read_prices(checked, listed),
+            )
+            if reads is not None:
+                prices = price_block.prices(
+                    checked.kept,
+                    checked.left_out,
+                    reads,
+                    found_events(sections),
+                    listed,
+                )
             if split.revise:
                 profile = current
+        looked_up = _prices_block(split, prices)
         yield ChatDelta(
             type="response.context",
             context=ChatContext(
@@ -552,9 +677,10 @@ async def answer_stream(
                 program=program,
                 split_failed=split is not None and split.failed,
                 proposal_expected=profile is not None,
+                prices=None if prices is None else prices.view,
             ),
         )
-        if not sections:
+        if not answerable or (program is not None and not sections and not looked_up):
             reply = NOT_IN_DATA[question_language(question)]
             pieces.append(reply)
             yield ChatDelta(type=TEXT_DELTA, delta=reply)
@@ -565,7 +691,10 @@ async def answer_stream(
 
         if profile is not None:
             sent = model_input(
-                question, sections, revision.strategy_input(profile, STATE.book)
+                question,
+                sections,
+                revision.strategy_input(profile, STATE.book),
+                looked_up,
             )
             revised = await revision.revision_reply(
                 PROGRAMS[program],
@@ -592,7 +721,7 @@ async def answer_stream(
         holdings = (
             "" if current is None else revision.strategy_input(current, STATE.book)
         )
-        sent = model_input(question, sections, holdings)
+        sent = model_input(question, sections, holdings, looked_up)
         async for piece in PROGRAMS[program].stream_answer(
             system_prompt(date.today()),
             sent,

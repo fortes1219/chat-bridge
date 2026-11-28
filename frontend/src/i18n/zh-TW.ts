@@ -59,6 +59,44 @@ const zhTW: typeof en = {
     emptyQuestion: '請先輸入問題。',
     longQuestion: '問題最多 {limit} 個字。'
   },
+  prices: {
+    lookedUp: '查了 {count} 檔的行情（{sources}，讀取於 {time}）',
+    withFinmind: '{name}，缺的台股交易日取自 FinMind',
+    notLookedUp: '這一題沒有查行情：拆題沒有完成。',
+    notRead: '{symbol} 的行情讀不到：{reason}。',
+    noTradingDay: '{symbol}：{start} 到 {end} 沒有交易日。',
+    trend:
+      '{symbol}，{start} 到 {end}：{firstDay} {first} 到 {lastDay} {last}，{change}；最高 {highDay} {high}，最低 {lowDay} {low}；從高點最大跌幅 {fall}',
+    fallDays: '{fall}（{from} 到 {to}）',
+    eventTitle: '{file}，事件日 {date}，出處 {numbers}',
+    sameAs: '和 {file} 相同。',
+    leftOut: '另有 {count} 個事件的行情沒有交給回答的程式。',
+    daysLeftOut: '另有 {count} 個交易日的行情沒有交給回答的程式。',
+    noValue: '無',
+    terms: '使用條款',
+    columns: {
+      symbol: '代號',
+      day: '日期',
+      close: '收盤',
+      change: '漲跌',
+      d0: 'D0',
+      d0Close: 'D0 收盤',
+      next: '次一交易日',
+      fifth: 'D+5 累計',
+      notes: '註'
+    },
+    reasons: {
+      noData: '{source} 沒有它的日線收盤',
+      unreadable: '{source} 沒有正常回應'
+    },
+    notes: {
+      during: '事件發生在 D0 這一盤的交易時間內',
+      missing: '缺 {day} 的收盤',
+      filled: '{day} 取自 FinMind',
+      dividend: '除息日 {day}',
+      noDay: '還沒有交易日'
+    }
+  },
   errors: {
     knowledge_base_empty: {
       title: '還沒有匯入任何新聞。',
@@ -66,7 +104,7 @@ const zhTW: typeof en = {
     },
     knowledge_base_outdated: {
       title: '知識庫是別的版本建的。',
-      description: '停掉服務，刪掉 local_data/pgdata 資料夾，再啟動一次；它會重新匯入範例新聞。'
+      description: '在終端機按 Ctrl+C 停掉服務，再啟動一次：它會自己清掉舊的知識庫，或重建索引。'
     },
     setup_failed: {
       title: '服務載入不到需要的檔案。',

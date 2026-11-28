@@ -132,11 +132,22 @@ def open_when_ready(host: str, port: int, address: str) -> None:
 
 
 def prepare_knowledge_base() -> None:
-    """Ingest the sample news when nothing has been ingested, so one command is enough to ask.
-
-    A database made by another version is not deleted here: it also holds the question records,
-    so the error says what to delete and the person decides.
-    """
+    """Make the knowledge base usable before any question, so one command is enough to ask: a
+    knowledge base an earlier version made is cleared, an index built another way is rebuilt,
+    and the sample news is ingested when nothing has been. The profile and the question records
+    are kept."""
+    refreshed = asyncio.run(ingest_service.refresh_index())
+    if refreshed.outdated:
+        logger.info(
+            "The knowledge base was made by an earlier version of chat-bridge (%s), so it was "
+            "cleared and is made again. Ingest any folder of your own documents again.",
+            "; ".join(refreshed.outdated),
+        )
+    elif refreshed.index_update is not ingest_service.IndexUpdate.NONE:
+        logger.info(
+            "The search index was built another way, so it was rebuilt (%s).",
+            refreshed.index_update,
+        )
     if not asyncio.run(ingest_service.knowledge_base_is_empty()):
         return
     logger.info(

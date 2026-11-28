@@ -45,10 +45,87 @@ export const CONTEXT_EVENT: Extract<ChatEvent, { type: 'response.context' }> = {
     disclaimer: { 'zh-TW': '聲明', en: 'notice' },
     program: 'codex',
     split_failed: false,
-    proposal_expected: false
+    proposal_expected: false,
+    prices: null
   },
   proposal: null,
   usage: null
+};
+
+/** Prices looked up for a question: one Taiwan ETF read with a FinMind day, one US share not read. */
+export const PRICES: NonNullable<(typeof CONTEXT_EVENT)['context']['prices']> = {
+  lookups: [
+    {
+      symbol: '006208.TW',
+      name: '富邦台50 006208',
+      start_date: '2026-09-17',
+      end_date: '2026-09-18',
+      read_at: '2026-11-28T10:00:00+08:00',
+      stored: false,
+      sources: ['yahoo', 'finmind'],
+      trend: {
+        first_day: '2026-09-17',
+        first_close: 118,
+        last_day: '2026-09-18',
+        last_close: 119,
+        change: 0.85,
+        high_day: '2026-09-18',
+        high: 119,
+        low_day: '2026-09-17',
+        low: 118,
+        largest_fall: 0,
+        fall_from: null,
+        fall_to: null
+      },
+      days: [
+        { day: '2026-09-17', close: 118, change: -2.48 },
+        { day: '2026-09-18', close: 119, change: 0.85 }
+      ],
+      not_read: null
+    },
+    {
+      symbol: 'NVDA',
+      name: 'NVDA',
+      start_date: '2026-09-17',
+      end_date: '2026-09-18',
+      read_at: null,
+      stored: false,
+      sources: ['yahoo'],
+      trend: null,
+      days: [],
+      not_read: { source: 'yahoo', reason: 'unreadable' }
+    }
+  ],
+  events: [
+    {
+      file: '2026-09-16-fomc-raises-rate.md',
+      event_date: '2026-09-16',
+      source_numbers: [1],
+      rows: [
+        {
+          symbol: '006208.TW',
+          aligned: '2026-09-17',
+          d0: '2026-09-17',
+          close: 118,
+          day_change: -2.48,
+          next_change: 0.85,
+          fifth_change: 1.7,
+          notes: { during: false, missing: [], filled: ['2026-09-17'], dividends: [] }
+        }
+      ],
+      same_as: null
+    },
+    {
+      file: '2026-09-16-cbc.md',
+      event_date: '2026-09-16',
+      source_numbers: [2],
+      rows: [],
+      same_as: '2026-09-16-fomc-raises-rate.md'
+    }
+  ],
+  days_left_out: 0,
+  events_left_out: 3,
+  source: { name: 'Yahoo Finance', terms_url: 'https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html' }
 };
 
 export function textEvent(delta: string): Extract<ChatEvent, { type: 'response.output_text.delta' }> {

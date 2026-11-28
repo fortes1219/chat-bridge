@@ -4,7 +4,7 @@ import type { Router } from 'vue-router';
 import { CanceledError } from 'axios';
 import type { ProgramState } from '@/service/api/programs';
 import type { ChatEvent, ChatRequest } from '@/service/api/chat';
-import { CONTEXT_EVENT, completedEvent, textEvent } from '../../helpers/sse';
+import { CONTEXT_EVENT, PRICES, completedEvent, textEvent } from '../../helpers/sse';
 import { mountView } from '../../helpers/mount';
 import { getSampleQuestionsMock } from '../../helpers/samples';
 
@@ -314,6 +314,98 @@ describe('asking a question', () => {
       answer.end();
       page.unmount();
     }
+  });
+
+  it('says that no prices were looked up when the split failed', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementationOnce(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, 'q');
+    answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, split_failed: true } });
+    await flushPromises();
+
+    expect(page.find('[data-test="prices-not-looked-up"]').text()).toBe('這一題沒有查行情：拆題沒有完成。');
+    expect(page.find('[data-test="prices"]').exists()).toBe(false);
+  });
+
+  it('folds the prices looked up under the answer, as the program was given them', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementationOnce(answer.events);
+    const page = await open(CODEX_ONLY);
+    await typeAndSend(page, 'q');
+    answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, prices: PRICES } });
+    answer.send(textEvent('006208 fell 2.48% on 2026-09-17 [1].'));
+    answer.end();
+    await flushPromises();
+
+    const toggle = page.find('[data-test="prices-toggle"]');
+    expect(toggle.text()).toMatch(
+      /^Prices of 2 symbols looked up \(Yahoo Finance, with FinMind for the Taiwan days it lacks, read at .+\)$/
+    );
+    expect(page.find('[data-test="prices-content"]').exists()).toBe(false);
+
+    await toggle.trigger('click');
+    await flushPromises();
+    const content = page.find('[data-test="prices-content"]');
+    expect(content.text()).toContain(
+      '006208.TW, 2026-09-17 to 2026-09-18: 2026-09-17 118.00 to 2026-09-18 119.00, +0.85%'
+    );
+    expect(content.text()).toContain('Could not read prices for NVDA: Yahoo Finance could not be read.');
+    expect(content.text()).toContain('largest fall from a high 0.00%');
+    expect(page.find('[data-test="prices-days"]').text()).toContain('2026-09-17118.00-2.48%');
+    const event = page.find('[data-test="prices-event-2026-09-16-fomc-raises-rate.md"]');
+    expect(event.text()).toContain('2026-09-16-fomc-raises-rate.md, event date 2026-09-16, sources [1]');
+    expect(event.text()).toContain('2026-09-17 from FinMind');
+    expect(page.find('[data-test="prices-event-2026-09-16-cbc.md"]').text()).toContain(
+      'The same as 2026-09-16-fomc-raises-rate.md.'
+    );
+    expect(page.find('[data-test="prices-left-out"]').text()).toBe(
+      "3 more events' prices were not given to the program."
+    );
+  });
+
+  it('shows the prices of a question about prices alone, with no source', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementationOnce(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, '006208 在 9 月 17 日的漲跌');
+    answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, sources: [], prices: PRICES } });
+    answer.send(textEvent('2026-09-17 收 118.00，跌 2.48%。'));
+    answer.end();
+    await flushPromises();
+
+    await vi.waitFor(() => expect(page.find('[data-test="prices-toggle"]').text()).toMatch(/^查了 2 檔的行情/));
+    expect(page.find('[data-test="none-cited"]').exists()).toBe(false);
+    expect(page.find('[data-test="all-sources"]').exists()).toBe(false);
+  });
+
+  it('says in the page’s language why a symbol was not read, and how many rows were left out', async () => {
+    const answer = controlledAnswer();
+    askMock.mockImplementationOnce(answer.events);
+    const page = await open(CODEX_ONLY, '/?lang=zh-TW');
+    await typeAndSend(page, 'q');
+    const noData = {
+      ...PRICES,
+      lookups: [
+        {
+          ...PRICES.lookups[1],
+          symbol: 'ZZZZ',
+          name: 'ZZZZ',
+          not_read: { source: 'yahoo', reason: 'no_data' } as const
+        }
+      ],
+      days_left_out: 12
+    };
+    answer.send({ ...CONTEXT_EVENT, context: { ...CONTEXT_EVENT.context, prices: noData } });
+    answer.send(textEvent('答案。'));
+    answer.end();
+    await flushPromises();
+
+    await page.find('[data-test="prices-toggle"]').trigger('click');
+    await flushPromises();
+    const content = page.find('[data-test="prices-content"]').text();
+    expect(content).toContain('ZZZZ 的行情讀不到：Yahoo Finance 沒有它的日線收盤。');
+    expect(page.find('[data-test="prices-days-left-out"]').text()).toBe('另有 12 個交易日的行情沒有交給回答的程式。');
   });
 
   it('stops while the data is being searched, before any source arrives', async () => {

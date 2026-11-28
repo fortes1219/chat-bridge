@@ -13,10 +13,11 @@ import asyncio
 import functools
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from chat_bridge.chat.programs import AnsweringProgram, Effort, ProgramError, Usage
 
@@ -30,17 +31,33 @@ PART_MAX_CHARS = 200
 # Well past the 8 to 19 seconds a program takes to start and write, and well short of the answer's
 # own limit, so a stuck split costs the person a fraction of the answer's wait.
 SPLIT_TIMEOUT_SECONDS = 120
+# Longer than any symbol or YYYY-MM-DD date; what is in them is checked with the lookups.
+PRICE_FIELD_MAX_CHARS = 32
 PROMPT_FILE = Path(__file__).with_name("split_prompt.md")
-# The shape both programs are asked for: the parts, and whether the question asks to change the
-# person's strategy, nothing else. The count and the lengths are checked below, on whatever comes
-# back, so they do not depend on how either program reads a schema.
+# The shape both programs are asked for: the parts, whether the question asks to change the
+# person's strategy, and the prices to look up, nothing else. The count and the lengths are
+# checked below, on whatever comes back, so they do not depend on how either program reads a
+# schema; what the lookups name is checked when they are run.
 SPLIT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "parts": {"type": "array", "items": {"type": "string"}},
         "revise_strategy": {"type": "boolean"},
+        "prices": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "symbol": {"type": "string"},
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": "string"},
+                },
+                "required": ["symbol", "start_date", "end_date"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["parts", "revise_strategy"],
+    "required": ["parts", "revise_strategy", "prices"],
     "additionalProperties": False,
 }
 
@@ -48,15 +65,29 @@ Part = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=PART_MAX_CHARS),
 ]
+PriceField = Annotated[str, StringConstraints(max_length=PRICE_FIELD_MAX_CHARS)]
+
+
+class PriceRequest(BaseModel):
+    """A lookup as the split names it: a symbol and a period."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    symbol: PriceField
+    start_date: PriceField
+    end_date: PriceField
 
 
 class SplitReply(BaseModel):
-    """What a split must return: the parts, and whether the question asks for a revision."""
+    """What a split must return: the parts, whether the question asks for a revision, and the
+    prices to look up."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
     parts: list[Part]
     revise_strategy: bool
+    # A reply without it looks nothing up rather than losing its parts.
+    prices: list[PriceRequest] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -71,6 +102,8 @@ class SplitOutcome:
     # The question asks to change the person's strategy, so the answer comes with a proposal.
     # False when the split failed: no proposal is asked for then.
     revise: bool = False
+    # The prices the split asks to look up, as it named them; checked before they are read.
+    prices: list[PriceRequest] = field(default_factory=list)
     seconds: float = 0.0
     command_line: list[str] = field(default_factory=list)
     # The tokens the split's run reported; None when it reported none, as a run stopped at the
@@ -83,15 +116,29 @@ class SplitOutcome:
 
 
 @functools.cache
-def split_prompt() -> str:
+def _prompt_template() -> str:
     return PROMPT_FILE.read_text(encoding="utf-8")
 
 
-def split_input(question: str, holdings: list[str] | None = None) -> str:
+def split_prompt(today: date) -> str:
+    # Today's date lets the program name the period of "the last two months".
+    return _prompt_template().replace("{{CURRENT_DATE}}", today.isoformat())
+
+
+def _tagged(tag: str, lines: list[str] | None) -> str:
+    return f"<{tag}>\n{chr(10).join(lines)}\n</{tag}>\n\n" if lines else ""
+
+
+def split_input(
+    question: str, holdings: list[str] | None = None, series: list[str] | None = None
+) -> str:
     """The question between tags, so it reads as data, not as part of the rules; before it, the
-    user's own holdings, one per line, so a question about them can be searched for each one."""
-    held = f"<holdings>\n{chr(10).join(holdings)}\n</holdings>\n\n" if holdings else ""
-    return f"{held}<question>\n{question}\n</question>\n"
+    user's own holdings and the listed series, one per line, so a question about them can be
+    searched for each one and their prices looked up."""
+    return (
+        f"{_tagged('holdings', holdings)}{_tagged('series', series)}"
+        f"<question>\n{question}\n</question>\n"
+    )
 
 
 def read_split(reply: dict[str, Any]) -> SplitReply:
@@ -121,11 +168,13 @@ async def split_question(
     question: str,
     holdings: list[str] | None = None,
     *,
+    series: list[str] | None = None,
+    today: date | None = None,
     effort: Effort | None = None,
 ) -> SplitOutcome:
-    """Ask the program for the question's parts, given the user's holdings when there are any,
-    at the question's level. Never raises for a split that fails: the outcome says why, and the
-    caller goes on with the question's own sections."""
+    """Ask the program for the question's parts and the prices to look up, given the user's
+    holdings and the listed series, at the question's level. Never raises for a split that
+    fails: the outcome says why, and the caller goes on with the question's own sections."""
     command: list[str] = []
     reported: list[Usage] = []
     started = time.perf_counter()
@@ -141,8 +190,8 @@ async def split_question(
     try:
         reply = await asyncio.wait_for(
             program.reply_in_shape(
-                split_prompt(),
-                split_input(question, holdings),
+                split_prompt(today or date.today()),
+                split_input(question, holdings, series),
                 SPLIT_SCHEMA,
                 on_start=command.extend,
                 effort=effort,
@@ -162,7 +211,12 @@ async def split_question(
         )
     except (ProgramError, OSError) as error:
         return outcome(error=str(error) or type(error).__name__)
-    return outcome(parts=parts, left_out=left_out, revise=split.revise_strategy)
+    return outcome(
+        parts=parts,
+        left_out=left_out,
+        revise=split.revise_strategy,
+        prices=split.prices,
+    )
 
 
 def _first_problem(error: ValidationError) -> str:

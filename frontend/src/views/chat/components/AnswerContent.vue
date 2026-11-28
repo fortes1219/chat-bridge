@@ -9,6 +9,7 @@ import { useCitedSources } from '../composables/useCitedSources';
 import SourceList from './SourceList.vue';
 import AnswerMarkdown from './AnswerMarkdown';
 import ProposalCard from './ProposalCard.vue';
+import PriceLookupList from './PriceLookupList.vue';
 
 const props = defineProps<{ exchange: Exchange; streaming: boolean }>();
 const emit = defineEmits<{ openStrategy: [] }>();
@@ -24,6 +25,8 @@ const { shown, typing } = useTypedText({
 });
 
 const sources = computed(() => props.exchange.context?.sources ?? []);
+// The prices looked up for the question; a question about prices alone may have them and no source.
+const prices = computed(() => props.exchange.context?.prices ?? null);
 // Read from the text on screen, so a source is listed under the answer once its mark is shown.
 const cited = useCitedSources(shown, sources);
 const answerDone = computed(() => !props.streaming && !typing.value && props.exchange.answer !== '');
@@ -94,8 +97,8 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
       :description="t(`errors.${errorKey}.description`)"
     />
     <!-- Under the answer, only what it cites, as numbered in its text, folded as the list of all
-         the sources is. -->
-    <section v-if="sources.length" data-test="sources" class="text-sm">
+         the sources is; then the prices looked up for it, folded too. -->
+    <section v-if="sources.length || prices || exchange.context?.split_failed" data-test="sources" class="text-sm">
       <UCollapsible v-if="cited.length" data-test="cited">
         <UButton
           data-test="cited-sources-toggle"
@@ -110,7 +113,10 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
           <SourceList :sources="cited" class="mt-1" data-test="cited-sources" />
         </template>
       </UCollapsible>
-      <p v-else-if="answerDone" class="text-muted" data-test="none-cited">{{ t('chat.noneCited') }}</p>
+      <p v-else-if="answerDone && sources.length" class="text-muted" data-test="none-cited">
+        {{ t('chat.noneCited') }}
+      </p>
+      <PriceLookupList v-if="prices" :prices="prices" />
       <p class="text-muted mt-1" data-test="latest-date">
         {{
           exchange.context?.data_latest_date
@@ -118,10 +124,12 @@ const errorKey = computed<keyof MessageSchema['errors'] | null>(() => {
             : t('chat.noLatestDate')
         }}
       </p>
-      <!-- A failed split is said, so it never looks like one that worked. -->
-      <p v-if="exchange.context?.split_failed" class="text-muted mt-1" data-test="split-failed">
-        {{ t('chat.splitFailed') }}
-      </p>
+      <!-- A failed split is said, so it never looks like one that worked, and neither do prices
+           that were never looked up. -->
+      <template v-if="exchange.context?.split_failed">
+        <p class="text-muted mt-1" data-test="split-failed">{{ t('chat.splitFailed') }}</p>
+        <p class="text-muted" data-test="prices-not-looked-up">{{ t('prices.notLookedUp') }}</p>
+      </template>
       <!-- Every model run of the question added up; a run that reported none is said, not counted. -->
       <template v-if="usage">
         <p class="text-muted mt-1" data-test="usage">

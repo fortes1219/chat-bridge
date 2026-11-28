@@ -1,16 +1,16 @@
 """A news file read for its section, and the section and data sources written back."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from chat_bridge.collect import news_files
-from chat_bridge.collect.markets import market_series
 from chat_bridge.collect.moves import HEADING, Section
 from chat_bridge.collect.news_files import NewsFileError
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.ingest.sections import parse_markdown
+from chat_bridge.price_history.markets import market_series
 
 SAMPLE_NEWS = PROJECT_ROOT / "data" / "truth"
 LISTED = market_series()
@@ -177,7 +177,7 @@ def test_a_file_without_markets_is_refused(tmp_path: Path) -> None:
         news_files.read(path, LISTED)
 
 
-def test_a_file_with_event_time_is_read_by_ingest_as_one_without_it(
+def test_a_file_with_event_time_is_read_by_ingest_with_its_moment(
     tmp_path: Path,
 ) -> None:
     with_time = _write(tmp_path, "event_time: 2026-11-24T13:30:00+08:00\n").read_text(
@@ -189,5 +189,9 @@ def test_a_file_with_event_time_is_read_by_ingest_as_one_without_it(
         parse_markdown(text, "fallback") for text in (with_time, without)
     )
 
-    assert read_with == read_without
+    assert read_with.sections == read_without.sections
     assert read_with.event_date == date(2026, 11, 24)
+    assert read_with.event_time == datetime(
+        2026, 11, 24, 13, 30, tzinfo=timezone(timedelta(hours=8))
+    )
+    assert read_without.event_time is None

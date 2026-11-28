@@ -1,11 +1,11 @@
 """Tables of the knowledge base. Model shape follows the Azure rag-postgres template."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from enum import StrEnum
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Index, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -58,7 +58,8 @@ ENTRY_LAYOUT = ";".join(
 class Document(Base):
     """One ingested file. `content_hash` is the SHA-256 of the file bytes.
 
-    `event_date` comes from the front matter. Word and PDF files have none, so it is None.
+    `event_date`, `markets` and `event_time` come from the front matter. Word and PDF files have
+    none, so they are None and empty.
     """
 
     __tablename__ = "documents"
@@ -71,6 +72,10 @@ class Document(Base):
     # Indexed so the date the data reaches, the latest of these, is one index read. `create_all`
     # adds it only with a new table: an older knowledge base reads every row until rebuilt.
     event_date: Mapped[date | None] = mapped_column(index=True)
+    # The event's markets, its own first, and its moment: what lines a question's price lookups
+    # up with the event's trading days.
+    markets: Mapped[list[str]] = mapped_column(JSONB)
+    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Section(Base):

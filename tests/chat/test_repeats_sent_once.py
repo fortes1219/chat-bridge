@@ -149,6 +149,7 @@ def test_the_page_and_the_record_keep_every_source_and_the_record_keeps_what_was
         question: str,
         holdings: object = None,
         *,
+        series: object = None,
         effort: object = None,
     ) -> SplitOutcome:
         return SplitOutcome()

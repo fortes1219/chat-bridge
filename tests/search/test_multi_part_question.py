@@ -2,8 +2,9 @@
 question's own search finds is dropped.
 
 The parts are those split from the question's own wording, and, once the real runs have been
-recorded, those each program listed. No model is started. Ingesting the sample files takes
-minutes, so these tests are marked slow.
+recorded, those each program listed. The 0050 part is answered from the prices looked up for the
+question, not from the files: their market sections are not stored. No model is started.
+Ingesting the sample files takes minutes, so these tests are marked slow.
 """
 
 import asyncio
@@ -15,6 +16,7 @@ from typing import Any
 import pytest
 
 from chat_bridge.chat import service
+from chat_bridge.ingest.service import is_market_section
 from chat_bridge.search.service import latest_event_date, search, search_many
 
 pytestmark = pytest.mark.slow
@@ -24,7 +26,6 @@ CASE: dict[str, Any] = json.loads(
         encoding="utf-8"
     )
 )
-MARKET = CASE["market_heading"]
 SAMPLE_LATEST_EVENT_DATE = date(2026, 11, 17)
 
 
@@ -61,37 +62,23 @@ def test_each_part_reaches_the_model_and_nothing_the_question_finds_is_lost(
     def stem(section: service.FoundSection) -> str:
         return Path(section.source.file).stem
 
-    news = {stem(s) for s in gathered if s.source.heading != MARKET}
-    market = {stem(s) for s in gathered if s.source.heading == MARKET}
+    news = {stem(s) for s in gathered}
     found = {
         part: sorted(news & set(core)) for part, core in CASE["core_files"].items()
     }
-    market_core = set().union(*(CASE["core_files"][p] for p in CASE["market_from"]))
-    print(
-        language,
-        len(gathered),
-        "sections;",
-        found,
-        "0050:",
-        sorted(market & market_core),
-    )
+    print(language, len(gathered), "sections;", found)
 
     assert [part for part, files in found.items() if not files] == []
-    assert market & market_core, "no market section for the 0050 part"
+    assert not [s for s in gathered if is_market_section(s.source.heading)]
     assert {s.section_id for s in own} <= {s.section_id for s in gathered}
     assert [s.source.number for s in gathered] == list(range(1, len(gathered) + 1))
     # Nothing the question's own search found is crowded out: it comes first, whole, in order.
     assert [
         f"{s.source.file}#{s.source.heading}" for s in gathered[: len(kept)]
     ] == kept
-    # After it, market sections do not rank: they come last, each with a document found by a
-    # news section.
-    rest = gathered[len(kept) :]
-    headings = [s.source.heading for s in rest]
-    first_market = headings.index(MARKET)
-    assert all(heading == MARKET for heading in headings[first_market:])
-    news_found = {stem(s) for s in gathered if s.source.heading != MARKET}
-    assert {stem(s) for s in rest[first_market:]} <= news_found
+    # Each found file of the sample news carries its markets, which line its event up with the
+    # prices looked up for the question.
+    assert all(s.markets for s in gathered)
 
 
 def test_several_queries_in_one_session_find_what_each_finds_alone(

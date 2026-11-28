@@ -59,6 +59,47 @@ export default {
     emptyQuestion: 'Type a question first.',
     longQuestion: 'A question can be at most {limit} characters.'
   },
+  prices: {
+    lookedUp:
+      'Prices of one symbol looked up ({sources}, read at {time}) | Prices of {count} symbols looked up ({sources}, read at {time})',
+    withFinmind: '{name}, with FinMind for the Taiwan days it lacks',
+    notLookedUp: 'No prices were looked up for this question: the split did not finish.',
+    notRead: 'Could not read prices for {symbol}: {reason}.',
+    noTradingDay: '{symbol}: no trading day from {start} to {end}.',
+    trend:
+      '{symbol}, {start} to {end}: {firstDay} {first} to {lastDay} {last}, {change}; high {highDay} {high}, low {lowDay} {low}; largest fall from a high {fall}',
+    fallDays: '{fall} ({from} to {to})',
+    eventTitle: '{file}, event date {date}, sources {numbers}',
+    sameAs: 'The same as {file}.',
+    leftOut:
+      "One more event's prices were not given to the program. | {count} more events' prices were not given to the program.",
+    daysLeftOut:
+      "One trading day's row was not given to the program. | {count} trading days' rows were not given to the program.",
+    noValue: 'n/a',
+    terms: 'Terms of use',
+    columns: {
+      symbol: 'Symbol',
+      day: 'Day',
+      close: 'Close',
+      change: 'Change',
+      d0: 'D0',
+      d0Close: 'D0 close',
+      next: 'Next day',
+      fifth: 'D+5',
+      notes: 'Notes'
+    },
+    reasons: {
+      noData: '{source} had no daily closes for it',
+      unreadable: '{source} could not be read'
+    },
+    notes: {
+      during: 'the event came during D0’s session',
+      missing: 'no close for {day}',
+      filled: '{day} from FinMind',
+      dividend: 'ex-dividend {day}',
+      noDay: 'no trading day yet'
+    }
+  },
   errors: {
     knowledge_base_empty: {
       title: 'No news has been imported yet.',
@@ -67,7 +108,7 @@ export default {
     knowledge_base_outdated: {
       title: 'The knowledge base was built by another version.',
       description:
-        'Stop the service, delete the local_data/pgdata folder, and start it again; it imports the sample news again.'
+        'Press Ctrl+C in the terminal and start the service again: it clears the old knowledge base or rebuilds its index itself.'
     },
     setup_failed: {
       title: 'The service could not load a file it needs.',

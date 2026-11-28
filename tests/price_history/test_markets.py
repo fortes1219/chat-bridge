@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from chat_bridge.collect.markets import (
+from chat_bridge.price_history.markets import (
     MarketSeriesFileError,
     by_date,
     by_moment,
@@ -27,6 +27,17 @@ def test_the_sample_file_lists_the_nine_series_and_two_markets() -> None:
     assert [market.code for market in LISTED.markets] == ["US", "TW"]
     assert len(LISTED.series) == 9
     assert [one.symbol for one in LISTED.series if one.backup] == [
+        "^TWII",
+        "2330.TW",
+        "2308.TW",
+        "0050.TW",
+        "006208.TW",
+    ]
+
+
+def test_the_series_of_a_market_are_listed_in_order() -> None:
+    assert TW is not None
+    assert [one.symbol for one in LISTED.of_market(TW)] == [
         "^TWII",
         "2330.TW",
         "2308.TW",

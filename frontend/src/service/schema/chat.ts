@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ProgramSchema } from '@/service/schema/program';
 import { ErrorDetailSchema, LocalizedSchema } from '@/service/schema/common';
 import { SourceSchema } from '@/service/schema/source';
+import { PriceLookupsSchema } from '@/service/schema/prices';
 import { ProposalOutcomeSchema } from '@/service/schema/strategy';
 
 export { SourceSchema };
@@ -28,8 +29,9 @@ export const ChatRequestSchema = z
  * What the service, not the model, says about an answer. `program` is null when no program is
  * asked, as for a question the data has nothing on. `data_latest_date` is the knowledge base's
  * latest event date. `split_failed` says the question could not be split into parts, so only the
- * question as asked was searched. `proposal_expected` says the question asks to revise the
- * strategy: the answer comes whole, then a proposal event.
+ * question as asked was searched and no prices were looked up. `proposal_expected` says the
+ * question asks to revise the strategy: the answer comes whole, then a proposal event. `prices` are
+ * those looked up for the question, as the program was given them; null when none were.
  */
 export const ChatContextSchema = z
   .object({
@@ -38,7 +40,8 @@ export const ChatContextSchema = z
     disclaimer: LocalizedSchema,
     program: ProgramSchema.nullable(),
     split_failed: z.boolean(),
-    proposal_expected: z.boolean()
+    proposal_expected: z.boolean(),
+    prices: PriceLookupsSchema.nullable()
   })
   .strict();
 

@@ -19,9 +19,9 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-from chat_bridge.collect.markets import market_series
 from chat_bridge.config import PROJECT_ROOT
 from chat_bridge.errors import LocalSetupError
+from chat_bridge.price_history.markets import market_series
 
 FORMAT_FILE = PROJECT_ROOT / "docs" / "truth_format.md"
 VOCABULARY_FILE = PROJECT_ROOT / "docs" / "exposure_vocabulary.md"

@@ -195,6 +195,7 @@ def _answering(
         question: str,
         holdings: object = None,
         *,
+        series: object = None,
         effort: object = None,
     ) -> SplitOutcome:
         return split

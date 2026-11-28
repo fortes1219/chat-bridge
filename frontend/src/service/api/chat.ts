@@ -16,6 +16,8 @@ export type Effort = NonNullable<ChatRequest['effort']>;
 export type ChatEvent = EventOf<InferContractRouterOutputs<typeof contract>['chat'][AskRoute]>;
 export type ChatContext = Extract<ChatEvent, { type: 'response.context' }>['context'];
 export type Source = ChatContext['sources'][number];
+/** The prices looked up for a question, as its program was given them. */
+export type PriceLookups = NonNullable<ChatContext['prices']>;
 /** What came of a revision question: the checked proposal, or why it was refused. */
 export type ProposalOutcome = Extract<ChatEvent, { type: 'response.proposal' }>['proposal'];
 /** The tokens a question used, sent once its answer ended. */

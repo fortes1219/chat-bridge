@@ -10,8 +10,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from chat_bridge.collect.closes import SeriesCloses
 from chat_bridge.collect.pages import Page
+from chat_bridge.price_history.closes import SeriesCloses
 from chat_bridge.truth.maker import EventOutcome, Maker
 from chat_bridge.truth.record import Window
 from chat_bridge.truth.rules import read_rules

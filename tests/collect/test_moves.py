@@ -3,9 +3,9 @@
 from datetime import date, datetime, time
 from zoneinfo import ZoneInfo
 
-from chat_bridge.collect.closes import SeriesCloses
-from chat_bridge.collect.markets import Backup, Market, MarketSeries, Series
 from chat_bridge.collect.moves import NO_DATA, NOT_YET, Event, section
+from chat_bridge.price_history.closes import SeriesCloses
+from chat_bridge.price_history.markets import Backup, Market, MarketSeries, Series
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 NEW_YORK = ZoneInfo("America/New_York")

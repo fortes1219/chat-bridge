@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import Literal
 
 from chat_bridge.collect import news_files
-from chat_bridge.collect.closes import Closes, read_closes
-from chat_bridge.collect.markets import MarketSeries, market_series
 from chat_bridge.collect.moves import section
 from chat_bridge.collect.news_files import NewsFile, NewsFileError
+from chat_bridge.price_history.closes import Closes, read_closes
+from chat_bridge.price_history.markets import MarketSeries, market_series
 
 # Days read before the earliest and after the latest event, so day −2 and day +5 are in the span
 # across a long holiday.

@@ -1,14 +1,14 @@
 """The embedded PostgreSQL server and the async engine for the app database."""
 
 import platform
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from pgvector.asyncpg import register_vector
 from pixeltable_pgserver.postgres_server import PostgresServer, get_server
-from sqlalchemy import Column, Connection, event, inspect, text
+from sqlalchemy import Column, Connection, Table, event, inspect, text
 from sqlalchemy.engine.interfaces import ReflectedColumn
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -35,8 +35,9 @@ class SchemaMismatchError(LocalSetupError):
     def __init__(self, differences: list[str]) -> None:
         super().__init__(
             "the local database was made by another version of chat-bridge "
-            f"({'; '.join(differences)}); "
-            f"delete {pgdata_dir()} and run `chat-bridge ingest <folder>` again"
+            f"({'; '.join(differences)}); start the service with `chat-bridge` or run "
+            "`chat-bridge ingest <folder>`: either clears the old knowledge base and makes it "
+            "again"
         )
         self.differences = differences
 
@@ -127,11 +128,14 @@ def _column_difference(
     return None
 
 
-def _schema_differences(connection: Connection) -> list[str]:
-    """Columns the tables lack, and columns whose NULL rule differs from the models."""
+def table_differences(connection: Connection, tables: Sequence[Table]) -> list[str]:
+    """Columns the given tables lack, and columns whose NULL rule differs from the models. A
+    table that does not exist yet is left out: it is made as the model says."""
     inspector = inspect(connection)
     differences: list[str] = []
-    for table in Base.metadata.sorted_tables:
+    for table in tables:
+        if not inspector.has_table(table.name):
+            continue
         stored = {
             column["name"]: column for column in inspector.get_columns(table.name)
         }
@@ -166,6 +170,8 @@ async def create_tables(engine: AsyncEngine) -> None:
     """
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-        differences = await connection.run_sync(_schema_differences)
+        differences = await connection.run_sync(
+            table_differences, Base.metadata.sorted_tables
+        )
     if differences:
         raise SchemaMismatchError(differences)

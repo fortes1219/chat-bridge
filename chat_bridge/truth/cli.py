@@ -11,10 +11,10 @@ from chat_bridge.chat.service import PROGRAMS, NoLoginError, choose_program
 from chat_bridge.cli import EXIT_NOT_ALL, EXIT_OK, Commands, print_error
 from chat_bridge.collect import service, store
 from chat_bridge.collect.channels import PROGRAM_NAMES
-from chat_bridge.collect.closes import ClosesError
-from chat_bridge.collect.markets import market_series
 from chat_bridge.collect.store import StoredEvent, StoreError
 from chat_bridge.errors import LocalSetupError
+from chat_bridge.price_history.closes import ClosesError
+from chat_bridge.price_history.markets import market_series
 from chat_bridge.truth.maker import EventOutcome, Maker
 from chat_bridge.truth.record import Window
 from chat_bridge.truth.rules import read_rules

@@ -101,6 +101,7 @@ def run(monkeypatch: pytest.MonkeyPatch) -> Run:
         question: str,
         holdings: object = None,
         *,
+        series: object = None,
         effort: object = None,
     ) -> SplitOutcome:
         seen.split_holdings = holdings
@@ -435,6 +436,7 @@ def test_a_question_that_asks_for_no_revision_streams_with_the_holdings_and_no_p
         question: str,
         holdings: object = None,
         *,
+        series: object = None,
         effort: object = None,
     ) -> SplitOutcome:
         return SplitOutcome()

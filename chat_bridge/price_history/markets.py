@@ -1,8 +1,8 @@
-"""The markets and series a news file's market moves follow, and each market's day 0.
+"""The markets and listed series, and each market's day 0 for an event.
 
 The list is data (`data/market_series.json`), so the series can change without changing the
 program. Day 0 of a market is the first of its sessions whose close is at or after the moment of
-the event; a news file without that moment is aligned by its date, as the earlier files were.
+the event; an event without that moment is aligned by its date, as the sample news files were.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ class _MarketSeriesFile(_Strict):
 @dataclass(frozen=True)
 class Market:
     code: str
-    # How the section's first line names the market's series ("台股").
+    # How the sample news names the market's series ("台股").
     label: str
     zone: ZoneInfo
     opens: time
@@ -109,6 +109,9 @@ class MarketSeries:
 
     def market(self, code: str) -> Market | None:
         return next((market for market in self.markets if market.code == code), None)
+
+    def of_market(self, market: Market) -> tuple[Series, ...]:
+        return tuple(one for one in self.series if one.market is market)
 
 
 def _market(entry: _MarketEntry) -> Market:

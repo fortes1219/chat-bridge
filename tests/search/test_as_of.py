@@ -1,8 +1,8 @@
 """Searching as of a date: only files whose event happened on or before that day.
 
 The filter works on whole files by their event date. These tests check that, not that the
-hits hold nothing learned later: a file's own later sections, such as the market moves in
-the days after its event, stay in.
+hits hold nothing learned later: a file's own later sections, such as what was said in the
+days after its event, stay in.
 """
 
 import asyncio

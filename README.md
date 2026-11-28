@@ -41,6 +41,15 @@ Press Ctrl+C to stop the service. Use `--no-browser` to start it without opening
 reopens the existing page. If another program is using port 8000, the startup message identifies
 the conflict.
 
+### A knowledge base from before 0.2.0
+
+From 0.2.0, chat looks prices up for each question instead of reading the market tables stored
+with the news. When the service starts, or `ingest` runs, on a knowledge base an earlier version
+made, it clears that knowledge base and makes it again: the service imports the bundled news
+again on its own. Your holdings, targets, rules and question records are kept. Folders of your
+own documents are not known to the app, so run `ingest` on them again; the terminal says so. If
+you had replaced the sample news with your own folder, run `ingest <folder> --replace` again.
+
 ## Try the research flow
 
 1. **Ask about the market.** Pick a sample question or ask how Fed policy has affected Taiwan
@@ -80,9 +89,20 @@ investment advice.
    tables are indexed separately for keyword search and ranked below matching prose.
 3. **Cover each part of the question.** Chat keeps the original question's top eight results,
    runs a broader search over the text, then searches separately for up to eight validated
-   subquestions. It removes duplicates and adds market tables from the matched files. If query
-   splitting fails or times out after 120 seconds, chat uses the results from the original query.
-4. **Answer from the results.** The answering program gets retrieved passages and their metadata.
+   subquestions. It removes duplicates. If query splitting fails or times out after 120 seconds,
+   chat uses the results from the original query and looks up no prices.
+4. **Look up prices.** The run that splits the question also names the daily prices to look up:
+   symbols of your holdings, of the series in `data/market_series.json`, or Taiwan and US listings
+   the question names, each with a period of at most a year. The app checks them, reads Yahoo
+   Finance daily closes while the subquestions are searched, and fills Taiwan days Yahoo lacks
+   from FinMind. It computes each period's change, high, low and largest fall from a high, and
+   each found event's moves on its trading day and after, lined up as the sample news format's
+   section 7 lines them up. The answering program gets these numbers in a `<prices>` block and
+   reads no market data itself. A question that finds no passage but names a holding or a listed
+   series, such as "006208 在 9 月 17 日的漲跌", is still answered from its prices. Reads are kept
+   for a day under `local_data/price_history/`, so a close published later the same day may
+   show only after that.
+5. **Answer from the results.** The answering program gets retrieved passages and their metadata.
    A table or quoted note that repeats one an earlier passage already holds is sent once; the
    later copy becomes a line that points to that passage. The page's sources and the records are
    unchanged.
@@ -135,7 +155,8 @@ shows the total under the answer. A stopped or failed answer has no total; the q
 keeps each run's counts. [How the counts are read](specs/019-token-usage/research.md)
 
 The first payload, `response.context`, carries the sources, latest indexed event date, backend
-name, `split_failed` flag and bilingual disclaimer. Answer text arrives in
+name, `split_failed` flag, bilingual disclaimer and `prices`: what was looked up and given to the
+answering program, or `null` when nothing was. The chat page folds it under the answer. Answer text arrives in
 `response.output_text.delta`, incrementally for ordinary Claude Code replies and in a single
 payload for Codex or a combined answer and proposal. Allocation requests can also emit
 `response.proposal`. A failure during streaming emits an `error` event. A retrieval setup
@@ -176,6 +197,11 @@ uv run chat-bridge search "Did the Fed raise rates?" --limit 5
   and vector ranks. `--as-of 2026-07-31` filters whole files by their Markdown `event_date`.
   It excludes undated files and can still include later developments written into an earlier
   event's file.
+- A section headed `當日與之後的行情`, the sample news format's market table, is not stored; the
+  report says how many were left out. Chat looks prices up instead. The front matter's `markets`
+  and `event_time` are kept, to line those prices up with each event. A file whose `markets` is
+  not a list, or whose `event_time` has no UTC offset, is refused with the reason, as one with a
+  wrong `event_date` is.
 - After editing `data/synonyms.txt`, run `ingest` to rebuild the keyword index. Existing vectors
   are reused. The database, dictionary and model are stored under the Git-ignored `local_data/`
   directory. Use `CHAT_BRIDGE_LOCAL_DATA` to choose a different location.
@@ -230,13 +256,15 @@ uv run chat-bridge collect data/truth/2026-11-17-taiex-falls-947-points.md
 Day 0 is the first trading session that closes at or after the event's `event_time`. Records
 without that field use their event date. The app uses Yahoo Finance daily closes and fills
 missing Taiwan closes from FinMind when available. Missing data stays marked as missing.
-Reimport the updated files when you want chat to use them.
+Chat does not read this section: `ingest` leaves it out, and chat looks prices up for each
+question instead.
 
 ## Market data and attribution
 
 The strategy panel gets quotes from Yahoo Finance through yfinance and links to Yahoo's terms.
 For Taiwan previous closes and ex-dividend reference prices, it also uses the
 [FinMind public API](https://finmind.github.io/en/PrivacyPolicy/) and exchange open data.
+Chat's price lookups use Yahoo Finance daily closes, with FinMind for the Taiwan days Yahoo lacks.
 
 > Taiwan Stock Exchange 2026 TWSE OpenAPI 1.0: STOCK_DAY_ALL (daily trading of listed stocks),
 > TWT48U_ALL (ex-dividend and ex-rights notices of listed stocks)

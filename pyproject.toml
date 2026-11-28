@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chat-bridge"
-version = "0.1.0"
+version = "0.2.0"
 description = "A RAG demo that turns market news into a searchable knowledge base, so users can ask questions in natural language and adjust their investment settings against metrics they define themselves."
 readme = "README.md"
 requires-python = ">=3.11.5"

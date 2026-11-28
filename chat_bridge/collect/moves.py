@@ -10,8 +10,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from chat_bridge.collect.closes import BACKUP_NAMES, Closes, SeriesCloses, sessions
-from chat_bridge.collect.markets import (
+from chat_bridge.price_history.closes import (
+    BACKUP_NAMES,
+    Closes,
+    SeriesCloses,
+    sessions,
+)
+from chat_bridge.price_history.markets import (
     DayZero,
     Market,
     MarketSeries,
@@ -19,6 +24,7 @@ from chat_bridge.collect.markets import (
     by_date,
     by_moment,
 )
+from chat_bridge.price_history.moves import move
 
 HEADING = "當日與之後的行情"
 NO_DATA = "沒有資料"
@@ -67,52 +73,32 @@ def _day(value: date | None) -> str:
     return NO_DATA if value is None else value.isoformat()
 
 
-def _at(days: Sequence[date], index: int) -> date | None:
-    return days[index] if 0 <= index < len(days) else None
-
-
 def _row(
     one: Series, found: SeriesCloses, zero: DayZero, days: Sequence[date]
 ) -> tuple[str, bool]:
     """A series' row, and whether it used a day from the backup."""
-    if zero.session is None:
+    moved = move(found, zero, days)
+    if moved.session is None:
         cells = [NO_DATA] * 8
         return _join([one.name, zero.aligned.isoformat(), *cells, NOT_YET]), False
-    index = days.index(zero.session)
-    before_2, before, after, fifth = (
-        _at(days, index + offset) for offset in (-2, -1, 1, 5)
-    )
-    # The sessions from day −2 to day +5 that the data has.
-    window = days[max(index - 2, 0) : index + 6]
-
-    def close(day: date | None) -> float | None:
-        return None if day is None else found.closes.get(day)
-
-    notes = [DURING] if zero.during else []
-    notes += [f"Yahoo 回應缺 {day} 這一根" for day in window if day not in found.closes]
-    notes += [
-        f"{day} 的收盤取自 {_backup_name(one)}" for day in window if day in found.filled
-    ]
-    notes += [
-        f"視窗內有除息日 {day}（收盤未調整）"
-        for day in sorted(found.dividends)
-        if window[0] <= day <= window[-1]
-    ]
+    notes = [DURING] if moved.during else []
+    notes += [f"Yahoo 回應缺 {day} 這一根" for day in moved.missing]
+    notes += [f"{day} 的收盤取自 {_backup_name(one)}" for day in moved.filled]
+    notes += [f"視窗內有除息日 {day}（收盤未調整）" for day in moved.dividends]
     cells = [
         one.name,
-        zero.aligned.isoformat(),
-        _day(before),
-        _close(close(before)),
-        _percent(close(before_2), close(before)),
-        zero.session.isoformat(),
-        _close(close(zero.session)),
-        _percent(close(before), close(zero.session)),
-        _percent(close(zero.session), close(after)),
-        _percent(close(before), close(fifth)),
+        moved.aligned.isoformat(),
+        _day(moved.before),
+        _close(moved.before_close),
+        _percent(moved.before_2_close, moved.before_close),
+        moved.session.isoformat(),
+        _close(moved.close),
+        _percent(moved.before_close, moved.close),
+        _percent(moved.close, moved.after_close),
+        _percent(moved.before_close, moved.fifth_close),
         "；".join(notes),
     ]
-    shown = (before_2, before, zero.session, after, fifth)
-    return _join(cells), any(day in found.filled for day in shown)
+    return _join(cells), moved.uses_backup
 
 
 def _backup_name(one: Series) -> str:

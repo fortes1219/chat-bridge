@@ -22,10 +22,10 @@ from typing import Any
 from chat_bridge.chat import claude_code
 from chat_bridge.chat.programs import AnsweringProgram, ProgramError
 from chat_bridge.collect import service
-from chat_bridge.collect.closes import Closes
-from chat_bridge.collect.markets import MarketSeries
 from chat_bridge.collect.pages import Page
 from chat_bridge.collect.service import Kind
+from chat_bridge.price_history.closes import Closes
+from chat_bridge.price_history.markets import MarketSeries
 from chat_bridge.truth import record
 from chat_bridge.truth.record import Again, Record, Source, Window
 from chat_bridge.truth.rules import Rules

@@ -9,6 +9,7 @@ import pytest
 from chat_bridge.chat import service
 from chat_bridge.chat.schemas import ChatDelta
 from chat_bridge.config import PROJECT_ROOT
+from chat_bridge.ingest.service import MARKET_SECTION
 
 
 @pytest.mark.parametrize(
@@ -69,6 +70,8 @@ def test_only_the_fixed_section_names_are_given_in_both_languages(
             title="T",
             heading=heading,
             event_date=date(2026, 9, 17),
+            markets=(),
+            event_time=None,
             content="text",
             score=0.03,
         )
@@ -92,7 +95,7 @@ def test_only_the_fixed_section_names_are_given_in_both_languages(
     assert sources[2].heading_localizations is None
 
 
-def test_every_section_name_of_the_sample_news_is_in_the_table() -> None:
+def test_every_stored_section_name_of_the_sample_news_is_in_the_table() -> None:
     names = {
         line.removeprefix("## ").strip()
         for path in PROJECT_ROOT.joinpath("data", "truth").glob("*.md")
@@ -100,4 +103,5 @@ def test_every_section_name_of_the_sample_news_is_in_the_table() -> None:
         if line.startswith("## ")
     }
 
-    assert names == set(service.SECTION_NAMES)
+    # The market section is not stored, so no page shows its name.
+    assert names - {MARKET_SECTION} == set(service.SECTION_NAMES)

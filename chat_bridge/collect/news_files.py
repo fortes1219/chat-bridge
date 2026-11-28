@@ -19,7 +19,6 @@ from mdit_py_plugins.front_matter import front_matter_plugin
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
-from chat_bridge.collect.markets import MarketSeries
 from chat_bridge.collect.moves import (
     BACKUP_SOURCE_ID,
     HEADING,
@@ -27,6 +26,7 @@ from chat_bridge.collect.moves import (
     Event,
     Section,
 )
+from chat_bridge.price_history.markets import MarketSeries
 
 # CommonMark has no tables; the GFM table rule finds where the section's table ends.
 _PARSER = MarkdownIt("commonmark").use(front_matter_plugin).enable("table")

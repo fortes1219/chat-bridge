@@ -5,15 +5,15 @@ Markdown parser finds the headings, so headings inside code blocks are not mista
 ones.
 """
 
-from dataclasses import dataclass
-from datetime import date
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 from mdit_py_plugins.front_matter import front_matter_plugin
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from chat_bridge.ingest.readers import (
     RejectReason,
@@ -43,6 +43,10 @@ class FrontMatter(BaseModel):
     keyword_groups: list[list[str]] = Field(default_factory=list)
     # The day the event happened. A search given a date leaves out files after it.
     event_date: date | None = None
+    # The markets the event is about, its own first, and when it happened or was made public:
+    # what lines up the prices of a question about it with its trading days.
+    markets: list[str] = Field(default_factory=list)
+    event_time: AwareDatetime | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,8 @@ class ParsedDocument:
     keyword_groups: list[list[str]]
     event_date: date | None
     sections: list[ParsedSection]
+    markets: list[str] = field(default_factory=list)
+    event_time: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -181,4 +187,6 @@ def parse_markdown(text: str, fallback_title: str) -> ParsedDocument:
         keyword_groups=front_matter.keyword_groups,
         event_date=front_matter.event_date,
         sections=sections,
+        markets=front_matter.markets,
+        event_time=front_matter.event_time,
     )

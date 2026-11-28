@@ -177,20 +177,36 @@ def test_the_command_passes_no_browser_on(monkeypatch: pytest.MonkeyPatch) -> No
 # --- The knowledge base on the first run -------------------------------------------------
 
 
-def test_an_empty_knowledge_base_is_filled_with_the_sample_news_first(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
+def _knowledge_base(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    empty: bool,
+    refreshed: ingest_service.IngestReport | None = None,
+) -> list[Path]:
+    """Stands in for the knowledge base: what the refresh found, whether it is empty; returns
+    the folders ingested."""
     ingested: list[Path] = []
 
-    async def empty() -> bool:
-        return True
+    async def refresh() -> ingest_service.IngestReport:
+        return refreshed or ingest_service.IngestReport()
+
+    async def is_empty() -> bool:
+        return empty
 
     async def ingest(root: Path) -> ingest_service.IngestReport:
         ingested.append(root)
         return ingest_service.IngestReport()
 
-    monkeypatch.setattr(ingest_service, "knowledge_base_is_empty", empty)
+    monkeypatch.setattr(ingest_service, "refresh_index", refresh)
+    monkeypatch.setattr(ingest_service, "knowledge_base_is_empty", is_empty)
     monkeypatch.setattr(ingest_service, "ingest_folder", ingest)
+    return ingested
+
+
+def test_an_empty_knowledge_base_is_filled_with_the_sample_news_first(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    ingested = _knowledge_base(monkeypatch, empty=True)
     caplog.set_level("INFO", logger="chat_bridge")
 
     server.prepare_knowledge_base()
@@ -203,34 +219,66 @@ def test_an_empty_knowledge_base_is_filled_with_the_sample_news_first(
 
 
 def test_a_knowledge_base_with_content_is_left_as_it_is(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    async def filled() -> bool:
-        return False
-
-    async def ingest(root: Path) -> ingest_service.IngestReport:
-        raise AssertionError("nothing should be ingested")
-
-    monkeypatch.setattr(ingest_service, "knowledge_base_is_empty", filled)
-    monkeypatch.setattr(ingest_service, "ingest_folder", ingest)
+    ingested = _knowledge_base(monkeypatch, empty=False)
+    caplog.set_level("INFO", logger="chat_bridge")
 
     server.prepare_knowledge_base()
 
+    assert ingested == []
+    assert caplog.text == ""
 
-def test_a_database_from_another_version_stops_with_what_to_delete(
+
+def test_a_knowledge_base_an_earlier_version_made_is_cleared_and_the_sample_ingested(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    cleared = ingest_service.IngestReport(outdated=["documents.markets is missing"])
+    ingested = _knowledge_base(monkeypatch, empty=True, refreshed=cleared)
+    caplog.set_level("INFO", logger="chat_bridge")
+
+    server.prepare_knowledge_base()
+
+    assert ingested == [server.SAMPLE_NEWS]
+    assert (
+        "made by an earlier version of chat-bridge (documents.markets is missing), so it "
+        "was cleared" in caplog.text
+    )
+
+
+def test_an_index_built_another_way_is_rebuilt_and_said(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    rebuilt = ingest_service.IngestReport(
+        index_update=ingest_service.IndexUpdate.KEYWORDS
+    )
+    ingested = _knowledge_base(monkeypatch, empty=False, refreshed=rebuilt)
+    caplog.set_level("INFO", logger="chat_bridge")
+
+    server.prepare_knowledge_base()
+
+    assert ingested == []
+    assert "The search index was built another way, so it was rebuilt" in caplog.text
+
+
+def test_other_tables_from_another_version_stop_the_service_with_why(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    async def refresh() -> ingest_service.IngestReport:
+        return ingest_service.IngestReport()
+
     async def old() -> bool:
-        raise SchemaMismatchError(["documents.event_date is missing"])
+        raise SchemaMismatchError(["holdings.names is missing"])
 
     monkeypatch.setattr(server, "port_is_free", lambda host, port: True)
     monkeypatch.setattr(web, "prepare_page", lambda: tmp_path)
+    monkeypatch.setattr(ingest_service, "refresh_index", refresh)
     monkeypatch.setattr(ingest_service, "knowledge_base_is_empty", old)
 
     assert server.serve() == cli.EXIT_ERROR
 
     error = capsys.readouterr().err
     assert "made by another version" in error
-    assert "documents.event_date is missing" in error
+    assert "holdings.names is missing" in error

@@ -9,6 +9,7 @@ from chat_bridge.chat.programs import DEFAULT_EFFORT, Effort, Login, Program
 from chat_bridge.chat.sources import Language as Language
 from chat_bridge.chat.sources import Localized as Localized
 from chat_bridge.chat.sources import Source as Source
+from chat_bridge.price_history.schemas import PriceLookups
 from chat_bridge.strategy.schemas import ProposalEvent
 
 # Far longer than any question; the limit keeps one request from filling the model's input or
@@ -82,6 +83,9 @@ class ChatContext(BaseModel):
     # The question asks to revise the strategy: the answer comes whole, with a proposal event
     # after it, so a page can say what it is waiting for.
     proposal_expected: bool = False
+    # The prices looked up for the question and what the program was given of them; none when
+    # nothing was looked up.
+    prices: PriceLookups | None = None
 
 
 class QuestionUsage(BaseModel):
